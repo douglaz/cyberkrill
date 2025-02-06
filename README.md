@@ -1,5 +1,7 @@
 # cyberkrill
 
+<img src="https://github.com/user-attachments/assets/246dc789-4a2d-4040-afeb-3ac9045dddfb" width="200" />
+
 ## Description
 
 CLI utilities for Bitcoin and the Lightning Network
@@ -42,6 +44,7 @@ $ cyberkrill decode invoice lnbc99810310n1pju0sy7pp555srgtgcg6t4jr4j5v0jysgee4zy
         "htlc_minimum_msat": null,
         "htlc_maximum_msat": null
       }
+
     ]
   ]
 }
