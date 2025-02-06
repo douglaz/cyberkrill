@@ -61,7 +61,7 @@ struct InvoiceOutput {
     payment_secret: String,
     description: Option<String>,
     description_hash: Option<String>,
-    destination: Option<String>,
+    destination: String,
     expiry_seconds: u64,
     min_final_cltv_expiry: u64,
     fallback_addresses: Vec<String>,
@@ -135,7 +135,10 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
                     Some(sha256.0.to_string())
                 }
             },
-            destination: invoice.payee_pub_key().map(|k| k.to_string()),
+            destination: invoice
+                .payee_pub_key()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| invoice.recover_payee_pub_key().to_string()),
             expiry_seconds: invoice.expiry_time().as_secs(),
             min_final_cltv_expiry: invoice.min_final_cltv_expiry_delta(),
             fallback_addresses: invoice
