@@ -11,6 +11,7 @@ pub struct InvoiceOutput {
     pub timestamp_millis: u128,
     pub payment_hash: String,
     pub payment_secret: String,
+    pub features: Vec<(String, String)>,
     pub description: Option<String>,
     pub description_hash: Option<String>,
     pub destination: String,
@@ -60,12 +61,55 @@ impl From<&lightning_invoice::RoutingFees> for RoutingFeesOutput {
 
 impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
     fn from(invoice: lightning_invoice::Bolt11Invoice) -> Self {
+        let mut features = vec![];
+        if let Some(f) = invoice.features() {
+            if f.requires_basic_mpp() {
+                features.push(("basic_mpp".to_owned(), "required".to_owned()));
+            }
+            if f.requires_payment_metadata() {
+                features.push(("payment_metadata".to_owned(), "required".to_owned()));
+            }
+            if f.requires_payment_secret() {
+                features.push(("payment_secret".to_owned(), "required".to_owned()));
+            }
+            if f.requires_trampoline_routing() {
+                features.push(("trampoline_routing".to_owned(), "required".to_owned()));
+            }
+            if f.requires_unknown_bits() {
+                features.push(("unknown_bits".to_owned(), "required".to_owned()));
+            }
+            if f.requires_variable_length_onion() {
+                features.push(("variable_length_onion".to_owned(), "required".to_owned()));
+            }
+            if f.supports_any_optional_bits() {
+                features.push(("any_optional_bits".to_owned(), "optional".to_owned()));
+            }
+            if f.supports_basic_mpp() {
+                features.push(("basic_mpp".to_owned(), "optional".to_owned()));
+            }
+            if f.supports_payment_metadata() {
+                features.push(("payment_metadata".to_owned(), "optional".to_owned()));
+            }
+            if f.supports_payment_secret() {
+                features.push(("payment_secret".to_owned(), "optional".to_owned()));
+            }
+            if f.supports_trampoline_routing() {
+                features.push(("trampoline_routing".to_owned(), "optional".to_owned()));
+            }
+            if f.supports_unknown_bits() {
+                features.push(("unknown_bits".to_owned(), "optional".to_owned()));
+            }
+            if f.supports_variable_length_onion() {
+                features.push(("variable_length_onion".to_owned(), "optional".to_owned()));
+            }
+        }
         Self {
             network: invoice.network().to_string(),
             amount_msats: invoice.amount_milli_satoshis(),
             timestamp_millis: invoice.duration_since_epoch().as_millis(),
             payment_hash: invoice.payment_hash().to_string(),
             payment_secret: hex::encode(invoice.payment_secret().0),
+            features,
             description: match invoice.description() {
                 lightning_invoice::Bolt11InvoiceDescriptionRef::Direct(description) => {
                     Some(description.to_string())
