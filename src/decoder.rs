@@ -65,42 +65,36 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
         if let Some(f) = invoice.features() {
             if f.requires_basic_mpp() {
                 features.push(("basic_mpp".to_owned(), "required".to_owned()));
+            } else if f.supports_basic_mpp() {
+                features.push(("basic_mpp".to_owned(), "optional".to_owned()));
             }
             if f.requires_payment_metadata() {
                 features.push(("payment_metadata".to_owned(), "required".to_owned()));
+            } else if f.supports_payment_metadata() {
+                features.push(("payment_metadata".to_owned(), "optional".to_owned()));
             }
             if f.requires_payment_secret() {
                 features.push(("payment_secret".to_owned(), "required".to_owned()));
+            } else if f.supports_payment_secret() {
+                features.push(("payment_secret".to_owned(), "optional".to_owned()));
             }
             if f.requires_trampoline_routing() {
                 features.push(("trampoline_routing".to_owned(), "required".to_owned()));
+            } else if f.supports_trampoline_routing() {
+                features.push(("trampoline_routing".to_owned(), "optional".to_owned()));
             }
             if f.requires_unknown_bits() {
                 features.push(("unknown_bits".to_owned(), "required".to_owned()));
+            } else if f.supports_unknown_bits() {
+                features.push(("unknown_bits".to_owned(), "optional".to_owned()));
             }
             if f.requires_variable_length_onion() {
                 features.push(("variable_length_onion".to_owned(), "required".to_owned()));
+            } else if f.supports_variable_length_onion() {
+                features.push(("variable_length_onion".to_owned(), "optional".to_owned()));
             }
             if f.supports_any_optional_bits() {
                 features.push(("any_optional_bits".to_owned(), "optional".to_owned()));
-            }
-            if f.supports_basic_mpp() {
-                features.push(("basic_mpp".to_owned(), "optional".to_owned()));
-            }
-            if f.supports_payment_metadata() {
-                features.push(("payment_metadata".to_owned(), "optional".to_owned()));
-            }
-            if f.supports_payment_secret() {
-                features.push(("payment_secret".to_owned(), "optional".to_owned()));
-            }
-            if f.supports_trampoline_routing() {
-                features.push(("trampoline_routing".to_owned(), "optional".to_owned()));
-            }
-            if f.supports_unknown_bits() {
-                features.push(("unknown_bits".to_owned(), "optional".to_owned()));
-            }
-            if f.supports_variable_length_onion() {
-                features.push(("variable_length_onion".to_owned(), "optional".to_owned()));
             }
         }
         Self {
