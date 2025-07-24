@@ -12,6 +12,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     Decode(DecodeArgs),
+    Generate(GenerateArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -40,10 +41,37 @@ struct DecodeLnurlArgs {
     output: Option<String>,
 }
 
-fn main() -> anyhow::Result<()> {
+#[derive(clap::Args, Debug)]
+struct GenerateArgs {
+    #[clap(subcommand)]
+    command: GenerateCommands,
+}
+
+#[derive(Subcommand, Debug)]
+enum GenerateCommands {
+    Invoice(GenerateInvoiceArgs),
+}
+
+#[derive(clap::Args, Debug)]
+struct GenerateInvoiceArgs {
+    /// Lightning address (e.g., user@domain.com)
+    address: String,
+    /// Amount in millisatoshis
+    amount_msats: u64,
+    /// Optional comment
+    #[clap(short, long)]
+    comment: Option<String>,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let args: Cli = Cli::parse();
     match args.command {
         Commands::Decode(args) => decode(args)?,
+        Commands::Generate(args) => generate(args).await?,
     }
     Ok(())
 }
@@ -93,5 +121,29 @@ fn decode_invoice(args: DecodeInvoiceArgs) -> anyhow::Result<()> {
 
     let output = decoder::decode_invoice(&input)?;
     serde_json::to_writer_pretty(writer, &output)?;
+    Ok(())
+}
+
+async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
+    match args.command {
+        GenerateCommands::Invoice(args) => generate_invoice(args).await?,
+    }
+    Ok(())
+}
+
+async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let invoice = decoder::generate_invoice_from_address(
+        &args.address,
+        args.amount_msats,
+        args.comment.as_deref(),
+    )
+    .await?;
+
+    serde_json::to_writer_pretty(writer, &invoice)?;
     Ok(())
 }

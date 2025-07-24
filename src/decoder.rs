@@ -190,6 +190,114 @@ pub fn decode_lnurl(input: &str) -> Result<LnurlOutput> {
     })
 }
 
+// LNURL-pay structures
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LnurlPayRequest {
+    pub callback: String,
+    #[serde(rename = "maxSendable")]
+    pub max_sendable: u64,
+    #[serde(rename = "minSendable")]
+    pub min_sendable: u64,
+    pub metadata: String,
+    pub tag: String,
+    #[serde(rename = "commentAllowed")]
+    pub comment_allowed: Option<u16>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LnurlPayCallback {
+    #[serde(rename = "pr")]
+    pub payment_request: String,
+    pub routes: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GeneratedInvoiceOutput {
+    pub lightning_address: String,
+    pub amount_msats: u64,
+    pub comment: Option<String>,
+    pub invoice: String,
+    pub decoded_invoice: InvoiceOutput,
+}
+
+pub async fn generate_invoice_from_address(
+    address: &str,
+    amount_msats: u64,
+    comment: Option<&str>,
+) -> Result<GeneratedInvoiceOutput> {
+    // Parse lightning address
+    let parts: Vec<&str> = address.split('@').collect();
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+        anyhow::bail!("Invalid Lightning address format. Expected: user@domain.com");
+    }
+
+    let (user, domain) = (parts[0], parts[1]);
+
+    // Construct the .well-known URL
+    let well_known_url = format!("https://{domain}/.well-known/lnurlp/{user}");
+
+    // Make initial request to get LNURL-pay request
+    let client = reqwest::Client::new();
+    let lnurl_pay_request: LnurlPayRequest =
+        client.get(&well_known_url).send().await?.json().await?;
+
+    // Validate amount
+    if amount_msats < lnurl_pay_request.min_sendable
+        || amount_msats > lnurl_pay_request.max_sendable
+    {
+        anyhow::bail!(
+            "Amount {} msats is outside allowed range: {} - {} msats",
+            amount_msats,
+            lnurl_pay_request.min_sendable,
+            lnurl_pay_request.max_sendable
+        );
+    }
+
+    // Validate comment length if provided
+    if let Some(comment) = comment {
+        if let Some(max_comment_len) = lnurl_pay_request.comment_allowed {
+            if comment.len() > max_comment_len as usize {
+                anyhow::bail!(
+                    "Comment length {} exceeds maximum allowed length: {}",
+                    comment.len(),
+                    max_comment_len
+                );
+            }
+        }
+    }
+
+    // Build callback URL with parameters
+    let mut callback_url = Url::parse(&lnurl_pay_request.callback)?;
+    callback_url
+        .query_pairs_mut()
+        .append_pair("amount", &amount_msats.to_string());
+
+    if let Some(comment) = comment {
+        callback_url
+            .query_pairs_mut()
+            .append_pair("comment", comment);
+    }
+
+    // Make callback request to get invoice
+    let callback_response: LnurlPayCallback = client
+        .get(callback_url.as_str())
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    // Decode the received invoice
+    let decoded_invoice = decode_invoice(&callback_response.payment_request)?;
+
+    Ok(GeneratedInvoiceOutput {
+        lightning_address: address.to_string(),
+        amount_msats,
+        comment: comment.map(|s| s.to_string()),
+        invoice: callback_response.payment_request,
+        decoded_invoice,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,5 +383,37 @@ mod tests {
         let invalid_invoice = "not_an_invoice";
         let result = decode_invoice(invalid_invoice);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_lightning_address() {
+        let address = "user@domain.com";
+        let parts: Vec<&str> = address.split('@').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0], "user");
+        assert_eq!(parts[1], "domain.com");
+    }
+
+    #[test]
+    fn test_invalid_lightning_address() {
+        let invalid_addresses = vec!["invalid", "user@domain@com"];
+
+        for address in invalid_addresses {
+            let parts: Vec<&str> = address.split('@').collect();
+            assert_ne!(parts.len(), 2, "Address '{}' should be invalid", address);
+        }
+
+        // Test addresses with empty parts
+        let empty_part_addresses = vec!["user@", "@domain.com"];
+
+        for address in empty_part_addresses {
+            let parts: Vec<&str> = address.split('@').collect();
+            assert_eq!(parts.len(), 2);
+            assert!(
+                parts[0].is_empty() || parts[1].is_empty(),
+                "Address '{}' should have empty part",
+                address
+            );
+        }
     }
 }
