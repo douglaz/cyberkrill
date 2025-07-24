@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 use url::Url;
 
+
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct InvoiceOutput {
     pub network: String,
@@ -296,6 +297,7 @@ pub async fn generate_invoice_from_address(
     })
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -414,4 +416,5 @@ mod tests {
             );
         }
     }
+
 }

@@ -14,3 +14,8 @@ bech32 = "0.9.1"
 url = "2.5.0"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1.0", features = ["full"] }
+# Tapsigner support
+rust-cktap = { git = "https://github.com/notmandatory/rust-cktap", features = ["pcsc"] }
+pcsc = "2.8"
+bitcoin = "0.32"
+secp256k1 = "0.29"

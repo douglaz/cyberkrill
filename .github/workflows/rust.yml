@@ -16,7 +16,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install Nix
+      uses: cachix/install-nix-action@v24
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+        extra_nix_config: |
+          experimental-features = nix-command flakes
     - name: Build
-      run: cargo build --verbose
+      run: nix develop -c cargo build --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: nix develop -c cargo test --verbose

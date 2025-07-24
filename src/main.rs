@@ -1,4 +1,5 @@
 mod decoder;
+mod tapsigner;
 
 use clap::{Parser, Subcommand};
 use std::io::{BufWriter, Read};
@@ -13,6 +14,7 @@ struct Cli {
 enum Commands {
     Decode(DecodeArgs),
     Generate(GenerateArgs),
+    Tapsigner(TapsignerArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -66,12 +68,34 @@ struct GenerateInvoiceArgs {
     output: Option<String>,
 }
 
+#[derive(clap::Args, Debug)]
+struct TapsignerArgs {
+    #[clap(subcommand)]
+    command: TapsignerCommands,
+}
+
+#[derive(Subcommand, Debug)]
+enum TapsignerCommands {
+    Address(TapsignerAddressArgs),
+}
+
+#[derive(clap::Args, Debug)]
+struct TapsignerAddressArgs {
+    /// Derivation path (e.g., m/84'/0'/0'/0/0)
+    #[clap(short, long, default_value = "m/84'/0'/0'/0/0")]
+    path: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Cli = Cli::parse();
     match args.command {
         Commands::Decode(args) => decode(args)?,
         Commands::Generate(args) => generate(args).await?,
+        Commands::Tapsigner(args) => tapsigner(args).await?,
     }
     Ok(())
 }
@@ -145,5 +169,24 @@ async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
     .await?;
 
     serde_json::to_writer_pretty(writer, &invoice)?;
+    Ok(())
+}
+
+async fn tapsigner(args: TapsignerArgs) -> anyhow::Result<()> {
+    match args.command {
+        TapsignerCommands::Address(args) => tapsigner_address(args).await?,
+    }
+    Ok(())
+}
+
+async fn tapsigner_address(args: TapsignerAddressArgs) -> anyhow::Result<()> {
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let address_info = tapsigner::generate_tapsigner_address(&args.path).await?;
+
+    serde_json::to_writer_pretty(writer, &address_info)?;
     Ok(())
 }

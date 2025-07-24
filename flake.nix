@@ -21,7 +21,10 @@
       {
         devShells.default = with pkgs; mkShell {
           packages = with pkgs; [
-
+            f
+            bashInteractive
+            pkg-config
+            pcsclite
           ];
         };
 
@@ -30,8 +33,8 @@
           version = "0.1.0";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock; 
-          nativeBuildInputs = [  ];
-          buildInputs = [ ] ;
+          nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = with pkgs; [ pcsclite ];
         };
       }
     );
