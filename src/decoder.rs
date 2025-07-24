@@ -246,10 +246,9 @@ pub async fn generate_invoice_from_address(
         || amount_msats > lnurl_pay_request.max_sendable
     {
         anyhow::bail!(
-            "Amount {} msats is outside allowed range: {} - {} msats",
-            amount_msats,
-            lnurl_pay_request.min_sendable,
-            lnurl_pay_request.max_sendable
+            "Amount {amount_msats} msats is outside allowed range: {min_sendable} - {max_sendable} msats",
+            min_sendable = lnurl_pay_request.min_sendable,
+            max_sendable = lnurl_pay_request.max_sendable
         );
     }
 
@@ -258,9 +257,8 @@ pub async fn generate_invoice_from_address(
         if let Some(max_comment_len) = lnurl_pay_request.comment_allowed {
             if comment.len() > max_comment_len as usize {
                 anyhow::bail!(
-                    "Comment length {} exceeds maximum allowed length: {}",
-                    comment.len(),
-                    max_comment_len
+                    "Comment length {comment_len} exceeds maximum allowed length: {max_comment_len}",
+                    comment_len = comment.len()
                 );
             }
         }
