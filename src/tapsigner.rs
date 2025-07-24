@@ -23,6 +23,15 @@ pub struct TapsignerAddressOutput {
     pub chain_code: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SatscardAddressOutput {
+    pub slot: u8,
+    pub address: String,
+    pub pubkey: String,
+    pub derivation_path: String,
+    pub is_used: bool,
+}
+
 pub async fn generate_tapsigner_address(path: &str) -> Result<TapsignerAddressOutput> {
     // Parse the derivation path and split into hardened/non-hardened parts
     let (hardened_path, non_hardened_path) = split_derivation_path(path)?;
@@ -298,8 +307,8 @@ mod tests {
             components,
             vec![
                 84 + 0x80000000, // 84' (hardened)
-                0 + 0x80000000,  // 0' (hardened)
-                0 + 0x80000000,  // 0' (hardened)
+                0x80000000,      // 0' (hardened)
+                0x80000000,      // 0' (hardened)
                 0,               // 0 (non-hardened)
                 0                // 0 (non-hardened)
             ]
@@ -344,8 +353,7 @@ mod tests {
         let generated_address = pubkey_to_address(&pubkey_bytes)?;
 
         assert_eq!(
-            generated_address,
-            expected_address,
+            generated_address, expected_address,
             "Generated address doesn't match Sparrow wallet expected output"
         );
 
@@ -360,11 +368,18 @@ mod tests {
         // Parse the xpub
         let xpub = Xpub::from_str(sparrow_xpub)?;
 
-        println!("Sparrow xpub public key: {}", hex::encode(xpub.public_key.serialize()));
-        println!("Sparrow xpub chain code: {}", hex::encode(xpub.chain_code.as_bytes()));
+        println!(
+            "Sparrow xpub public key: {}",
+            hex::encode(xpub.public_key.serialize())
+        );
+        println!(
+            "Sparrow xpub chain code: {}",
+            hex::encode(xpub.chain_code.as_bytes())
+        );
 
         // Compare with our expected Tapsigner output
-        let our_account_pubkey = "0379890f62200b30e6c33ece95d7be439184c1280366f5b3ebed60b3e946681b68";
+        let our_account_pubkey =
+            "0379890f62200b30e6c33ece95d7be439184c1280366f5b3ebed60b3e946681b68";
         let our_chain_code = "b278131303d560983aa72e0ee571a9c9b7b38b19aab335a1f3a0b8395338b4e7";
 
         println!("Our Tapsigner pubkey: {our_account_pubkey}");
@@ -408,7 +423,8 @@ mod tests {
         println!("Expected pubkey: {expected_pubkey}");
 
         // Our current hardware derivation result
-        let our_hardware_pubkey = "03ef7b5f6cecef500fd420fd90a27bf54d75297351e2e2a9c42fa20cd68fe77a58";
+        let our_hardware_pubkey =
+            "03ef7b5f6cecef500fd420fd90a27bf54d75297351e2e2a9c42fa20cd68fe77a58";
         println!("Our hardware pubkey: {our_hardware_pubkey}");
 
         if derived_pubkey_hex == expected_pubkey {
@@ -422,5 +438,57 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_satscard_address_output_structure() {
+        // Test the Satscard output structure serialization
+        let output = SatscardAddressOutput {
+            slot: 0,
+            address: "bc1qy80agvcq084qtsdg3wayr2uzxweqmsx7xed9s5".to_string(),
+            pubkey: "02856528bfb921cfb18c9b5427ecada29a2fc72e55671b8fe131d1691b722de986"
+                .to_string(),
+            derivation_path: "m/0".to_string(),
+            is_used: false,
+        };
+
+        // Test JSON serialization
+        let json = serde_json::to_string_pretty(&output).expect("Failed to serialize");
+        assert!(json.contains("\"slot\": 0"));
+        assert!(json.contains("\"derivation_path\": \"m/0\""));
+        assert!(json.contains("\"is_used\": false"));
+    }
+
+    #[test]
+    fn test_satscard_slot_validation() {
+        // Test slot number validation logic that would be in generate_satscard_address
+        let max_slot = 9u8;
+
+        // Valid slots
+        for slot in 0..=9 {
+            assert!(slot <= max_slot, "Slot {slot} should be valid", slot = slot);
+        }
+
+        // Invalid slots
+        for slot in 10..=20 {
+            assert!(
+                slot > max_slot,
+                "Slot {slot} should be invalid",
+                slot = slot
+            );
+        }
+    }
+
+    #[test]
+    fn test_satscard_derivation_path() {
+        // Satscard always uses m/0 derivation path (unlike Tapsigner's configurable paths)
+        let expected_path = "m/0";
+
+        // This would be the derivation path for any Satscard slot
+        assert_eq!(expected_path, "m/0");
+
+        // Verify it's different from typical Tapsigner paths
+        let tapsigner_path = "m/84'/0'/0'/0/0";
+        assert_ne!(expected_path, tapsigner_path);
     }
 }

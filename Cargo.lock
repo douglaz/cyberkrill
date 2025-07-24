@@ -308,6 +308,7 @@ dependencies = [
  "hex",
  "lightning-invoice",
  "pcsc",
+ "rand 0.8.5",
  "reqwest",
  "rust-cktap",
  "secp256k1",
