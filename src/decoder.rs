@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 use url::Url;
 
-
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct InvoiceOutput {
     pub network: String,
@@ -297,7 +296,6 @@ pub async fn generate_invoice_from_address(
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,7 +398,7 @@ mod tests {
 
         for address in invalid_addresses {
             let parts: Vec<&str> = address.split('@').collect();
-            assert_ne!(parts.len(), 2, "Address '{}' should be invalid", address);
+            assert_ne!(parts.len(), 2, "Address '{address}' should be invalid");
         }
 
         // Test addresses with empty parts
@@ -416,5 +414,4 @@ mod tests {
             );
         }
     }
-
 }

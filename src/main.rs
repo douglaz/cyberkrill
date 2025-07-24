@@ -1,4 +1,5 @@
 mod decoder;
+mod satscard;
 mod tapsigner;
 
 use clap::{Parser, Subcommand};
@@ -15,6 +16,7 @@ enum Commands {
     Decode(DecodeArgs),
     Generate(GenerateArgs),
     Tapsigner(TapsignerArgs),
+    Satscard(SatscardArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -89,6 +91,27 @@ struct TapsignerAddressArgs {
     output: Option<String>,
 }
 
+#[derive(clap::Args, Debug)]
+struct SatscardArgs {
+    #[clap(subcommand)]
+    command: SatscardCommands,
+}
+
+#[derive(Subcommand, Debug)]
+enum SatscardCommands {
+    Address(SatscardAddressArgs),
+}
+
+#[derive(clap::Args, Debug)]
+struct SatscardAddressArgs {
+    /// Slot number (0-9, default: current active slot)
+    #[clap(short, long)]
+    slot: Option<u8>,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Cli = Cli::parse();
@@ -96,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Decode(args) => decode(args)?,
         Commands::Generate(args) => generate(args).await?,
         Commands::Tapsigner(args) => tapsigner(args).await?,
+        Commands::Satscard(args) => satscard(args).await?,
     }
     Ok(())
 }
@@ -186,6 +210,25 @@ async fn tapsigner_address(args: TapsignerAddressArgs) -> anyhow::Result<()> {
     };
 
     let address_info = tapsigner::generate_tapsigner_address(&args.path).await?;
+
+    serde_json::to_writer_pretty(writer, &address_info)?;
+    Ok(())
+}
+
+async fn satscard(args: SatscardArgs) -> anyhow::Result<()> {
+    match args.command {
+        SatscardCommands::Address(args) => satscard_address(args).await?,
+    }
+    Ok(())
+}
+
+async fn satscard_address(args: SatscardAddressArgs) -> anyhow::Result<()> {
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let address_info = satscard::generate_satscard_address(args.slot).await?;
 
     serde_json::to_writer_pretty(writer, &address_info)?;
     Ok(())
