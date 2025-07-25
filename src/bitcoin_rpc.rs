@@ -133,14 +133,14 @@ impl BitcoinRpcClient {
         let response = request.send().await?;
 
         if !response.status().is_success() {
-            bail!("HTTP error: {}", response.status());
+            bail!("HTTP error: {status}", status = response.status());
         }
 
         let json: serde_json::Value = response.json().await?;
 
         if let Some(error) = json.get("error") {
             if !error.is_null() {
-                bail!("RPC error: {}", error);
+                bail!("RPC error: {error}");
             }
         }
 
@@ -316,7 +316,7 @@ impl BitcoinRpcClient {
             .map(|input| {
                 let parts: Vec<&str> = input.trim().split(':').collect();
                 if parts.len() != 2 {
-                    bail!("Invalid input format: '{}'. Expected 'txid:vout'", input);
+                    bail!("Invalid input format: '{input}'. Expected 'txid:vout'");
                 }
                 let txid = parts[0];
                 let vout: u32 = parts[1]
@@ -456,12 +456,12 @@ impl BitcoinRpcClient {
                 .map(|input| {
                     let parts: Vec<&str> = input.trim().split(':').collect();
                     if parts.len() != 2 {
-                        bail!("Invalid input format: '{}'. Expected 'txid:vout'", input);
+                        bail!("Invalid input format: '{input}'. Expected 'txid:vout'");
                     }
                     let txid = parts[0];
-                    let vout: u32 = parts[1]
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid vout '{}' in input '{}'", parts[1], input))?;
+                    let vout: u32 = parts[1].parse().map_err(|_| {
+                        anyhow!("Invalid vout '{vout}' in input '{input}'", vout = parts[1])
+                    })?;
 
                     Ok(serde_json::json!({
                         "txid": txid,
@@ -711,7 +711,7 @@ mod tests {
             .map(|input| {
                 let parts: Vec<&str> = input.trim().split(':').collect();
                 if parts.len() != 2 {
-                    bail!("Invalid input format: '{}'. Expected 'txid:vout'", input);
+                    bail!("Invalid input format: '{input}'. Expected 'txid:vout'");
                 }
                 let txid = parts[0];
                 let vout: u32 = parts[1]
@@ -766,7 +766,7 @@ mod tests {
             .map(|input| {
                 let parts: Vec<&str> = input.trim().split(':').collect();
                 if parts.len() != 2 {
-                    bail!("Invalid input format: '{}'. Expected 'txid:vout'", input);
+                    bail!("Invalid input format: '{input}'. Expected 'txid:vout'");
                 }
                 Ok(serde_json::json!({}))
             })
@@ -828,7 +828,7 @@ mod tests {
         let vbytes = ((weight.to_wu() + 3) / 4) as u32;
         // P2WPKH transaction: should be around 110 vbytes (rust-bitcoin's precise calculation)
         assert!(
-            vbytes >= 109 && vbytes <= 112,
+            (109..=112).contains(&vbytes),
             "Expected ~110 vbytes, got {}",
             vbytes
         );
@@ -838,7 +838,7 @@ mod tests {
         let vbytes = ((weight.to_wu() + 3) / 4) as u32;
         // Should be around 208 vbytes
         assert!(
-            vbytes >= 206 && vbytes <= 212,
+            (206..=212).contains(&vbytes),
             "Expected ~208 vbytes, got {}",
             vbytes
         );
@@ -848,7 +848,7 @@ mod tests {
         let vbytes = ((weight.to_wu() + 3) / 4) as u32;
         // Should be around 380 vbytes
         assert!(
-            vbytes >= 378 && vbytes <= 385,
+            (378..=385).contains(&vbytes),
             "Expected ~380 vbytes, got {}",
             vbytes
         );
@@ -869,7 +869,7 @@ mod tests {
         // With rust-bitcoin's precise calculation, verify fee is reasonable for 1 input, 2 outputs
         let fee_sats = tx_vbytes as f64 * fee_rate;
         assert!(
-            fee_sats >= 2600.0 && fee_sats <= 2900.0,
+            (2600.0..=2900.0).contains(&fee_sats),
             "Expected fee ~2800 sats, got {} sats",
             fee_sats
         );
@@ -893,7 +893,7 @@ mod tests {
         // Verify fee is reasonable for 1 input, 2 outputs at 20 sat/vB
         let fee_sats = fee_amount.to_sat();
         assert!(
-            fee_sats >= 2600 && fee_sats <= 2900,
+            (2600..=2900).contains(&fee_sats),
             "Expected fee ~2800 sats, got {} sats",
             fee_sats
         );
@@ -921,7 +921,7 @@ mod tests {
         // For 0.1 sat/vB, expect ~13-14 sats total fee
         let fee_sats = fee_amount.to_sat();
         assert!(
-            fee_sats >= 13 && fee_sats <= 15,
+            (13..=15).contains(&fee_sats),
             "Expected fee ~14 sats, got {} sats",
             fee_sats
         );
@@ -938,7 +938,7 @@ mod tests {
         let tiny_fee = BitcoinRpcClient::calculate_fee_with_feerate(tx_weight, tiny_rate);
         let tiny_sats = tiny_fee.to_sat();
         assert!(
-            tiny_sats >= 1 && tiny_sats <= 2,
+            (1..=2).contains(&tiny_sats),
             "Expected ~1 sat, got {} sats",
             tiny_sats
         );
@@ -967,7 +967,7 @@ mod tests {
         let sat_per_vb = 0.1f64;
         let btc_per_kvb = sat_per_vb * 100_000.0 / 100_000_000.0; // 0.1 sat/vB to BTC/kvB
 
-        println!("0.1 sat/vB converts to {} BTC/kvB", btc_per_kvb);
+        println!("0.1 sat/vB converts to {btc_per_kvb} BTC/kvB");
 
         // Expected: 0.1 sat/vB = 0.0001 BTC/kvB
         let expected = 0.0001f64;
@@ -976,7 +976,7 @@ mod tests {
         // Test even smaller values
         let tiny_rate = 0.01f64;
         let tiny_btc_kvb = tiny_rate * 100_000.0 / 100_000_000.0;
-        println!("0.01 sat/vB converts to {} BTC/kvB", tiny_btc_kvb);
+        println!("0.01 sat/vB converts to {tiny_btc_kvb} BTC/kvB");
 
         // Expected: 0.01 sat/vB = 0.00001 BTC/kvB
         let expected_tiny = 0.00001f64;
@@ -993,7 +993,7 @@ mod tests {
         };
 
         let json = serde_json::to_string_pretty(&response).unwrap();
-        println!("Serialized small amount: {}", json);
+        println!("Serialized small amount: {json}");
 
         // For very small amounts, scientific notation is acceptable
         // The fee should be present and deserializable
@@ -1007,7 +1007,7 @@ mod tests {
         };
 
         let zero_json = serde_json::to_string_pretty(&zero_response).unwrap();
-        println!("Serialized zero: {}", zero_json);
+        println!("Serialized zero: {zero_json}");
         assert!(zero_json.contains("\"fee\": 0"));
 
         // Test with normal-sized amount (should serialize as decimal)
@@ -1018,7 +1018,7 @@ mod tests {
         };
 
         let normal_json = serde_json::to_string_pretty(&normal_response).unwrap();
-        println!("Serialized normal amount: {}", normal_json);
+        println!("Serialized normal amount: {normal_json}");
         assert!(normal_json.contains("\"fee\": 0.0001284"));
 
         // Test deserialization works for all cases
