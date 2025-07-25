@@ -125,12 +125,15 @@ pub async fn initialize_tapsigner(chain_code: Option<String>) -> Result<Tapsigne
         }
     };
 
-    println!(
+    eprintln!(
         "⚠️  WARNING: Tapsigner initialization is a ONE-TIME operation that cannot be undone."
     );
-    println!("   The card will be permanently configured with the provided/generated entropy.");
-    println!("   Make sure to backup the card after initialization!");
-    println!("   Chain code: {}", hex::encode(chain_code_bytes));
+    eprintln!("   The card will be permanently configured with the provided/generated entropy.");
+    eprintln!("   Make sure to backup the card after initialization!");
+    eprintln!(
+        "   Chain code: {chain_code}",
+        chain_code = hex::encode(chain_code_bytes)
+    );
 
     // Get CVC from environment or prompt user
     let cvc = get_cvc_from_env_or_prompt()?;
@@ -145,10 +148,10 @@ pub async fn initialize_tapsigner(chain_code: Option<String>) -> Result<Tapsigne
         anyhow::bail!("Initialization appeared to succeed but card still shows uninitialized state. Please try again.");
     }
 
-    println!("✅ Tapsigner initialization successful!");
-    println!("   Default derivation path: m/84'/0'/0' (BIP-84 native segwit)");
-    println!("   Birth block: {}", new_status.birth);
-    println!("   Remember to backup your card for recovery purposes!");
+    eprintln!("✅ Tapsigner initialization successful!");
+    eprintln!("   Default derivation path: m/84'/0'/0' (BIP-84 native segwit)");
+    eprintln!("   Birth block: {birth}", birth = new_status.birth);
+    eprintln!("   Remember to backup your card for recovery purposes!");
 
     Ok(TapsignerInitOutput {
         success: true,
@@ -658,11 +661,11 @@ mod tests {
         // Generate two chain codes and verify they're different
         let random_data1: Vec<u8> = (0..128).map(|_| rand::random::<u8>()).collect();
         let hash1_1 = Sha256::digest(&random_data1);
-        let chain_code1: [u8; 32] = Sha256::digest(&hash1_1).into();
+        let chain_code1: [u8; 32] = Sha256::digest(hash1_1).into();
 
         let random_data2: Vec<u8> = (0..128).map(|_| rand::random::<u8>()).collect();
         let hash1_2 = Sha256::digest(&random_data2);
-        let chain_code2: [u8; 32] = Sha256::digest(&hash1_2).into();
+        let chain_code2: [u8; 32] = Sha256::digest(hash1_2).into();
 
         // Chain codes should be different (extremely high probability)
         assert_ne!(chain_code1, chain_code2);
