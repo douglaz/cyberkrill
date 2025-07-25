@@ -330,6 +330,7 @@ name = "cyberkrill"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "bech32 0.9.1",
  "bitcoin",
  "clap",
