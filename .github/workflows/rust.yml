@@ -22,7 +22,11 @@ jobs:
         nix_path: nixpkgs=channel:nixos-unstable
         extra_nix_config: |
           experimental-features = nix-command flakes
-    - name: Build
-      run: nix develop -c cargo build --verbose
-    - name: Run tests
-      run: nix develop -c cargo test --verbose
+    - name: Build with glibc and all features
+      run: nix develop -c cargo build -F smartcards
+    - name: Build with musl and only default features
+      run: nix develop -c cargo build --target x86_64-unknown-linux-musl
+    - name: Run tests with glibc and all features
+      run: nix develop -c cargo test -F smartcards
+    - name: Run tests with musl and only default features
+      run: nix develop -c cargo test --target x86_64-unknown-linux-musl
