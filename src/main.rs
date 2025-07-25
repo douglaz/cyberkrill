@@ -1,6 +1,8 @@
 mod bitcoin_rpc;
 mod decoder;
+#[cfg(feature = "smartcards")]
 mod satscard;
+#[cfg(feature = "smartcards")]
 mod tapsigner;
 
 use anyhow::bail;
@@ -20,7 +22,9 @@ struct Cli {
 enum Commands {
     Decode(DecodeArgs),
     Generate(GenerateArgs),
+    #[cfg(feature = "smartcards")]
     Tapsigner(TapsignerArgs),
+    #[cfg(feature = "smartcards")]
     Satscard(SatscardArgs),
     Bitcoin(BitcoinArgs),
 }
@@ -76,18 +80,21 @@ struct GenerateInvoiceArgs {
     output: Option<String>,
 }
 
+#[cfg(feature = "smartcards")]
 #[derive(clap::Args, Debug)]
 struct TapsignerArgs {
     #[clap(subcommand)]
     command: TapsignerCommands,
 }
 
+#[cfg(feature = "smartcards")]
 #[derive(Subcommand, Debug)]
 enum TapsignerCommands {
     Address(TapsignerAddressArgs),
     Init(TapsignerInitArgs),
 }
 
+#[cfg(feature = "smartcards")]
 #[derive(clap::Args, Debug)]
 struct TapsignerAddressArgs {
     /// Derivation path (e.g., m/84'/0'/0'/0/0)
@@ -98,6 +105,7 @@ struct TapsignerAddressArgs {
     output: Option<String>,
 }
 
+#[cfg(feature = "smartcards")]
 #[derive(clap::Args, Debug)]
 struct TapsignerInitArgs {
     /// Optional custom chain code (64 hex chars = 32 bytes). If not provided, will generate random.
@@ -108,17 +116,20 @@ struct TapsignerInitArgs {
     output: Option<String>,
 }
 
+#[cfg(feature = "smartcards")]
 #[derive(clap::Args, Debug)]
 struct SatscardArgs {
     #[clap(subcommand)]
     command: SatscardCommands,
 }
 
+#[cfg(feature = "smartcards")]
 #[derive(Subcommand, Debug)]
 enum SatscardCommands {
     Address(SatscardAddressArgs),
 }
 
+#[cfg(feature = "smartcards")]
 #[derive(clap::Args, Debug)]
 struct SatscardAddressArgs {
     /// Slot number (0-9, default: current active slot)
@@ -247,7 +258,9 @@ async fn main() -> anyhow::Result<()> {
     match args.command {
         Commands::Decode(args) => decode(args)?,
         Commands::Generate(args) => generate(args).await?,
+        #[cfg(feature = "smartcards")]
         Commands::Tapsigner(args) => tapsigner(args).await?,
+        #[cfg(feature = "smartcards")]
         Commands::Satscard(args) => satscard(args).await?,
         Commands::Bitcoin(args) => bitcoin(args).await?,
     }
@@ -326,6 +339,7 @@ async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "smartcards")]
 async fn tapsigner(args: TapsignerArgs) -> anyhow::Result<()> {
     match args.command {
         TapsignerCommands::Address(args) => tapsigner_address(args).await?,
@@ -334,6 +348,7 @@ async fn tapsigner(args: TapsignerArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "smartcards")]
 async fn tapsigner_address(args: TapsignerAddressArgs) -> anyhow::Result<()> {
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
@@ -346,6 +361,7 @@ async fn tapsigner_address(args: TapsignerAddressArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "smartcards")]
 async fn tapsigner_init(args: TapsignerInitArgs) -> anyhow::Result<()> {
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
@@ -358,6 +374,7 @@ async fn tapsigner_init(args: TapsignerInitArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "smartcards")]
 async fn satscard(args: SatscardArgs) -> anyhow::Result<()> {
     match args.command {
         SatscardCommands::Address(args) => satscard_address(args).await?,
@@ -365,6 +382,7 @@ async fn satscard(args: SatscardArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "smartcards")]
 async fn satscard_address(args: SatscardAddressArgs) -> anyhow::Result<()> {
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
