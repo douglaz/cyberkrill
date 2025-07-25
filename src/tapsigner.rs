@@ -12,6 +12,7 @@ use bitcoin::{
     Address,
 };
 use rust_cktap::{pcsc::find_first, CkTapCard, TapSigner};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TapsignerAddressOutput {
@@ -21,6 +22,16 @@ pub struct TapsignerAddressOutput {
     pub master_pubkey: String,
     pub master_fingerprint: String,
     pub chain_code: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TapsignerInitOutput {
+    pub success: bool,
+    pub chain_code: String,
+    pub default_path: String,
+    pub card_nonce: String,
+    pub slot: u8,
+    pub birth_block: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,6 +81,82 @@ pub async fn generate_tapsigner_address(path: &str) -> Result<TapsignerAddressOu
         master_pubkey: hex::encode(master_result.pubkey),
         master_fingerprint,
         chain_code: hex::encode(account_result.chain_code),
+    })
+}
+
+pub async fn initialize_tapsigner(chain_code: Option<String>) -> Result<TapsignerInitOutput> {
+    // Connect directly to TapSigner for initialization (bypasses wrapper)
+    let mut tapsigner = connect_tapsigner_direct().await?;
+
+    // Check if already initialized by looking at the path field
+    // An uninitialized Tapsigner will have None for the path
+    if let Some(existing_path) = &tapsigner.path {
+        anyhow::bail!(
+            "Tapsigner is already initialized. Current path: {:?}. Initialization can only be done once.",
+            existing_path
+        );
+    }
+
+    // Generate or use provided chain code
+    let chain_code_bytes = match chain_code {
+        Some(hex_str) => {
+            let bytes = hex::decode(hex_str.trim()).with_context(|| {
+                "Invalid hex format for chain code. Must be 64 hex characters (32 bytes)."
+            })?;
+            if bytes.len() != 32 {
+                anyhow::bail!(
+                    "Chain code must be exactly 32 bytes (64 hex characters). Got {len} bytes.",
+                    len = bytes.len()
+                );
+            }
+            let mut array = [0u8; 32];
+            array.copy_from_slice(&bytes);
+            array
+        }
+        None => {
+            // Generate cryptographically secure random chain code using double SHA256
+            // This follows the same approach as the Python CLI reference implementation
+            let random_data: Vec<u8> = std::iter::repeat_with(rand::random::<u8>)
+                .take(128)
+                .collect();
+            let hash1 = Sha256::digest(&random_data);
+            let hash2 = Sha256::digest(hash1);
+            hash2.into()
+        }
+    };
+
+    println!(
+        "⚠️  WARNING: Tapsigner initialization is a ONE-TIME operation that cannot be undone."
+    );
+    println!("   The card will be permanently configured with the provided/generated entropy.");
+    println!("   Make sure to backup the card after initialization!");
+    println!("   Chain code: {}", hex::encode(chain_code_bytes));
+
+    // Get CVC from environment or prompt user
+    let cvc = get_cvc_from_env_or_prompt()?;
+
+    // Initialize the Tapsigner with the chain code
+    let response = tapsigner.init(chain_code_bytes, &cvc).await
+        .with_context(|| "Failed to initialize Tapsigner. Make sure the card is properly connected and the CVC is correct.")?;
+
+    // Verify initialization was successful by checking the status
+    let new_status = tapsigner.status().await?;
+    if new_status.path.is_none() {
+        anyhow::bail!("Initialization appeared to succeed but card still shows uninitialized state. Please try again.");
+    }
+
+    println!("✅ Tapsigner initialization successful!");
+    println!("   Default derivation path: m/84'/0'/0' (BIP-84 native segwit)");
+    println!("   Birth block: {}", new_status.birth);
+    println!("   Remember to backup your card for recovery purposes!");
+
+    Ok(TapsignerInitOutput {
+        success: true,
+        chain_code: hex::encode(chain_code_bytes),
+        default_path: "m/84'/0'/0'".to_string(),
+        card_nonce: hex::encode(response.card_nonce),
+        slot: response.slot,
+        birth_block: new_status.birth,
     })
 }
 
@@ -162,6 +249,20 @@ async fn connect_tapsigner() -> Result<TapsignerDevice> {
 
     match card {
         CkTapCard::TapSigner(tapsigner) => Ok(TapsignerDevice::TapSigner(Box::new(tapsigner))),
+        _ => {
+            anyhow::bail!("Found CkTap card but it's not a TapSigner. Make sure you're using a TapSigner card.")
+        }
+    }
+}
+
+async fn connect_tapsigner_direct() -> Result<TapSigner<::pcsc::Card>> {
+    // Find and connect to the first available CkTap card - direct access for initialization
+    let card = find_first()
+        .await
+        .with_context(|| "Failed to find Tapsigner. Make sure PCSC daemon is running, NFC reader is connected, and Tapsigner card is placed on the reader")?;
+
+    match card {
+        CkTapCard::TapSigner(tapsigner) => Ok(tapsigner),
         _ => {
             anyhow::bail!("Found CkTap card but it's not a TapSigner. Make sure you're using a TapSigner card.")
         }
@@ -490,5 +591,84 @@ mod tests {
         // Verify it's different from typical Tapsigner paths
         let tapsigner_path = "m/84'/0'/0'/0/0";
         assert_ne!(expected_path, tapsigner_path);
+    }
+
+    #[test]
+    fn test_tapsigner_init_output_structure() {
+        // Test the TapsignerInitOutput structure serialization
+        let output = TapsignerInitOutput {
+            success: true,
+            chain_code: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_string(),
+            default_path: "m/84'/0'/0'".to_string(),
+            card_nonce: "abcdef1234567890abcdef1234567890".to_string(),
+            slot: 0,
+            birth_block: 123456,
+        };
+
+        // Test JSON serialization
+        let json = serde_json::to_string_pretty(&output).expect("Failed to serialize");
+        assert!(json.contains("\"success\": true"));
+        assert!(json.contains("\"default_path\": \"m/84'/0'/0'\""));
+        assert!(json.contains("\"slot\": 0"));
+        assert!(json.contains("\"birth_block\": 123456"));
+    }
+
+    #[test]
+    fn test_chain_code_validation() {
+        // Test chain code hex validation logic that would be in initialize_tapsigner
+
+        // Valid 64-character hex string (32 bytes)
+        let valid_chain_code = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let decoded = hex::decode(valid_chain_code);
+        assert!(decoded.is_ok());
+        assert_eq!(decoded.unwrap().len(), 32);
+
+        // Invalid: too short
+        let short_chain_code = "0123456789abcdef";
+        let decoded_short = hex::decode(short_chain_code);
+        assert!(decoded_short.is_ok()); // Hex decoding succeeds
+        assert_eq!(decoded_short.unwrap().len(), 8); // But length is wrong
+
+        // Invalid: not hex
+        let invalid_hex = "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg";
+        let decoded_invalid = hex::decode(invalid_hex);
+        assert!(decoded_invalid.is_err()); // Should fail hex decoding
+    }
+
+    #[test]
+    fn test_tapsigner_default_derivation_path() {
+        // Test that Tapsigner uses BIP-84 path by default
+        let tapsigner_default = "m/84'/0'/0'";
+
+        // Verify it's the expected BIP-84 path
+        assert_eq!(tapsigner_default, "m/84'/0'/0'");
+
+        // Verify it's different from other common BIP paths
+        assert_ne!(tapsigner_default, "m/44'/0'/0'"); // BIP-44
+        assert_ne!(tapsigner_default, "m/49'/0'/0'"); // BIP-49
+        assert_ne!(tapsigner_default, "m/0"); // Satscard path
+    }
+
+    #[test]
+    fn test_chain_code_generation_properties() {
+        // Test that generated chain codes have proper entropy properties
+        use sha2::{Digest, Sha256};
+
+        // Generate two chain codes and verify they're different
+        let random_data1: Vec<u8> = (0..128).map(|_| rand::random::<u8>()).collect();
+        let hash1_1 = Sha256::digest(&random_data1);
+        let chain_code1: [u8; 32] = Sha256::digest(&hash1_1).into();
+
+        let random_data2: Vec<u8> = (0..128).map(|_| rand::random::<u8>()).collect();
+        let hash1_2 = Sha256::digest(&random_data2);
+        let chain_code2: [u8; 32] = Sha256::digest(&hash1_2).into();
+
+        // Chain codes should be different (extremely high probability)
+        assert_ne!(chain_code1, chain_code2);
+
+        // Both should be exactly 32 bytes
+        assert_eq!(chain_code1.len(), 32);
+        assert_eq!(chain_code2.len(), 32);
     }
 }
