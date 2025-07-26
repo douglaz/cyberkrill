@@ -427,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_derivation_paths() {
+    fn test_invalid_derivation_paths() -> anyhow::Result<()> {
         let invalid_paths = vec![
             "84'/0'/0'/0/0", // Missing "m/"
             "m/invalid/0",   // Non-numeric component
@@ -442,6 +442,7 @@ mod tests {
                 path = path
             );
         }
+        Ok(())
     }
 
     #[test]
@@ -618,25 +619,24 @@ mod tests {
     }
 
     #[test]
-    fn test_chain_code_validation() {
+    fn test_chain_code_validation() -> anyhow::Result<()> {
         // Test chain code hex validation logic that would be in initialize_tapsigner
 
         // Valid 64-character hex string (32 bytes)
         let valid_chain_code = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let decoded = hex::decode(valid_chain_code);
-        assert!(decoded.is_ok());
-        assert_eq!(decoded.unwrap().len(), 32);
+        let decoded = hex::decode(valid_chain_code)?;
+        assert_eq!(decoded.len(), 32);
 
         // Invalid: too short
         let short_chain_code = "0123456789abcdef";
-        let decoded_short = hex::decode(short_chain_code);
-        assert!(decoded_short.is_ok()); // Hex decoding succeeds
-        assert_eq!(decoded_short.unwrap().len(), 8); // But length is wrong
+        let decoded_short = hex::decode(short_chain_code)?;
+        assert_eq!(decoded_short.len(), 8); // But length is wrong
 
         // Invalid: not hex
         let invalid_hex = "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg";
         let decoded_invalid = hex::decode(invalid_hex);
         assert!(decoded_invalid.is_err()); // Should fail hex decoding
+        Ok(())
     }
 
     #[test]

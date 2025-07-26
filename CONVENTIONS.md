@@ -32,6 +32,17 @@ For `format!`, `println!`, `debug!`, `bail!`, and similar macros:
 
 Always use `anyhow` for error handling throughout the codebase.
 
+### Import Pattern
+Always import anyhow's Result type to use as the default Result:
+```rust
+use anyhow::{anyhow, bail, Context, Result};
+
+// Then use Result<T> in function signatures
+pub fn some_function() -> Result<String> {
+    // ...
+}
+```
+
 ### Correct Usage:
 ```rust
 // For conditional checks
@@ -46,7 +57,29 @@ bail!("Error message"); // Cleaner and more idiomatic
 // For adding context to errors
 let result = some_operation
     .with_context(|| format!("Failed to parse '{value}' as u32"))?;
+
+// Prefer .context() or .with_context() over .map_err() when adding error context
+// GOOD - Use context methods for adding descriptive error information
+let data = parse_data(input)
+    .context("Failed to parse configuration data")?;
+
+let value = string.parse::<u32>()
+    .with_context(|| format!("Invalid number format: '{string}'"))?;
+
+// LESS PREFERRED - Using .map_err() for simple context addition
+let data = parse_data(input)
+    .map_err(|e| anyhow!("Failed to parse configuration data: {e}"))?;
 ```
+
+### When to Use Each Error Handling Approach:
+
+- **`.context("message")`**: Use for static error messages that don't need formatting
+- **`.with_context(|| format!("..."))`**: Use when you need dynamic error messages with variables
+- **`.map_err(|e| anyhow!("..."))`**: Use only when you need to transform the error type or preserve the original error details
+- **`bail!("...")`**: Use for early returns with custom error messages
+- **`ensure!(condition, "...")`**: Use for validation checks that should fail with specific messages
+
+**Note**: Some external crate error types may not implement the traits required for `.context()`. In these cases, continue using `.map_err(|e| anyhow!("..."))` as needed.
 
 ### Incorrect Usage:
 ```rust
@@ -144,11 +177,68 @@ cargo clippy --fix --allow-dirty && cargo fmt && cargo test && cargo clippy && c
 3. **Follow module patterns**: Maintain consistency with the module's existing structure
 4. **Reuse types**: Use existing structs and enums where applicable
 
+## Test Error Handling
+
+### Test Function Standards
+
+All test functions should use proper error handling patterns:
+
+```rust
+#[test]
+fn test_example() -> Result<()> {
+    // Use ? operator instead of .unwrap()
+    let data = parse_data(input)?;
+    let json = serde_json::to_string(&data)?;
+    
+    // For testing error conditions, use pattern matching
+    let result = fallible_operation();
+    assert!(result.is_err());
+    if let Err(e) = result {
+        assert!(e.to_string().contains("expected error message"));
+    }
+    
+    // Always end with Ok(())
+    Ok(())
+}
+```
+
+### Test Error Handling Rules
+
+1. **Return `Result<()>`**: All test functions should return `Result<()>` to enable proper error propagation
+2. **Use `?` operator**: Replace `.unwrap()` calls with the `?` operator for cleaner error handling
+3. **End with `Ok(())`**: Always end test functions with `Ok(())` to satisfy the return type
+4. **Error testing**: When testing error conditions, use pattern matching instead of `.unwrap_err()`
+5. **File operations**: Use `?` operator for file I/O operations in tests
+6. **JSON operations**: Use `?` operator for JSON serialization/deserialization in tests
+
+### Incorrect Test Patterns
+
+```rust
+// BAD - Will panic on error
+#[test]
+fn bad_test() {
+    let data = parse_data(input).unwrap(); // BAD
+    let json = serde_json::to_string(&data).unwrap(); // BAD
+    
+    let result = fallible_operation();
+    assert!(result.unwrap_err().to_string().contains("error")); // BAD
+}
+
+// BAD - Missing return type
+#[test]
+fn another_bad_test() -> Result<()> {
+    let data = parse_data(input)?;
+    assert_eq!(data.len(), 5);
+    // Missing Ok(()) - will not compile
+}
+```
+
 ### Development Checklist
 Before submitting code:
 - [ ] Review existing similar code to understand patterns
 - [ ] Follow established conventions in this document
 - [ ] Add appropriate error handling using `anyhow`
-- [ ] Add unit tests for new functionality
+- [ ] Add unit tests for new functionality with proper error handling
+- [ ] Ensure tests return `Result<()>` and use `?` operator instead of `.unwrap()`
 - [ ] Run quality checks: `cargo test && cargo clippy && cargo fmt --check`
 - [ ] Update relevant documentation (README.md for new commands)

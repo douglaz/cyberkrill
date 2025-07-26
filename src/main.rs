@@ -151,6 +151,7 @@ enum BitcoinCommands {
     ListUtxos(ListUtxosArgs),
     CreatePsbt(CreatePsbtArgs),
     CreateFundedPsbt(CreateFundedPsbtArgs),
+    MoveUtxos(MoveUtxosArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -198,9 +199,10 @@ struct CreatePsbtArgs {
     /// RPC password (conflicts with bitcoin-dir)
     #[clap(long, conflicts_with = "bitcoin_dir")]
     rpc_password: Option<String>,
-    /// Input UTXOs in format txid:vout (comma-separated)
+    /// Input UTXOs in format txid:vout or output descriptors (can be specified multiple times)
+    /// Examples: --inputs txid1:0 --inputs txid2:1 or --inputs "wpkh([fingerprint/84'/0'/0']xpub...)"
     #[clap(long, required = true)]
-    inputs: String,
+    inputs: Vec<String>,
     /// Output addresses and amounts in format address:amount_btc (comma-separated)
     #[clap(long, required = true)]
     outputs: String,
@@ -229,9 +231,10 @@ struct CreateFundedPsbtArgs {
     /// RPC password (conflicts with bitcoin-dir)
     #[clap(long, conflicts_with = "bitcoin_dir")]
     rpc_password: Option<String>,
-    /// Input UTXOs in format txid:vout (comma-separated). Leave empty for automatic input selection.
+    /// Input UTXOs in format txid:vout or output descriptors (can be specified multiple times). Leave empty for automatic input selection.
+    /// Examples: --inputs txid1:0 --inputs txid2:1 or --inputs "wpkh([fingerprint/84'/0'/0']xpub...)"
     #[clap(long)]
-    inputs: Option<String>,
+    inputs: Vec<String>,
     /// Output addresses and amounts in format address:amount_btc (comma-separated)
     #[clap(long, required = true)]
     outputs: String,
@@ -244,6 +247,38 @@ struct CreateFundedPsbtArgs {
     /// Fee rate in sats/vB (overrides conf_target and estimate_mode)
     #[clap(long)]
     fee_rate: Option<f64>,
+    /// Output file path for JSON response
+    #[clap(short, long)]
+    output: Option<String>,
+    /// Output file path for raw PSBT data (base64)
+    #[clap(long)]
+    psbt_output: Option<String>,
+}
+
+#[derive(clap::Args, Debug)]
+struct MoveUtxosArgs {
+    /// Bitcoin Core RPC URL (default: http://127.0.0.1:8332)
+    #[clap(long, default_value = DEFAULT_BITCOIN_RPC_URL)]
+    rpc_url: String,
+    /// Bitcoin directory path (for cookie authentication, default: ~/.bitcoin)
+    #[clap(long)]
+    bitcoin_dir: Option<String>,
+    /// RPC username (conflicts with bitcoin-dir)
+    #[clap(long, conflicts_with = "bitcoin_dir")]
+    rpc_user: Option<String>,
+    /// RPC password (conflicts with bitcoin-dir)
+    #[clap(long, conflicts_with = "bitcoin_dir")]
+    rpc_password: Option<String>,
+    /// Input UTXOs to consolidate in format txid:vout or output descriptors (can be specified multiple times)
+    /// Examples: --inputs txid1:0 --inputs txid2:1 or --inputs "wpkh([fingerprint/84'/0'/0']xpub...)"
+    #[clap(long, required = true)]
+    inputs: Vec<String>,
+    /// Destination address for consolidated output
+    #[clap(long, required = true)]
+    destination: String,
+    /// Fee rate in sats/vB (required for fee calculation)
+    #[clap(long, required = true)]
+    fee_rate: f64,
     /// Output file path for JSON response
     #[clap(short, long)]
     output: Option<String>,
@@ -400,6 +435,7 @@ async fn bitcoin(args: BitcoinArgs) -> anyhow::Result<()> {
         BitcoinCommands::ListUtxos(args) => bitcoin_list_utxos(args).await?,
         BitcoinCommands::CreatePsbt(args) => bitcoin_create_psbt(args).await?,
         BitcoinCommands::CreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
+        BitcoinCommands::MoveUtxos(args) => bitcoin_move_utxos(args).await?,
     }
     Ok(())
 }
@@ -476,15 +512,41 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
         args.rpc_password,
     )?;
 
-    let inputs = args.inputs.as_deref().unwrap_or("");
     let result = client
         .wallet_create_funded_psbt(
-            inputs,
+            &args.inputs,
             &args.outputs,
             args.conf_target,
             args.estimate_mode.as_deref(),
             args.fee_rate,
         )
+        .await?;
+
+    // Write PSBT to separate file if requested
+    if let Some(psbt_path) = args.psbt_output {
+        std::fs::write(psbt_path, &result.psbt)?;
+    }
+
+    serde_json::to_writer_pretty(writer, &result)?;
+    Ok(())
+}
+
+async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let bitcoin_dir = args.bitcoin_dir.as_ref().map(Path::new);
+    let client = bitcoin_rpc::BitcoinRpcClient::new_auto(
+        args.rpc_url,
+        bitcoin_dir,
+        args.rpc_user,
+        args.rpc_password,
+    )?;
+
+    let result = client
+        .move_utxos(&args.inputs, &args.destination, args.fee_rate)
         .await?;
 
     // Write PSBT to separate file if requested

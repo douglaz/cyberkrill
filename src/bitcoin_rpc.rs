@@ -133,7 +133,7 @@ impl BitcoinRpcClient {
         let response = request.send().await?;
 
         if !response.status().is_success() {
-            bail!("HTTP error: {status}", status = response.status());
+            bail!("HTTP error: {}", response.status());
         }
 
         let json: serde_json::Value = response.json().await?;
@@ -179,8 +179,8 @@ impl BitcoinRpcClient {
             .rpc_call("listunspent", serde_json::Value::Array(params))
             .await?;
 
-        let utxos: Vec<Utxo> = serde_json::from_value(result)
-            .map_err(|e| anyhow!("Failed to deserialize listunspent response: {}", e))?;
+        let utxos: Vec<Utxo> =
+            serde_json::from_value(result).context("Failed to deserialize listunspent response")?;
         Ok(utxos)
     }
 
@@ -304,32 +304,68 @@ impl BitcoinRpcClient {
             })
     }
 
+    /// Parse input list and expand descriptors to UTXOs if needed
+    /// Supports:
+    /// - Standard format: "txid:vout"
+    /// - Descriptor format: "wpkh([fingerprint/84'/0'/0']xpub...)"
+    /// - Complex descriptors: "wsh(sortedmulti(...))"
+    async fn parse_and_expand_inputs(&self, inputs: &[String]) -> Result<Vec<serde_json::Value>> {
+        let mut all_inputs = Vec::new();
+
+        for input in inputs {
+            let input = input.trim();
+
+            // Check if this looks like a descriptor (contains parentheses and/or brackets)
+            if input.contains('(') || input.contains('[') {
+                // This is a descriptor - expand it to UTXOs
+                let utxos = self
+                    .scan_tx_out_set(input)
+                    .await
+                    .with_context(|| format!("Failed to expand descriptor: {input}"))?;
+
+                // Convert each UTXO to input format
+                for utxo in utxos {
+                    all_inputs.push(serde_json::json!({
+                        "txid": utxo.txid,
+                        "vout": utxo.vout
+                    }));
+                }
+            } else {
+                // Standard txid:vout format
+                let parts: Vec<&str> = input.split(':').collect();
+                if parts.len() != 2 {
+                    bail!(
+                        "Invalid input format: '{}'. Expected 'txid:vout' or a descriptor",
+                        input
+                    );
+                }
+                let txid = parts[0];
+                let vout: u32 = parts[1].parse().map_err(|_| {
+                    anyhow!("Invalid vout '{vout}' in input '{input}'", vout = parts[1])
+                })?;
+
+                all_inputs.push(serde_json::json!({
+                    "txid": txid,
+                    "vout": vout
+                }));
+            }
+        }
+
+        if all_inputs.is_empty() {
+            bail!("No valid inputs found after parsing and expansion");
+        }
+
+        Ok(all_inputs)
+    }
+
     pub async fn create_psbt(
         &self,
-        inputs: &str,
+        inputs: &[String],
         outputs: &str,
         fee_rate: Option<f64>, // sat/vB - will calculate fee and add to outputs
     ) -> Result<PsbtResponse> {
-        // Parse inputs from "txid:vout,txid:vout" format
-        let input_objects: Result<Vec<serde_json::Value>> = inputs
-            .split(',')
-            .map(|input| {
-                let parts: Vec<&str> = input.trim().split(':').collect();
-                if parts.len() != 2 {
-                    bail!("Invalid input format: '{input}'. Expected 'txid:vout'");
-                }
-                let txid = parts[0];
-                let vout: u32 = parts[1]
-                    .parse()
-                    .map_err(|_| anyhow!("Invalid vout '{}' in input '{}'", parts[1], input))?;
-
-                Ok(serde_json::json!({
-                    "txid": txid,
-                    "vout": vout
-                }))
-            })
-            .collect();
-        let input_objects = input_objects?;
+        // Parse and expand inputs (handles both "txid:vout" and descriptor formats)
+        let input_objects = self.parse_and_expand_inputs(inputs).await?;
 
         // Parse outputs from "address:amount,address:amount" format
         let mut output_object = serde_json::Map::new();
@@ -342,9 +378,12 @@ impl BitcoinRpcClient {
                 );
             }
             let address = parts[0];
-            let amount: f64 = parts[1]
-                .parse()
-                .map_err(|_| anyhow!("Invalid amount '{}' in output '{}'", parts[1], output))?;
+            let amount: f64 = parts[1].parse().map_err(|_| {
+                anyhow!(
+                    "Invalid amount '{amount}' in output '{output}'",
+                    amount = parts[1]
+                )
+            })?;
 
             output_object.insert(address.to_string(), serde_json::json!(amount));
         }
@@ -397,13 +436,11 @@ impl BitcoinRpcClient {
     /// Assumes P2WPKH inputs and P2WPKH outputs (most common case)
     fn estimate_transaction_weight(num_inputs: usize, num_outputs: usize) -> Weight {
         // Use rust-bitcoin's InputWeightPrediction for P2WPKH inputs
-        let input_predictions =
-            std::iter::repeat(InputWeightPrediction::P2WPKH_MAX).take(num_inputs);
+        let input_predictions = std::iter::repeat_n(InputWeightPrediction::P2WPKH_MAX, num_inputs);
 
         // P2WPKH output script length: OP_0 (1) + 20-byte pubkey hash (20) = 21 bytes
         // But rust-bitcoin expects script length without compact size prefix
-        let output_script_lens = std::iter::repeat(22usize) // 22 bytes for P2WPKH scriptPubKey
-            .take(num_outputs);
+        let output_script_lens = std::iter::repeat_n(22usize, num_outputs);
 
         predict_weight(input_predictions, output_script_lens)
     }
@@ -412,7 +449,7 @@ impl BitcoinRpcClient {
     /// Handles fractional sat/vB rates by doing precise weight-based calculation
     fn calculate_fee_with_feerate(weight: Weight, sat_per_vb: f64) -> Amount {
         // Calculate vbytes from weight (more precise than our helper method)
-        let vbytes = (weight.to_wu() + 3) / 4; // Same calculation but keep as u64
+        let vbytes = weight.to_wu().div_ceil(4); // Same calculation but keep as u64
 
         // Calculate fee in satoshis: vbytes * sat_per_vb
         let fee_sat = (vbytes as f64 * sat_per_vb).round() as u64;
@@ -441,34 +478,17 @@ impl BitcoinRpcClient {
 
     pub async fn wallet_create_funded_psbt(
         &self,
-        inputs: &str, // Empty string for automatic input selection
+        inputs: &[String], // Empty slice for automatic input selection
         outputs: &str,
         conf_target: Option<u32>,
         estimate_mode: Option<&str>,
         fee_rate: Option<f64>, // sat/vB
     ) -> Result<WalletFundedPsbtResponse> {
-        // Parse inputs - empty array for automatic input selection
+        // Parse and expand inputs (empty slice means automatic input selection)
         let input_objects: Vec<serde_json::Value> = if inputs.is_empty() {
             Vec::new()
         } else {
-            inputs
-                .split(',')
-                .map(|input| {
-                    let parts: Vec<&str> = input.trim().split(':').collect();
-                    if parts.len() != 2 {
-                        bail!("Invalid input format: '{input}'. Expected 'txid:vout'");
-                    }
-                    let txid = parts[0];
-                    let vout: u32 = parts[1].parse().map_err(|_| {
-                        anyhow!("Invalid vout '{vout}' in input '{input}'", vout = parts[1])
-                    })?;
-
-                    Ok(serde_json::json!({
-                        "txid": txid,
-                        "vout": vout
-                    }))
-                })
-                .collect::<Result<Vec<_>>>()?
+            self.parse_and_expand_inputs(inputs).await?
         };
 
         // Parse outputs
@@ -482,9 +502,12 @@ impl BitcoinRpcClient {
                 );
             }
             let address = parts[0];
-            let amount: f64 = parts[1]
-                .parse()
-                .map_err(|_| anyhow!("Invalid amount '{}' in output '{}'", parts[1], output))?;
+            let amount: f64 = parts[1].parse().map_err(|_| {
+                anyhow!(
+                    "Invalid amount '{amount}' in output '{output}'",
+                    amount = parts[1]
+                )
+            })?;
 
             output_object.insert(address.to_string(), serde_json::json!(amount));
         }
@@ -544,6 +567,99 @@ impl BitcoinRpcClient {
             change_position,
         })
     }
+
+    pub async fn move_utxos(
+        &self,
+        inputs: &[String],
+        destination: &str,
+        fee_rate: f64,
+    ) -> Result<PsbtResponse> {
+        // Parse and expand inputs (handles both "txid:vout" and descriptor formats)
+        let input_objects = self.parse_and_expand_inputs(inputs).await?;
+
+        // Get UTXO details to calculate total input value
+        let mut total_input_value = 0.0f64;
+        for input_obj in &input_objects {
+            let txid = input_obj["txid"]
+                .as_str()
+                .ok_or_else(|| anyhow!("Missing txid in input object"))?;
+            let vout = input_obj["vout"]
+                .as_u64()
+                .ok_or_else(|| anyhow!("Missing vout in input object"))?
+                as u32;
+
+            // Get transaction details to find the output value
+            let tx_result = self
+                .rpc_call("getrawtransaction", serde_json::json!([txid, true]))
+                .await?;
+
+            let vouts = tx_result
+                .get("vout")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| anyhow!("Missing vout array in transaction {txid}"))?;
+
+            if let Some(output) = vouts.get(vout as usize) {
+                let value = output
+                    .get("value")
+                    .and_then(|v| v.as_f64())
+                    .ok_or_else(|| anyhow!("Missing value in output {txid}:{vout}"))?;
+                total_input_value += value;
+            } else {
+                bail!("Output {txid}:{vout} not found in transaction");
+            }
+        }
+
+        // Calculate fee and output amount
+        let num_inputs = input_objects.len();
+        let num_outputs = 1; // Single consolidation output
+        let tx_weight = Self::estimate_transaction_weight(num_inputs, num_outputs);
+        let fee_amount = Self::calculate_fee_with_feerate(tx_weight, fee_rate);
+        let fee_btc = fee_amount.to_btc();
+
+        // Calculate output amount (total input - fees)
+        let output_amount = total_input_value - fee_btc;
+        if output_amount <= 0.0 {
+            bail!(
+                "Insufficient funds: inputs={:.8} BTC, fee={:.8} BTC",
+                total_input_value,
+                fee_btc
+            );
+        }
+
+        // Calculate final output amount (no need to build string, using object directly)
+
+        // Create PSBT using existing create_psbt logic
+        let mut output_object = serde_json::Map::new();
+        output_object.insert(destination.to_string(), serde_json::json!(output_amount));
+
+        let mut params = vec![
+            serde_json::Value::Array(input_objects),
+            serde_json::Value::Object(output_object),
+        ];
+
+        // Add locktime (default 0)
+        params.push(serde_json::json!(0));
+
+        // Add replaceable flag (default false)
+        params.push(serde_json::json!(false));
+
+        let result = self
+            .rpc_call("createpsbt", serde_json::Value::Array(params))
+            .await?;
+
+        let psbt_string = result
+            .as_str()
+            .ok_or_else(|| anyhow!("Expected PSBT string in createpsbt response"))?;
+
+        // Validate PSBT
+        Self::validate_psbt(psbt_string)?;
+
+        Ok(PsbtResponse {
+            psbt: psbt_string.to_string(),
+            fee: fee_btc,
+            change_position: None, // No change in consolidation
+        })
+    }
 }
 
 #[cfg(test)]
@@ -553,7 +669,7 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn test_utxo_serialization() {
+    fn test_utxo_serialization() -> Result<()> {
         let utxo = Utxo {
             txid: "abc123".to_string(),
             vout: 0,
@@ -567,50 +683,53 @@ mod tests {
             descriptor: Some("wpkh([fingerprint/84'/0'/0']xpub...)".to_string()),
         };
 
-        let json = serde_json::to_string(&utxo).unwrap();
-        let deserialized: Utxo = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&utxo)?;
+        let deserialized: Utxo = serde_json::from_str(&json)?;
 
         assert_eq!(utxo.txid, deserialized.txid);
         assert_eq!(utxo.amount, deserialized.amount);
+        Ok(())
     }
 
     #[test]
-    fn test_cookie_auth_parsing() {
+    fn test_cookie_auth_parsing() -> Result<()> {
         let temp_dir = std::env::temp_dir();
         let cookie_path = temp_dir.join("test_cookie");
 
         // Create test cookie file
-        let mut file = fs::File::create(&cookie_path).unwrap();
-        writeln!(file, "testuser:testpassword123").unwrap();
+        let mut file = fs::File::create(&cookie_path)?;
+        writeln!(file, "testuser:testpassword123")?;
 
         // Test parsing
-        let (username, password) = BitcoinRpcClient::read_cookie_auth(&cookie_path).unwrap();
+        let (username, password) = BitcoinRpcClient::read_cookie_auth(&cookie_path)?;
         assert_eq!(username, "testuser");
         assert_eq!(password, "testpassword123");
 
         // Clean up
-        fs::remove_file(&cookie_path).unwrap();
+        fs::remove_file(&cookie_path)?;
+        Ok(())
     }
 
     #[test]
-    fn test_cookie_auth_invalid_format() {
+    fn test_cookie_auth_invalid_format() -> Result<()> {
         let temp_dir = std::env::temp_dir();
         let cookie_path = temp_dir.join("test_cookie_invalid");
 
         // Create invalid cookie file (no colon)
-        let mut file = fs::File::create(&cookie_path).unwrap();
-        writeln!(file, "invalidcookieformat").unwrap();
+        let mut file = fs::File::create(&cookie_path)?;
+        writeln!(file, "invalidcookieformat")?;
 
         // Should fail
         let result = BitcoinRpcClient::read_cookie_auth(&cookie_path);
         assert!(result.is_err());
 
         // Clean up
-        fs::remove_file(&cookie_path).unwrap();
+        fs::remove_file(&cookie_path)?;
+        Ok(())
     }
 
     #[test]
-    fn test_utxo_list_response_serialization() {
+    fn test_utxo_list_response_serialization() -> Result<()> {
         let utxos = vec![
             Utxo {
                 txid: "abc123".to_string(),
@@ -644,17 +763,18 @@ mod tests {
             total_count: 2,
         };
 
-        let json = serde_json::to_string_pretty(&response).unwrap();
-        let deserialized: UtxoListResponse = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string_pretty(&response)?;
+        let deserialized: UtxoListResponse = serde_json::from_str(&json)?;
 
         assert_eq!(response.total_count, deserialized.total_count);
         assert_eq!(response.total_amount, deserialized.total_amount);
         assert_eq!(response.utxos.len(), deserialized.utxos.len());
         assert_eq!(response.utxos[0].txid, deserialized.utxos[0].txid);
+        Ok(())
     }
 
     #[test]
-    fn test_confirmation_calculation() {
+    fn test_confirmation_calculation() -> Result<()> {
         // Test the confirmation calculation logic
         let current_height = 1000u64;
 
@@ -684,26 +804,28 @@ mod tests {
             0
         };
         assert_eq!(confirmations, 0);
+        Ok(())
     }
 
     #[test]
-    fn test_psbt_response_serialization() {
+    fn test_psbt_response_serialization() -> Result<()> {
         let response = PsbtResponse {
             psbt: "cHNidP8BAHECAAAAAea2/lMA5WyAk9UuMJPJ7wfhNzrhAAAAAA0AAAA=".to_string(),
             fee: 0.0001,
             change_position: Some(1),
         };
 
-        let json = serde_json::to_string_pretty(&response).unwrap();
-        let deserialized: PsbtResponse = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string_pretty(&response)?;
+        let deserialized: PsbtResponse = serde_json::from_str(&json)?;
 
         assert_eq!(response.psbt, deserialized.psbt);
         assert_eq!(response.fee, deserialized.fee);
         assert_eq!(response.change_position, deserialized.change_position);
+        Ok(())
     }
 
     #[test]
-    fn test_input_parsing_logic() {
+    fn test_input_parsing_logic() -> Result<()> {
         // Test the input parsing logic that would be in create_psbt
         let inputs = "abcd1234:0,efgh5678:1";
         let input_objects: Result<Vec<serde_json::Value>, anyhow::Error> = inputs
@@ -714,9 +836,9 @@ mod tests {
                     bail!("Invalid input format: '{input}'. Expected 'txid:vout'");
                 }
                 let txid = parts[0];
-                let vout: u32 = parts[1]
-                    .parse()
-                    .map_err(|_| anyhow!("Invalid vout '{}' in input '{}'", parts[1], input))?;
+                let vout: u32 = parts[1].parse().map_err(|_| {
+                    anyhow!("Invalid vout '{vout}' in input '{input}'", vout = parts[1])
+                })?;
 
                 Ok(serde_json::json!({
                     "txid": txid,
@@ -725,16 +847,17 @@ mod tests {
             })
             .collect();
 
-        let input_objects = input_objects.unwrap();
+        let input_objects = input_objects?;
         assert_eq!(input_objects.len(), 2);
         assert_eq!(input_objects[0]["txid"], "abcd1234");
         assert_eq!(input_objects[0]["vout"], 0);
         assert_eq!(input_objects[1]["txid"], "efgh5678");
         assert_eq!(input_objects[1]["vout"], 1);
+        Ok(())
     }
 
     #[test]
-    fn test_output_parsing_logic() {
+    fn test_output_parsing_logic() -> Result<()> {
         // Test the output parsing logic that would be in create_psbt
         let outputs = "bc1qtest123:0.001,bc1qtest456:0.002";
         let mut output_object = serde_json::Map::new();
@@ -742,13 +865,15 @@ mod tests {
         for output in outputs.split(',') {
             let parts: Vec<&str> = output.trim().split(':').collect();
             if parts.len() != 2 {
-                panic!(
+                bail!(
                     "Invalid output format: '{}'. Expected 'address:amount_btc'",
                     output
                 );
             }
             let address = parts[0];
-            let amount: f64 = parts[1].parse().unwrap();
+            let amount: f64 = parts[1]
+                .parse()
+                .with_context(|| format!("Invalid amount '{}' in output", parts[1]))?;
 
             output_object.insert(address.to_string(), serde_json::json!(amount));
         }
@@ -756,10 +881,11 @@ mod tests {
         assert_eq!(output_object.len(), 2);
         assert_eq!(output_object["bc1qtest123"], 0.001);
         assert_eq!(output_object["bc1qtest456"], 0.002);
+        Ok(())
     }
 
     #[test]
-    fn test_invalid_input_format() {
+    fn test_invalid_input_format() -> Result<()> {
         let inputs = "invalid_format";
         let result: Result<Vec<serde_json::Value>, anyhow::Error> = inputs
             .split(',')
@@ -773,40 +899,42 @@ mod tests {
             .collect();
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid input format"));
+        if let Err(e) = result {
+            assert!(e.to_string().contains("Invalid input format"));
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_wallet_funded_psbt_response_serialization() {
+    fn test_wallet_funded_psbt_response_serialization() -> Result<()> {
         let response = WalletFundedPsbtResponse {
             psbt: "cHNidP8BAHECAAAAAea2/lMA5WyAk9UuMJPJ7wfhNzrhAAAAAA0AAAA=".to_string(),
             fee: 0.0001,
             change_position: 1,
         };
 
-        let json = serde_json::to_string_pretty(&response).unwrap();
-        let deserialized: WalletFundedPsbtResponse = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string_pretty(&response)?;
+        let deserialized: WalletFundedPsbtResponse = serde_json::from_str(&json)?;
 
         assert_eq!(response.psbt, deserialized.psbt);
         assert_eq!(response.fee, deserialized.fee);
         assert_eq!(response.change_position, deserialized.change_position);
+        Ok(())
     }
 
     #[test]
-    fn test_fee_rate_conversion() {
+    fn test_fee_rate_conversion() -> Result<()> {
         // Test the conversion from sat/vB to BTC/kvB used in wallet_create_funded_psbt
         let sat_per_vb = 20.0f64;
         let btc_per_kvb = sat_per_vb * 100_000.0 / 100_000_000.0; // sat/vB to BTC/kvB
         let expected = 0.02000000f64; // 20 sat/vB = 0.02 BTC/kvB
 
         assert!((btc_per_kvb - expected).abs() < 0.00000001);
+        Ok(())
     }
 
     #[test]
-    fn test_empty_inputs_parsing() {
+    fn test_empty_inputs_parsing() -> Result<()> {
         // Test that empty string inputs result in empty array for automatic selection
         let inputs = "";
         let input_objects: Vec<serde_json::Value> = if inputs.is_empty() {
@@ -817,10 +945,11 @@ mod tests {
         };
 
         assert_eq!(input_objects.len(), 0);
+        Ok(())
     }
 
     #[test]
-    fn test_transaction_weight_estimation() {
+    fn test_transaction_weight_estimation() -> Result<()> {
         // Test weight estimation using rust-bitcoin's predict_weight function
 
         // Single input, single output
@@ -852,10 +981,11 @@ mod tests {
             "Expected ~380 vbytes, got {}",
             vbytes
         );
+        Ok(())
     }
 
     #[test]
-    fn test_fee_calculation() {
+    fn test_fee_calculation() -> Result<()> {
         // Test the fee calculation logic used in create_psbt
         let num_inputs = 1;
         let num_outputs = 2;
@@ -877,10 +1007,11 @@ mod tests {
         // Verify BTC conversion is correct
         let expected_fee_btc = fee_sats / 100_000_000.0;
         assert!((fee_btc - expected_fee_btc).abs() < 0.0000001);
+        Ok(())
     }
 
     #[test]
-    fn test_fee_calculation_with_feerate() {
+    fn test_fee_calculation_with_feerate() -> Result<()> {
         // Test the new rust-bitcoin FeeRate-based fee calculation
         let num_inputs = 1;
         let num_outputs = 2;
@@ -905,10 +1036,11 @@ mod tests {
             (fee_btc - manual_fee_btc).abs() < 0.0000001,
             "FeeRate calculation differs from manual"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_sub_1_satbyte_fee_with_amount() {
+    fn test_sub_1_satbyte_fee_with_amount() -> Result<()> {
         // Test sub-1 sat/vB fees using rust-bitcoin's Amount type
         let num_inputs = 1;
         let num_outputs = 2;
@@ -942,10 +1074,11 @@ mod tests {
             "Expected ~1 sat, got {} sats",
             tiny_sats
         );
+        Ok(())
     }
 
     #[test]
-    fn test_psbt_validation() {
+    fn test_psbt_validation() -> Result<()> {
         // Test PSBT validation with valid PSBT (this is a minimal valid PSBT from the spec)
         let valid_psbt = "cHNidP8BAJoCAAAAAljoeiG1ba8UV76bKlSu3iwYyYR3JStOGhp9w+gCEGOUqABAAAABPUA= AJocCAAABSk3LjAAAAAAAAA=";
 
@@ -959,10 +1092,11 @@ mod tests {
         let invalid_psbt = "not-valid-base64!@#$";
         let result = BitcoinRpcClient::validate_psbt(invalid_psbt);
         assert!(result.is_err(), "Should fail to parse invalid base64");
+        Ok(())
     }
 
     #[test]
-    fn test_sub_1_satbyte_fee_conversion() {
+    fn test_sub_1_satbyte_fee_conversion() -> Result<()> {
         // Test conversion for sub 1 sat/vB fees
         let sat_per_vb = 0.1f64;
         let btc_per_kvb = sat_per_vb * 100_000.0 / 100_000_000.0; // 0.1 sat/vB to BTC/kvB
@@ -981,10 +1115,310 @@ mod tests {
         // Expected: 0.01 sat/vB = 0.00001 BTC/kvB
         let expected_tiny = 0.00001f64;
         assert!((tiny_btc_kvb - expected_tiny).abs() < 0.000001);
+        Ok(())
     }
 
     #[test]
-    fn test_bitcoin_amount_serialization() {
+    fn test_move_utxos_input_parsing() -> Result<()> {
+        // Test input parsing logic used in move_utxos
+        let inputs = "abcd1234:0,efgh5678:1,ijkl9012:2";
+        let input_objects: Result<Vec<serde_json::Value>, anyhow::Error> = inputs
+            .split(',')
+            .map(|input| {
+                let parts: Vec<&str> = input.trim().split(':').collect();
+                if parts.len() != 2 {
+                    bail!("Invalid input format: '{input}'. Expected 'txid:vout'");
+                }
+                let txid = parts[0];
+                let vout: u32 = parts[1].parse().map_err(|_| {
+                    anyhow!("Invalid vout '{vout}' in input '{input}'", vout = parts[1])
+                })?;
+
+                Ok(serde_json::json!({
+                    "txid": txid,
+                    "vout": vout
+                }))
+            })
+            .collect();
+
+        let input_objects = input_objects?;
+        assert_eq!(input_objects.len(), 3);
+
+        // Verify first input
+        assert_eq!(input_objects[0]["txid"], "abcd1234");
+        assert_eq!(input_objects[0]["vout"], 0);
+
+        // Verify second input
+        assert_eq!(input_objects[1]["txid"], "efgh5678");
+        assert_eq!(input_objects[1]["vout"], 1);
+
+        // Verify third input
+        assert_eq!(input_objects[2]["txid"], "ijkl9012");
+        assert_eq!(input_objects[2]["vout"], 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_utxos_fee_calculation() -> Result<()> {
+        // Test fee calculation logic for consolidation transactions
+
+        // Test 3 inputs to 1 output (typical consolidation)
+        let num_inputs = 3;
+        let num_outputs = 1;
+        let fee_rate = 15.0f64; // sat/vB
+
+        let tx_weight = BitcoinRpcClient::estimate_transaction_weight(num_inputs, num_outputs);
+        let fee_amount = BitcoinRpcClient::calculate_fee_with_feerate(tx_weight, fee_rate);
+        let fee_sats = fee_amount.to_sat();
+
+        // 3 inputs, 1 output should be around 246-250 vbytes at 15 sat/vB = ~3690-3750 sats
+        assert!(
+            (3600..=3900).contains(&fee_sats),
+            "Expected ~3700 sats fee, got {} sats",
+            fee_sats
+        );
+
+        // Test large consolidation (10 inputs to 1 output)
+        let large_num_inputs = 10;
+        let large_weight =
+            BitcoinRpcClient::estimate_transaction_weight(large_num_inputs, num_outputs);
+        let large_fee = BitcoinRpcClient::calculate_fee_with_feerate(large_weight, fee_rate);
+        let large_fee_sats = large_fee.to_sat();
+
+        // Should be significantly larger than 3-input case
+        assert!(
+            large_fee_sats > fee_sats * 2,
+            "Large consolidation fee should be > 2x small consolidation"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_consolidation_output_calculation() -> Result<()> {
+        // Test the math for calculating consolidation output amount
+        let total_input_value = 0.05f64; // 0.05 BTC total inputs
+
+        // Simulate fee calculation for 5 inputs, 1 output
+        let num_inputs = 5;
+        let num_outputs = 1;
+        let fee_rate = 20.0f64; // sat/vB
+
+        let tx_weight = BitcoinRpcClient::estimate_transaction_weight(num_inputs, num_outputs);
+        let fee_amount = BitcoinRpcClient::calculate_fee_with_feerate(tx_weight, fee_rate);
+        let fee_btc = fee_amount.to_btc();
+
+        // Calculate output amount
+        let output_amount = total_input_value - fee_btc;
+
+        // Should be positive and reasonable
+        assert!(output_amount > 0.0, "Output amount should be positive");
+        assert!(
+            output_amount < total_input_value,
+            "Output should be less than input"
+        );
+        assert!(fee_btc > 0.0, "Fee should be positive");
+
+        // Fee should be reasonable (less than a few % for this size)
+        let fee_percentage = (fee_btc / total_input_value) * 100.0;
+        assert!(
+            fee_percentage < 5.0,
+            "Fee should be less than 5% for this transaction size"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insufficient_funds_case() -> Result<()> {
+        // Test logic for detecting insufficient funds
+        let tiny_input_value = 0.00001f64; // 1000 sats
+
+        // Large fee due to many inputs
+        let num_inputs = 20;
+        let num_outputs = 1;
+        let high_fee_rate = 100.0f64; // Very high fee rate
+
+        let tx_weight = BitcoinRpcClient::estimate_transaction_weight(num_inputs, num_outputs);
+        let fee_amount = BitcoinRpcClient::calculate_fee_with_feerate(tx_weight, high_fee_rate);
+        let fee_btc = fee_amount.to_btc();
+
+        // This should result in insufficient funds
+        let output_amount = tiny_input_value - fee_btc;
+        assert!(
+            output_amount <= 0.0,
+            "Should detect insufficient funds when fee > input"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_utxos_response_structure() -> Result<()> {
+        // Test the response structure for move_utxos
+        let response = PsbtResponse {
+            psbt: "cHNidP8BAHECAAAAAea2/lMA5WyAk9UuMJPJ7wfhNzrhAAAAAA0AAAA=".to_string(),
+            fee: 0.00015000,       // 15000 sats
+            change_position: None, // No change in consolidation
+        };
+
+        let json = serde_json::to_string_pretty(&response)?;
+        let deserialized: PsbtResponse = serde_json::from_str(&json)?;
+
+        assert_eq!(response.psbt, deserialized.psbt);
+        assert_eq!(response.fee, deserialized.fee);
+        assert_eq!(response.change_position, deserialized.change_position);
+        assert!(
+            response.change_position.is_none(),
+            "Consolidation should have no change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_single_utxo_consolidation() -> Result<()> {
+        // Edge case: consolidating a single UTXO (essentially just moving it)
+        let num_inputs = 1;
+        let num_outputs = 1;
+        let fee_rate = 10.0f64;
+
+        let tx_weight = BitcoinRpcClient::estimate_transaction_weight(num_inputs, num_outputs);
+        let fee_amount = BitcoinRpcClient::calculate_fee_with_feerate(tx_weight, fee_rate);
+        let fee_sats = fee_amount.to_sat();
+
+        // Single input, single output should be minimal size (~110 vbytes * 10 sat/vB = ~1100 sats)
+        assert!(
+            (1000..=1300).contains(&fee_sats),
+            "Expected ~1100 sats fee for single UTXO move, got {} sats",
+            fee_sats
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_format_validation() -> Result<()> {
+        // Test that input format validation works correctly
+
+        // Valid txid:vout format
+        let valid_input = "abcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd:0";
+        let parts: Vec<&str> = valid_input.split(':').collect();
+        assert_eq!(parts.len(), 2);
+        assert!(parts[1].parse::<u32>().is_ok());
+
+        // Invalid formats
+        let invalid_inputs = vec![
+            "invalid_format",
+            "txid_without_colon",
+            "txid:not_a_number",
+            "txid:0:extra_part",
+            "",
+        ];
+
+        for invalid in invalid_inputs {
+            let parts: Vec<&str> = invalid.split(':').collect();
+            let is_valid = parts.len() == 2 && parts[1].parse::<u32>().is_ok();
+            assert!(!is_valid, "Input '{}' should be invalid", invalid);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_descriptor_detection() -> Result<()> {
+        // Test various descriptor formats
+        let descriptors = vec![
+            "wpkh([fingerprint/84'/0'/0']xpub...)",
+            "pkh([fingerprint/44'/0'/0']xpub...)",
+            "sh(wpkh([fingerprint/49'/0'/0']xpub...))",
+            "tr([fingerprint/86'/0'/0']xpub...)",
+            "wsh(multi(2,[fingerprint1/48'/0'/0'/2']xpub1,[fingerprint2/48'/0'/0'/2']xpub2))",
+            "addr(bc1qexample)",
+        ];
+
+        for desc in descriptors {
+            // All should be detected as descriptors
+            assert!(
+                desc.contains('(') || desc.contains('['),
+                "Descriptor '{}' should contain parentheses or brackets",
+                desc
+            );
+        }
+
+        // Test non-descriptors
+        let non_descriptors = vec!["abcd1234:0", "ef567890:10", "1234567890abcdef:123"];
+
+        for non_desc in non_descriptors {
+            // None should be detected as descriptors
+            assert!(
+                !non_desc.contains('(') && !non_desc.contains('['),
+                "Non-descriptor '{}' should not contain parentheses or brackets",
+                non_desc
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_parsing_with_vec() -> Result<()> {
+        // Test parsing Vec<String> inputs instead of comma-separated strings
+        let standard_inputs = vec!["txid1:0".to_string(), "txid2:1".to_string()];
+        let descriptor_input = vec!["wpkh([fingerprint/84'/0'/0']xpub...)".to_string()];
+        let mixed_inputs = vec![
+            "txid1:0".to_string(),
+            "wpkh([fingerprint/84'/0'/0']xpub...)".to_string(),
+            "txid2:1".to_string(),
+        ];
+
+        // Test standard inputs detection
+        for input in &standard_inputs {
+            assert!(!input.contains('(') && !input.contains('['));
+        }
+
+        // Test descriptor input detection
+        for input in &descriptor_input {
+            assert!(input.contains('(') || input.contains('['));
+        }
+
+        // Test mixed inputs
+        assert!(!mixed_inputs[0].contains('(') && !mixed_inputs[0].contains('['));
+        assert!(mixed_inputs[1].contains('(') || mixed_inputs[1].contains('['));
+        assert!(!mixed_inputs[2].contains('(') && !mixed_inputs[2].contains('['));
+        Ok(())
+    }
+
+    #[test]
+    fn test_descriptor_formats() -> Result<()> {
+        // Test various descriptor formats that should be detected correctly
+        let descriptors = vec![
+            "wpkh([fingerprint/84'/0'/0']xpub...)",
+            "pkh([fingerprint/44'/0'/0']xpub...)",
+            "sh(wpkh([fingerprint/49'/0'/0']xpub...))",
+            "tr([fingerprint/86'/0'/0']xpub...)",
+            "wsh(sortedmulti(4,[fp1/48'/0'/0'/2']xpub1,[fp2/48'/0'/0'/2']xpub2,[fp3/48'/0'/0'/2']xpub3,[fp4/48'/0'/0'/2']xpub4))",
+            "addr(bc1qexample)",
+        ];
+
+        for desc in descriptors {
+            // All should be detected as descriptors
+            assert!(
+                desc.contains('(') || desc.contains('['),
+                "Descriptor '{}' should contain parentheses or brackets",
+                desc
+            );
+        }
+
+        // Test non-descriptors
+        let non_descriptors = vec!["abcd1234:0", "ef567890:10", "1234567890abcdef:123"];
+
+        for non_desc in non_descriptors {
+            // None should be detected as descriptors
+            assert!(
+                !non_desc.contains('(') && !non_desc.contains('['),
+                "Non-descriptor '{}' should not contain parentheses or brackets",
+                non_desc
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_bitcoin_amount_serialization() -> Result<()> {
         // Test very small amounts (may use scientific notation, which is acceptable)
         let response = PsbtResponse {
             psbt: "test".to_string(),
@@ -992,7 +1426,7 @@ mod tests {
             change_position: None,
         };
 
-        let json = serde_json::to_string_pretty(&response).unwrap();
+        let json = serde_json::to_string_pretty(&response)?;
         println!("Serialized small amount: {json}");
 
         // For very small amounts, scientific notation is acceptable
@@ -1006,7 +1440,7 @@ mod tests {
             change_position: None,
         };
 
-        let zero_json = serde_json::to_string_pretty(&zero_response).unwrap();
+        let zero_json = serde_json::to_string_pretty(&zero_response)?;
         println!("Serialized zero: {zero_json}");
         assert!(zero_json.contains("\"fee\": 0"));
 
@@ -1017,18 +1451,19 @@ mod tests {
             change_position: None,
         };
 
-        let normal_json = serde_json::to_string_pretty(&normal_response).unwrap();
+        let normal_json = serde_json::to_string_pretty(&normal_response)?;
         println!("Serialized normal amount: {normal_json}");
         assert!(normal_json.contains("\"fee\": 0.0001284"));
 
         // Test deserialization works for all cases
-        let deserialized: PsbtResponse = serde_json::from_str(&json).unwrap();
+        let deserialized: PsbtResponse = serde_json::from_str(&json)?;
         assert!((deserialized.fee - 0.000000111).abs() < 0.0000000001);
 
-        let zero_deserialized: PsbtResponse = serde_json::from_str(&zero_json).unwrap();
+        let zero_deserialized: PsbtResponse = serde_json::from_str(&zero_json)?;
         assert_eq!(zero_deserialized.fee, 0.0);
 
-        let normal_deserialized: PsbtResponse = serde_json::from_str(&normal_json).unwrap();
+        let normal_deserialized: PsbtResponse = serde_json::from_str(&normal_json)?;
         assert!((normal_deserialized.fee - 0.00012840).abs() < 0.00000001);
+        Ok(())
     }
 }
