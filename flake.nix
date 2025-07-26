@@ -21,6 +21,38 @@
         };
       in
       {
+        packages.default = pkgs.rustPlatform.buildRustPackage {
+          pname = "cyberkrill";
+          version = "0.1.0";
+          src = ./.;
+          
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            outputHashes = {
+              "rust-cktap-0.1.0" = "sha256-vO26qr9I5U96SgtTKSiKKqVHcO/T+RXSKeb8JCOcYOI=";
+            };
+          };
+          
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            rustToolchain
+          ];
+          
+          buildInputs = with pkgs; [
+            pcsclite
+          ];
+          
+          # Build without smartcards feature by default for broader compatibility
+          buildFeatures = [ ];
+          
+          meta = with pkgs.lib; {
+            description = "CLI utility for Bitcoin and Lightning Network operations";
+            homepage = "https://github.com/douglaz/cyberkrill";
+            license = licenses.mit;
+            maintainers = [ ];
+          };
+        };
+
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             bashInteractive
