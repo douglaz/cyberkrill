@@ -1,4 +1,4 @@
-mod bitcoin_rpc;
+pub mod bitcoin_rpc;
 mod decoder;
 #[cfg(feature = "smartcards")]
 mod satscard;
@@ -6,6 +6,7 @@ mod satscard;
 mod tapsigner;
 
 use anyhow::bail;
+use bitcoin_rpc::AmountInput;
 use clap::{Parser, Subcommand};
 use std::io::{BufWriter, Read};
 use std::path::Path;
@@ -206,9 +207,9 @@ struct CreatePsbtArgs {
     /// Output addresses and amounts in format address:amount_btc (comma-separated)
     #[clap(long, required = true)]
     outputs: String,
-    /// Fee rate in sats/vB (optional, will use Bitcoin Core's default if not specified)
+    /// Fee rate in sats/vB (optional, will use Bitcoin Core's default if not specified) - supports formats like '15', '20.5sats', '15btc'
     #[clap(long)]
-    fee_rate: Option<f64>,
+    fee_rate: Option<AmountInput>,
     /// Output file path for JSON response
     #[clap(short, long)]
     output: Option<String>,
@@ -244,9 +245,9 @@ struct CreateFundedPsbtArgs {
     /// Fee estimation mode: UNSET, ECONOMICAL, CONSERVATIVE
     #[clap(long)]
     estimate_mode: Option<String>,
-    /// Fee rate in sats/vB (overrides conf_target and estimate_mode)
+    /// Fee rate in sats/vB (overrides conf_target and estimate_mode) - supports formats like '15', '20.5sats', '15btc'
     #[clap(long)]
-    fee_rate: Option<f64>,
+    fee_rate: Option<AmountInput>,
     /// Output file path for JSON response
     #[clap(short, long)]
     output: Option<String>,
@@ -276,9 +277,15 @@ struct MoveUtxosArgs {
     /// Destination address for consolidated output
     #[clap(long, required = true)]
     destination: String,
-    /// Fee rate in sats/vB (required for fee calculation)
-    #[clap(long, required = true)]
-    fee_rate: f64,
+    /// Fee rate in sats/vB (conflicts with fee) - supports formats like '15', '20.5sats', '15btc'
+    #[clap(long, conflicts_with = "fee")]
+    fee_rate: Option<AmountInput>,
+    /// Fee amount (conflicts with fee_rate) - supports formats like '1000sats', '0.00001btc', '1000'
+    #[clap(long, conflicts_with = "fee_rate")]
+    fee: Option<AmountInput>,
+    /// Maximum amount to move (supports formats: '123sats', '0.666btc', or '0.666' for BTC)
+    #[clap(long)]
+    max_amount: Option<AmountInput>,
     /// Output file path for JSON response
     #[clap(short, long)]
     output: Option<String>,
@@ -545,8 +552,21 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
         args.rpc_password,
     )?;
 
+    // Validate that exactly one fee method is provided
+    match (&args.fee_rate, &args.fee) {
+        (None, None) => bail!("Must specify either --fee-rate or --fee"),
+        (Some(_), Some(_)) => bail!("Cannot specify both --fee-rate and --fee"),
+        _ => {}
+    }
+
     let result = client
-        .move_utxos(&args.inputs, &args.destination, args.fee_rate)
+        .move_utxos(
+            &args.inputs,
+            &args.destination,
+            args.fee_rate,
+            args.fee,
+            args.max_amount,
+        )
         .await?;
 
     // Write PSBT to separate file if requested
