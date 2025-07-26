@@ -817,9 +817,10 @@ impl BitcoinRpcClient {
     async fn find_unused_address(&self, descriptor: &str) -> Result<Option<String>> {
         let mut consecutive_unused = 0;
         const GAP_LIMIT: usize = 20; // BIP 44 standard gap limit
-        
+
         // Scan addresses following BIP 44 gap limit
-        for index in 0..200 { // Reasonable upper bound
+        for index in 0..200 {
+            // Reasonable upper bound
             let indexed_descriptor = descriptor.replace('*', &index.to_string());
 
             // Remove any existing checksum and let Bitcoin Core calculate it
@@ -836,7 +837,7 @@ impl BitcoinRpcClient {
             {
                 // Check if this address has ever been used
                 let ever_used = self.check_address_ever_used(&address).await?;
-                
+
                 if ever_used {
                     consecutive_unused = 0; // Reset counter
                 } else {
@@ -846,7 +847,7 @@ impl BitcoinRpcClient {
                         return Ok(Some(address));
                     }
                 }
-                
+
                 // If we hit the gap limit, we can stop scanning
                 if consecutive_unused >= GAP_LIMIT {
                     break;
@@ -911,7 +912,7 @@ impl BitcoinRpcClient {
         match self.get_received_by_address(address, 0).await {
             Ok(amount) => Ok(amount > 0.0),
             Err(_) => {
-                // If getreceivedbyaddress fails (address not imported), 
+                // If getreceivedbyaddress fails (address not imported),
                 // fallback to checking current UTXOs as a best effort
                 self.check_address_has_utxos(address).await
             }
@@ -921,15 +922,12 @@ impl BitcoinRpcClient {
     /// Gets the total amount ever received by an address.
     /// Returns 0.0 if the address has never received funds or is not watch-only.
     async fn get_received_by_address(&self, address: &str, min_conf: u32) -> Result<f64> {
-        let params = vec![
-            serde_json::json!(address),
-            serde_json::json!(min_conf),
-        ];
-        
+        let params = vec![serde_json::json!(address), serde_json::json!(min_conf)];
+
         let result = self
             .rpc_call("getreceivedbyaddress", serde_json::Value::Array(params))
             .await?;
-        
+
         Ok(result.as_f64().unwrap_or(0.0))
     }
 
