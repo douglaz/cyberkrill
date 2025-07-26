@@ -301,7 +301,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_decode_invoice() -> anyhow::Result<()> {
+    fn test_decode_invoice() -> Result<()> {
         let invoice = "lnbc99810310n1pju0sy7pp555srgtgcg6t4jr4j5v0jysgee4zy6nr4msylnycfjezxm5w6t3csdy9wdmkzupq95s8xcmjd9c8gw3qx5cnyvrrvymrwvnrxgmrzd3cxsckxdf4v3jxgcmzx9jxgenpxserjenyxv6nzwf3vsmnyctxvsuxvdehvdnrswryxgcnzdf5ve3rjvph8q6njcqzxgxq97zvuqrzjqgwf02g2gy0l9vgdc25wxt0z72wjlfyagxlmk54ag9hyvrdsw37smapyqqqqqqqq2qqqqqqqqqqqqqqq9qsp59ge5l9ndweyes4ntfrws3a3tshpkqt8eysuxnt5pmucy9hvxthmq9qyyssqaqwn0j2jf2xvcv42yl9p0yaw4t6gcqld2t44cmnfud49dxgl3dnpnjpj75kaf22yuynqtc8uzmtuckzxvfunxnr405gud8cexc5axqqphlk58z";
         let output = decode_invoice(invoice)?;
 
@@ -351,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_lnurl() -> anyhow::Result<()> {
+    fn test_decode_lnurl() -> Result<()> {
         let lnurl = "LNURL1DP68GURN8GHJ7UM9WFMXJCM99E5K7TELWY7NXENRXVMRGDTZXSENJCM98PJNWXQ96S9";
         let output = decode_lnurl(lnurl)?;
 
@@ -370,30 +370,33 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_invalid_lnurl() {
+    fn test_decode_invalid_lnurl() -> Result<()> {
         let invalid_lnurl = "not_an_lnurl";
         let result = decode_lnurl(invalid_lnurl);
         assert!(result.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_decode_invalid_invoice() {
+    fn test_decode_invalid_invoice() -> Result<()> {
         let invalid_invoice = "not_an_invoice";
         let result = decode_invoice(invalid_invoice);
         assert!(result.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_parse_lightning_address() {
+    fn test_parse_lightning_address() -> Result<()> {
         let address = "user@domain.com";
         let parts: Vec<&str> = address.split('@').collect();
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[0], "user");
         assert_eq!(parts[1], "domain.com");
+        Ok(())
     }
 
     #[test]
-    fn test_invalid_lightning_address() {
+    fn test_invalid_lightning_address() -> Result<()> {
         let invalid_addresses = vec!["invalid", "user@domain@com"];
 
         for address in invalid_addresses {
@@ -413,5 +416,6 @@ mod tests {
                 address
             );
         }
+        Ok(())
     }
 }

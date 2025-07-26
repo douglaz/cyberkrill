@@ -143,9 +143,10 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_pubkey_length() {
+    fn test_invalid_pubkey_length() -> Result<()> {
         let invalid_pubkey = vec![0u8; 32]; // Wrong length
         let result = pubkey_to_address(&invalid_pubkey);
         assert!(result.is_err(), "Should fail with invalid pubkey length");
+        Ok(())
     }
 }
