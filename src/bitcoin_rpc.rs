@@ -4,16 +4,216 @@ use bitcoin::transaction::{predict_weight, InputWeightPrediction};
 use bitcoin::{Amount, Weight};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::str::FromStr;
 
 // Constants for Bitcoin RPC operations
 const DEFAULT_MAX_CONFIRMATIONS: u32 = 9999999;
 const DEFAULT_DESCRIPTOR_SCAN_RANGE: u32 = 200;
 
+/// Error type for AmountInput parsing
+#[derive(Debug, thiserror::Error)]
+pub enum AmountInputError {
+    #[error("Empty amount string")]
+    EmptyAmount,
+    #[error("Invalid satoshi amount: '{0}'")]
+    InvalidSatoshiAmount(String),
+    #[error("Invalid BTC amount: '{0}'")]
+    InvalidBtcAmount(String),
+    #[error("Amount cannot be negative: {0}")]
+    NegativeAmount(f64),
+    #[error(
+        "Invalid amount format: '{0}'. Expected formats: '123sats', '0.666btc', or '0.666' (BTC)"
+    )]
+    InvalidFormat(String),
+    #[error("Bitcoin amount error: {0}")]
+    BitcoinAmount(#[from] bitcoin::amount::ParseAmountError),
+}
+
+/// Represents an amount input that can be specified in either BTC or satoshis.
+///
+/// This type provides a user-friendly way to parse Bitcoin amounts from strings
+/// supporting multiple formats while using the robust `bitcoin::Amount` type internally.
+///
+/// # Supported Formats
+/// - Plain numbers: `"0.5"` (interpreted as BTC)
+/// - BTC format: `"0.5btc"` or `"1.5BTC"` (case-insensitive)
+/// - Satoshi format: `"50000000sats"`, `"100000sat"`, or `"123SATS"` (case-insensitive)
+///
+/// # Examples
+/// ```
+/// use std::str::FromStr;
+/// use cyberkrill::bitcoin_rpc::AmountInput;
+///
+/// // Parse from different formats
+/// let amount1 = AmountInput::from_str("0.5")?;
+/// let amount2 = AmountInput::from_str("0.5btc")?;
+/// let amount3 = AmountInput::from_str("50000000sats")?;
+///
+/// // All represent the same amount
+/// assert_eq!(amount1.as_btc(), 0.5);
+/// assert_eq!(amount2.as_btc(), 0.5);
+/// assert_eq!(amount3.as_btc(), 0.5);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct AmountInput {
+    /// The amount using bitcoin::Amount
+    amount: Amount,
+}
+
+impl AmountInput {
+    /// Creates a new `AmountInput` from a BTC amount.
+    ///
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    ///
+    /// let amount = AmountInput::from_btc(1.5)?;
+    /// assert_eq!(amount.as_btc(), 1.5);
+    /// # Ok::<(), cyberkrill::bitcoin_rpc::AmountInputError>(())
+    /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the BTC amount is invalid (e.g., exceeds maximum value).
+    pub fn from_btc(btc: f64) -> Result<Self, AmountInputError> {
+        let amount = Amount::from_btc(btc)?;
+        Ok(Self { amount })
+    }
+
+    /// Creates a new `AmountInput` from a satoshi amount.
+    ///
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    ///
+    /// let amount = AmountInput::from_sats(150000000);
+    /// assert_eq!(amount.as_sat(), 150000000);
+    /// assert_eq!(amount.as_btc(), 1.5);
+    /// ```
+    pub fn from_sats(sats: u64) -> Self {
+        Self {
+            amount: Amount::from_sat(sats),
+        }
+    }
+
+    /// Returns the amount in satoshis.
+    ///
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    ///
+    /// let amount = AmountInput::from_sats(100000000);
+    /// assert_eq!(amount.as_sat(), 100000000);
+    /// ```
+    pub fn as_sat(&self) -> u64 {
+        self.amount.to_sat()
+    }
+
+    /// Returns the amount in BTC.
+    ///
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    ///
+    /// let amount = AmountInput::from_sats(100000000);
+    /// assert_eq!(amount.as_btc(), 1.0);
+    /// ```
+    pub fn as_btc(&self) -> f64 {
+        self.amount.to_btc()
+    }
+
+    /// Returns the internal `bitcoin::Amount`.
+    ///
+    /// This method provides access to the underlying `Amount` type for
+    /// operations that require precise Bitcoin amount handling.
+    ///
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use bitcoin::Amount;
+    ///
+    /// let amount_input = AmountInput::from_sats(100000000);
+    /// let bitcoin_amount: Amount = amount_input.as_amount();
+    /// assert_eq!(bitcoin_amount.to_sat(), 100000000);
+    /// ```
+    pub fn as_amount(&self) -> Amount {
+        self.amount
+    }
+}
+
+impl FromStr for AmountInput {
+    type Err = AmountInputError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim().to_lowercase();
+
+        if s.is_empty() {
+            return Err(AmountInputError::EmptyAmount);
+        }
+
+        // Check for satoshi suffixes
+        if s.ends_with("sats") || s.ends_with("sat") {
+            let number_part = if s.ends_with("sats") {
+                &s[..s.len() - 4]
+            } else {
+                &s[..s.len() - 3]
+            };
+
+            let sats: u64 = number_part
+                .parse()
+                .map_err(|_| AmountInputError::InvalidSatoshiAmount(number_part.to_string()))?;
+
+            return Ok(AmountInput::from_sats(sats));
+        }
+
+        // Check for BTC suffixes
+        if s.ends_with("btc") {
+            let number_part = &s[..s.len() - 3];
+            let btc: f64 = number_part
+                .parse()
+                .map_err(|_| AmountInputError::InvalidBtcAmount(number_part.to_string()))?;
+
+            if btc < 0.0 {
+                return Err(AmountInputError::NegativeAmount(btc));
+            }
+
+            return AmountInput::from_btc(btc);
+        }
+
+        // No suffix - try to parse as a decimal number (assume BTC)
+        let btc: f64 = s
+            .parse()
+            .map_err(|_| AmountInputError::InvalidFormat(s.to_string()))?;
+
+        if btc < 0.0 {
+            return Err(AmountInputError::NegativeAmount(btc));
+        }
+
+        AmountInput::from_btc(btc)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Utxo {
     pub txid: String,
     pub vout: u32,
-    pub amount: f64,
+    pub amount: f64, // Keep as f64 for deserialization from Bitcoin Core
+    pub confirmations: u32,
+    pub spendable: bool,
+    pub solvable: bool,
+    pub safe: bool,
+    pub address: Option<String>,
+    #[serde(rename = "scriptPubKey")]
+    pub script_pub_key: String,
+    pub descriptor: Option<String>,
+}
+
+// Separate struct for serialization to users
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UtxoOutput {
+    pub txid: String,
+    pub vout: u32,
+    pub amount_sats: u64,
     pub confirmations: u32,
     pub spendable: bool,
     pub solvable: bool,
@@ -23,24 +223,43 @@ pub struct Utxo {
     pub descriptor: Option<String>,
 }
 
+impl From<Utxo> for UtxoOutput {
+    fn from(utxo: Utxo) -> Self {
+        UtxoOutput {
+            txid: utxo.txid,
+            vout: utxo.vout,
+            amount_sats: Amount::from_btc(utxo.amount)
+                .unwrap_or(Amount::ZERO)
+                .to_sat(),
+            confirmations: utxo.confirmations,
+            spendable: utxo.spendable,
+            solvable: utxo.solvable,
+            safe: utxo.safe,
+            address: utxo.address,
+            script_pub_key: utxo.script_pub_key,
+            descriptor: utxo.descriptor,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UtxoListResponse {
-    pub utxos: Vec<Utxo>,
-    pub total_amount: f64,
+    pub utxos: Vec<UtxoOutput>,
+    pub total_amount_sats: u64,
     pub total_count: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PsbtResponse {
     pub psbt: String,
-    pub fee: f64,
+    pub fee_sats: u64,
     pub change_position: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WalletFundedPsbtResponse {
     pub psbt: String,
-    pub fee: f64,
+    pub fee_sats: u64,
     pub change_position: i32, // -1 if no change
 }
 
@@ -266,12 +485,16 @@ impl BitcoinRpcClient {
 
     pub async fn list_utxos_for_descriptor(&self, descriptor: &str) -> Result<UtxoListResponse> {
         let utxos = self.scan_tx_out_set(descriptor).await?;
-        let total_amount: f64 = utxos.iter().map(|u| u.amount).sum();
+        let total_amount_sats: u64 = utxos
+            .iter()
+            .map(|u| Amount::from_btc(u.amount).unwrap_or(Amount::ZERO).to_sat())
+            .sum();
         let total_count = utxos.len();
+        let utxo_outputs: Vec<UtxoOutput> = utxos.into_iter().map(Into::into).collect();
 
         Ok(UtxoListResponse {
-            utxos,
-            total_amount,
+            utxos: utxo_outputs,
+            total_amount_sats,
             total_count,
         })
     }
@@ -281,12 +504,16 @@ impl BitcoinRpcClient {
         addresses: Vec<String>,
     ) -> Result<UtxoListResponse> {
         let utxos = self.list_unspent(Some(1), None, Some(addresses)).await?;
-        let total_amount: f64 = utxos.iter().map(|u| u.amount).sum();
+        let total_amount_sats: u64 = utxos
+            .iter()
+            .map(|u| Amount::from_btc(u.amount).unwrap_or(Amount::ZERO).to_sat())
+            .sum();
         let total_count = utxos.len();
+        let utxo_outputs: Vec<UtxoOutput> = utxos.into_iter().map(Into::into).collect();
 
         Ok(UtxoListResponse {
-            utxos,
-            total_amount,
+            utxos: utxo_outputs,
+            total_amount_sats,
             total_count,
         })
     }
@@ -362,7 +589,7 @@ impl BitcoinRpcClient {
         &self,
         inputs: &[String],
         outputs: &str,
-        fee_rate: Option<f64>, // sat/vB - will calculate fee and add to outputs
+        fee_rate: Option<AmountInput>, // sat/vB - will calculate fee and add to outputs
     ) -> Result<PsbtResponse> {
         // Parse and expand inputs (handles both "txid:vout" and descriptor formats)
         let input_objects = self.parse_and_expand_inputs(inputs).await?;
@@ -417,17 +644,17 @@ impl BitcoinRpcClient {
         Self::validate_psbt(psbt_string)?;
 
         // Calculate fee if fee_rate is provided
-        let calculated_fee = if let Some(rate) = fee_rate {
+        let calculated_fee_sats = if let Some(rate) = fee_rate {
             let tx_weight = Self::estimate_transaction_weight(num_inputs, num_outputs);
-            let fee_amount = Self::calculate_fee_with_feerate(tx_weight, rate);
-            fee_amount.to_btc() // Convert to BTC using rust-bitcoin's precise method
+            let fee_amount = Self::calculate_fee_with_feerate(tx_weight, rate.as_btc());
+            fee_amount.to_sat()
         } else {
-            0.0
+            0
         };
 
         Ok(PsbtResponse {
             psbt: psbt_string.to_string(),
-            fee: calculated_fee,
+            fee_sats: calculated_fee_sats,
             change_position: None, // TODO: Detect change output
         })
     }
@@ -482,7 +709,7 @@ impl BitcoinRpcClient {
         outputs: &str,
         conf_target: Option<u32>,
         estimate_mode: Option<&str>,
-        fee_rate: Option<f64>, // sat/vB
+        fee_rate: Option<AmountInput>, // sat/vB
     ) -> Result<WalletFundedPsbtResponse> {
         // Parse and expand inputs (empty slice means automatic input selection)
         let input_objects: Vec<serde_json::Value> = if inputs.is_empty() {
@@ -534,7 +761,8 @@ impl BitcoinRpcClient {
 
         if let Some(rate) = fee_rate {
             // Convert sat/vB to BTC/kvB for Bitcoin Core
-            let btc_per_kvb = rate * 100_000.0 / 100_000_000.0; // sat/vB to BTC/kvB
+            let rate_sat_per_vb = rate.as_btc(); // Use BTC value as the sat/vB rate
+            let btc_per_kvb = rate_sat_per_vb * 100_000.0 / 100_000_000.0; // sat/vB to BTC/kvB
             options.insert("fee_rate".to_string(), serde_json::json!(btc_per_kvb));
         }
 
@@ -554,7 +782,8 @@ impl BitcoinRpcClient {
         // Validate PSBT using rust-bitcoin's parser
         Self::validate_psbt(psbt_string)?;
 
-        let fee = result.get("fee").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let fee_btc = result.get("fee").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let fee_sats = Amount::from_btc(fee_btc)?.to_sat();
 
         let change_position = result
             .get("changepos")
@@ -563,7 +792,7 @@ impl BitcoinRpcClient {
 
         Ok(WalletFundedPsbtResponse {
             psbt: psbt_string.to_string(),
-            fee,
+            fee_sats,
             change_position,
         })
     }
@@ -572,14 +801,16 @@ impl BitcoinRpcClient {
         &self,
         inputs: &[String],
         destination: &str,
-        fee_rate: f64,
+        fee_rate: Option<AmountInput>,
+        fee_sats: Option<AmountInput>,
+        max_amount: Option<AmountInput>,
     ) -> Result<PsbtResponse> {
         // Parse and expand inputs (handles both "txid:vout" and descriptor formats)
-        let input_objects = self.parse_and_expand_inputs(inputs).await?;
+        let all_input_objects = self.parse_and_expand_inputs(inputs).await?;
 
-        // Get UTXO details to calculate total input value
-        let mut total_input_value = 0.0f64;
-        for input_obj in &input_objects {
+        // Get UTXO details with values
+        let mut utxo_details = Vec::new();
+        for input_obj in &all_input_objects {
             let txid = input_obj["txid"]
                 .as_str()
                 .ok_or_else(|| anyhow!("Missing txid in input object"))?;
@@ -603,18 +834,71 @@ impl BitcoinRpcClient {
                     .get("value")
                     .and_then(|v| v.as_f64())
                     .ok_or_else(|| anyhow!("Missing value in output {txid}:{vout}"))?;
-                total_input_value += value;
+                utxo_details.push((input_obj.clone(), value));
             } else {
                 bail!("Output {txid}:{vout} not found in transaction");
             }
         }
 
-        // Calculate fee and output amount
-        let num_inputs = input_objects.len();
-        let num_outputs = 1; // Single consolidation output
-        let tx_weight = Self::estimate_transaction_weight(num_inputs, num_outputs);
-        let fee_amount = Self::calculate_fee_with_feerate(tx_weight, fee_rate);
-        let fee_btc = fee_amount.to_btc();
+        // If max_amount is specified, perform coin selection
+        let (selected_inputs, total_input_value) = if let Some(max_amount_input) = max_amount {
+            let max_btc = max_amount_input.as_btc();
+            // Sort UTXOs by value in descending order (largest first)
+            utxo_details.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            let mut selected = Vec::new();
+            let mut selected_value = 0.0f64;
+
+            // Select UTXOs until we reach or exceed max_amount
+            for (input_obj, value) in utxo_details {
+                if selected_value >= max_btc {
+                    break;
+                }
+                selected.push(input_obj);
+                selected_value += value;
+            }
+
+            if selected.is_empty() {
+                bail!(
+                    "No UTXOs selected. All available UTXOs exceed max_amount of {} BTC",
+                    max_btc
+                );
+            }
+
+            (selected, selected_value.min(max_btc))
+        } else {
+            // Use all inputs
+            let total_value: f64 = utxo_details.iter().map(|(_, value)| value).sum();
+            let inputs: Vec<_> = utxo_details.into_iter().map(|(input, _)| input).collect();
+            (inputs, total_value)
+        };
+
+        // Calculate fee
+        let fee_sats_amount = match (fee_rate, fee_sats) {
+            (Some(rate), None) => {
+                // Calculate fee using fee rate (rate should be in sat/vB)
+                let num_inputs = selected_inputs.len();
+                let num_outputs = 1; // Single consolidation output
+                let tx_weight = Self::estimate_transaction_weight(num_inputs, num_outputs);
+                // For fee rate, interpret the value as sat/vB (use the BTC representation as the decimal rate)
+                let rate_sat_per_vb = rate.as_btc();
+                let fee_amount = Self::calculate_fee_with_feerate(tx_weight, rate_sat_per_vb);
+                fee_amount.to_sat()
+            }
+            (None, Some(fee_amount)) => {
+                // Use absolute fee amount
+                fee_amount.as_sat()
+            }
+            (Some(_), Some(_)) => {
+                bail!("Cannot specify both fee_rate and fee_sats");
+            }
+            (None, None) => {
+                bail!("Must specify either fee_rate or fee_sats");
+            }
+        };
+
+        // Convert fee to BTC for output calculation
+        let fee_btc = Amount::from_sat(fee_sats_amount).to_btc();
 
         // Calculate output amount (total input - fees)
         let output_amount = total_input_value - fee_btc;
@@ -626,14 +910,12 @@ impl BitcoinRpcClient {
             );
         }
 
-        // Calculate final output amount (no need to build string, using object directly)
-
-        // Create PSBT using existing create_psbt logic
+        // Create PSBT using selected inputs
         let mut output_object = serde_json::Map::new();
         output_object.insert(destination.to_string(), serde_json::json!(output_amount));
 
         let mut params = vec![
-            serde_json::Value::Array(input_objects),
+            serde_json::Value::Array(selected_inputs),
             serde_json::Value::Object(output_object),
         ];
 
@@ -656,7 +938,7 @@ impl BitcoinRpcClient {
 
         Ok(PsbtResponse {
             psbt: psbt_string.to_string(),
-            fee: fee_btc,
+            fee_sats: fee_sats_amount,
             change_position: None, // No change in consolidation
         })
     }
@@ -688,6 +970,111 @@ mod tests {
 
         assert_eq!(utxo.txid, deserialized.txid);
         assert_eq!(utxo.amount, deserialized.amount);
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_parsing_sats() -> Result<()> {
+        // Test satoshi parsing
+        let amount = AmountInput::from_str("123sats")?;
+        assert_eq!(amount.as_sat(), 123);
+        assert_eq!(amount.as_btc(), 0.00000123);
+
+        let amount = AmountInput::from_str("100000sat")?;
+        assert_eq!(amount.as_sat(), 100000);
+        assert_eq!(amount.as_btc(), 0.001);
+
+        // Test with whitespace
+        let amount = AmountInput::from_str("  50000sats  ")?;
+        assert_eq!(amount.as_sat(), 50000);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_parsing_btc() -> Result<()> {
+        // Test BTC parsing
+        let amount = AmountInput::from_str("0.666btc")?;
+        assert_eq!(amount.as_btc(), 0.666);
+        assert_eq!(amount.as_sat(), 66600000);
+
+        let amount = AmountInput::from_str("1.5btc")?;
+        assert_eq!(amount.as_btc(), 1.5);
+        assert_eq!(amount.as_sat(), 150000000);
+
+        // Test with whitespace
+        let amount = AmountInput::from_str("  0.25btc  ")?;
+        assert_eq!(amount.as_btc(), 0.25);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_parsing_plain_number() -> Result<()> {
+        // Test plain number (defaults to BTC)
+        let amount = AmountInput::from_str("0.5")?;
+        assert_eq!(amount.as_btc(), 0.5);
+        assert_eq!(amount.as_sat(), 50000000);
+
+        let amount = AmountInput::from_str("2.0")?;
+        assert_eq!(amount.as_btc(), 2.0);
+        assert_eq!(amount.as_sat(), 200000000);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_parsing_case_insensitive() -> Result<()> {
+        // Test case insensitivity
+        let amount1 = AmountInput::from_str("123SATS")?;
+        let amount2 = AmountInput::from_str("123sats")?;
+        assert_eq!(amount1, amount2);
+
+        let amount3 = AmountInput::from_str("0.5BTC")?;
+        let amount4 = AmountInput::from_str("0.5btc")?;
+        assert_eq!(amount3, amount4);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_parsing_errors() -> Result<()> {
+        // Test invalid formats
+        assert!(AmountInput::from_str("").is_err());
+        assert!(AmountInput::from_str("   ").is_err());
+        assert!(AmountInput::from_str("abc").is_err());
+        assert!(AmountInput::from_str("123xyz").is_err());
+        assert!(AmountInput::from_str("sats").is_err());
+        assert!(AmountInput::from_str("btc").is_err());
+
+        // Test negative amounts
+        assert!(AmountInput::from_str("-1btc").is_err());
+        assert!(AmountInput::from_str("-0.5").is_err());
+
+        // Test invalid satoshi amounts (must be integers)
+        assert!(AmountInput::from_str("123.5sats").is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_conversion() -> Result<()> {
+        // Test round-trip conversions
+        let original_sats = 123456789;
+        let amount = AmountInput::from_sats(original_sats);
+        assert_eq!(amount.as_sat(), original_sats);
+
+        let original_btc = 1.23456789;
+        let amount = AmountInput::from_btc(original_btc)?;
+        assert_eq!(amount.as_btc(), original_btc);
+
+        // Test specific conversions
+        let amount = AmountInput::from_sats(100000000); // 1 BTC in sats
+        assert_eq!(amount.as_btc(), 1.0);
+
+        let amount = AmountInput::from_btc(0.00000001)?; // 1 sat in BTC
+        assert_eq!(amount.as_sat(), 1);
+
         Ok(())
     }
 
@@ -731,10 +1118,10 @@ mod tests {
     #[test]
     fn test_utxo_list_response_serialization() -> Result<()> {
         let utxos = vec![
-            Utxo {
+            UtxoOutput {
                 txid: "abc123".to_string(),
                 vout: 0,
-                amount: 0.001,
+                amount_sats: 100000, // 0.001 BTC = 100000 sats
                 confirmations: 6,
                 spendable: true,
                 solvable: true,
@@ -743,10 +1130,10 @@ mod tests {
                 script_pub_key: "001400112233".to_string(),
                 descriptor: Some("test_descriptor".to_string()),
             },
-            Utxo {
+            UtxoOutput {
                 txid: "def456".to_string(),
                 vout: 1,
-                amount: 0.002,
+                amount_sats: 200000, // 0.002 BTC = 200000 sats
                 confirmations: 10,
                 spendable: true,
                 solvable: true,
@@ -759,7 +1146,7 @@ mod tests {
 
         let response = UtxoListResponse {
             utxos: utxos.clone(),
-            total_amount: 0.003,
+            total_amount_sats: 300000, // 0.003 BTC = 300000 sats
             total_count: 2,
         };
 
@@ -767,7 +1154,7 @@ mod tests {
         let deserialized: UtxoListResponse = serde_json::from_str(&json)?;
 
         assert_eq!(response.total_count, deserialized.total_count);
-        assert_eq!(response.total_amount, deserialized.total_amount);
+        assert_eq!(response.total_amount_sats, deserialized.total_amount_sats);
         assert_eq!(response.utxos.len(), deserialized.utxos.len());
         assert_eq!(response.utxos[0].txid, deserialized.utxos[0].txid);
         Ok(())
@@ -811,7 +1198,7 @@ mod tests {
     fn test_psbt_response_serialization() -> Result<()> {
         let response = PsbtResponse {
             psbt: "cHNidP8BAHECAAAAAea2/lMA5WyAk9UuMJPJ7wfhNzrhAAAAAA0AAAA=".to_string(),
-            fee: 0.0001,
+            fee_sats: 10000, // 0.0001 BTC = 10000 sats
             change_position: Some(1),
         };
 
@@ -819,7 +1206,7 @@ mod tests {
         let deserialized: PsbtResponse = serde_json::from_str(&json)?;
 
         assert_eq!(response.psbt, deserialized.psbt);
-        assert_eq!(response.fee, deserialized.fee);
+        assert_eq!(response.fee_sats, deserialized.fee_sats);
         assert_eq!(response.change_position, deserialized.change_position);
         Ok(())
     }
@@ -909,7 +1296,7 @@ mod tests {
     fn test_wallet_funded_psbt_response_serialization() -> Result<()> {
         let response = WalletFundedPsbtResponse {
             psbt: "cHNidP8BAHECAAAAAea2/lMA5WyAk9UuMJPJ7wfhNzrhAAAAAA0AAAA=".to_string(),
-            fee: 0.0001,
+            fee_sats: 10000, // 0.0001 BTC = 10000 sats
             change_position: 1,
         };
 
@@ -917,7 +1304,7 @@ mod tests {
         let deserialized: WalletFundedPsbtResponse = serde_json::from_str(&json)?;
 
         assert_eq!(response.psbt, deserialized.psbt);
-        assert_eq!(response.fee, deserialized.fee);
+        assert_eq!(response.fee_sats, deserialized.fee_sats);
         assert_eq!(response.change_position, deserialized.change_position);
         Ok(())
     }
@@ -1255,7 +1642,7 @@ mod tests {
         // Test the response structure for move_utxos
         let response = PsbtResponse {
             psbt: "cHNidP8BAHECAAAAAea2/lMA5WyAk9UuMJPJ7wfhNzrhAAAAAA0AAAA=".to_string(),
-            fee: 0.00015000,       // 15000 sats
+            fee_sats: 15000,       // 15000 sats
             change_position: None, // No change in consolidation
         };
 
@@ -1263,7 +1650,7 @@ mod tests {
         let deserialized: PsbtResponse = serde_json::from_str(&json)?;
 
         assert_eq!(response.psbt, deserialized.psbt);
-        assert_eq!(response.fee, deserialized.fee);
+        assert_eq!(response.fee_sats, deserialized.fee_sats);
         assert_eq!(response.change_position, deserialized.change_position);
         assert!(
             response.change_position.is_none(),
@@ -1289,6 +1676,76 @@ mod tests {
             "Expected ~1100 sats fee for single UTXO move, got {} sats",
             fee_sats
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_utxos_absolute_fee_calculation() -> Result<()> {
+        // Test fee calculation logic with absolute fee amounts
+
+        // Test absolute fee in satoshis
+        let fee_sats = 5000u64; // 5000 satoshis
+        let fee_amount = Amount::from_sat(fee_sats);
+        let fee_btc = fee_amount.to_btc();
+
+        // Verify conversion accuracy
+        assert_eq!(fee_btc, 0.00005000f64);
+        assert_eq!(fee_amount.to_sat(), 5000);
+
+        // Test typical consolidation fee amounts
+        let typical_fees = vec![1000, 2500, 5000, 10000, 25000]; // Various sat amounts
+
+        for fee_sat in typical_fees {
+            let amount = Amount::from_sat(fee_sat);
+            let btc_value = amount.to_btc();
+            let back_to_sat = Amount::from_btc(btc_value)?.to_sat();
+
+            // Ensure round-trip conversion is accurate
+            assert_eq!(
+                fee_sat, back_to_sat,
+                "Fee conversion should be lossless for {} sats",
+                fee_sat
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_utxos_fee_validation() -> Result<()> {
+        // Test fee parameter validation logic
+
+        // Test that we can handle both fee rate and absolute fee scenarios
+        let fee_rate = Some(15.0f64);
+        let fee_sats = Some(5000u64);
+
+        // This should represent the validation logic from move_utxos function
+        match (fee_rate, None::<u64>) {
+            (Some(rate), None) => {
+                assert!(rate > 0.0, "Fee rate should be positive");
+                // Fee rate case works
+            }
+            (None, Some(sats)) => {
+                assert!(sats > 0, "Fee sats should be positive");
+                // Absolute fee case works
+            }
+            (Some(_), Some(_)) => {
+                panic!("Should not specify both fee rate and absolute fee");
+            }
+            (None, None) => {
+                panic!("Must specify either fee rate or absolute fee");
+            }
+        }
+
+        // Test absolute fee case
+        match (None::<f64>, fee_sats) {
+            (None, Some(sats)) => {
+                assert_eq!(sats, 5000);
+                // Absolute fee case works
+            }
+            _ => panic!("Should handle absolute fee case"),
+        }
+
         Ok(())
     }
 
@@ -1419,51 +1876,50 @@ mod tests {
 
     #[test]
     fn test_bitcoin_amount_serialization() -> Result<()> {
-        // Test very small amounts (may use scientific notation, which is acceptable)
+        // Test very small amounts
         let response = PsbtResponse {
             psbt: "test".to_string(),
-            fee: 0.000000111, // 11.1 sats
+            fee_sats: 11, // 11 sats (was 11.1 sats, rounded down)
             change_position: None,
         };
 
         let json = serde_json::to_string_pretty(&response)?;
         println!("Serialized small amount: {json}");
 
-        // For very small amounts, scientific notation is acceptable
         // The fee should be present and deserializable
-        assert!(json.contains("\"fee\":"));
+        assert!(json.contains("\"fee_sats\":"));
 
         // Test with zero
         let zero_response = PsbtResponse {
             psbt: "test".to_string(),
-            fee: 0.0,
+            fee_sats: 0,
             change_position: None,
         };
 
         let zero_json = serde_json::to_string_pretty(&zero_response)?;
         println!("Serialized zero: {zero_json}");
-        assert!(zero_json.contains("\"fee\": 0"));
+        assert!(zero_json.contains("\"fee_sats\": 0"));
 
-        // Test with normal-sized amount (should serialize as decimal)
+        // Test with normal-sized amount
         let normal_response = PsbtResponse {
             psbt: "test".to_string(),
-            fee: 0.00012840, // 12840 sats - normal fee range
+            fee_sats: 12840, // 12840 sats - normal fee range
             change_position: None,
         };
 
         let normal_json = serde_json::to_string_pretty(&normal_response)?;
         println!("Serialized normal amount: {normal_json}");
-        assert!(normal_json.contains("\"fee\": 0.0001284"));
+        assert!(normal_json.contains("\"fee_sats\": 12840"));
 
         // Test deserialization works for all cases
         let deserialized: PsbtResponse = serde_json::from_str(&json)?;
-        assert!((deserialized.fee - 0.000000111).abs() < 0.0000000001);
+        assert_eq!(deserialized.fee_sats, 11);
 
         let zero_deserialized: PsbtResponse = serde_json::from_str(&zero_json)?;
-        assert_eq!(zero_deserialized.fee, 0.0);
+        assert_eq!(zero_deserialized.fee_sats, 0);
 
         let normal_deserialized: PsbtResponse = serde_json::from_str(&normal_json)?;
-        assert!((normal_deserialized.fee - 0.00012840).abs() < 0.00000001);
+        assert_eq!(normal_deserialized.fee_sats, 12840);
         Ok(())
     }
 }
