@@ -48,17 +48,20 @@ pub enum AmountInputError {
 /// let amount1 = AmountInput::from_str("0.5")?;
 /// let amount2 = AmountInput::from_str("0.5btc")?;
 /// let amount3 = AmountInput::from_str("50000000sats")?;
+/// let amount4 = AmountInput::from_str("0.5sats")?; // Supports fractional satoshis (millisatoshis)
 ///
-/// // All represent the same amount
+/// // All represent the same amount (except amount4 which is 0.5 sats)
 /// assert_eq!(amount1.as_btc(), 0.5);
 /// assert_eq!(amount2.as_btc(), 0.5);
 /// assert_eq!(amount3.as_btc(), 0.5);
+/// assert_eq!(amount4.as_millisats(), 500); // 0.5 sats = 500 millisats
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct AmountInput {
-    /// The amount using bitcoin::Amount
-    amount: Amount,
+    /// The amount in millisatoshis (1/1000 of a satoshi)
+    /// This allows for precise fee rate calculations and sub-satoshi amounts
+    millisats: u64,
 }
 
 impl AmountInput {
@@ -76,8 +79,12 @@ impl AmountInput {
     /// # Errors
     /// Returns an error if the BTC amount is invalid (e.g., exceeds maximum value).
     pub fn from_btc(btc: f64) -> Result<Self, AmountInputError> {
-        let amount = Amount::from_btc(btc)?;
-        Ok(Self { amount })
+        if btc < 0.0 {
+            return Err(AmountInputError::NegativeAmount(btc));
+        }
+        // Convert BTC to millisatoshis: 1 BTC = 100_000_000 sats = 100_000_000_000 millisats
+        let millisats = (btc * 100_000_000_000.0).round() as u64;
+        Ok(Self { millisats })
     }
 
     /// Creates a new `AmountInput` from a satoshi amount.
@@ -92,11 +99,44 @@ impl AmountInput {
     /// ```
     pub fn from_sats(sats: u64) -> Self {
         Self {
-            amount: Amount::from_sat(sats),
+            millisats: sats * 1000, // Convert sats to millisats
         }
     }
 
-    /// Returns the amount in satoshis.
+    /// Creates a new `AmountInput` from fractional satoshis (millisatoshis).
+    ///
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    ///
+    /// let amount = AmountInput::from_fractional_sats(1.5);
+    /// assert_eq!(amount.as_millisats(), 1500);
+    /// assert_eq!(amount.as_sat(), 1); // Rounds down to whole satoshis
+    /// ```
+    pub fn from_fractional_sats(sats: f64) -> Result<Self, AmountInputError> {
+        if sats < 0.0 {
+            return Err(AmountInputError::NegativeAmount(sats));
+        }
+        // Convert fractional sats to millisats: 1 sat = 1000 millisats
+        let millisats = (sats * 1000.0).round() as u64;
+        Ok(Self { millisats })
+    }
+
+    /// Creates a new `AmountInput` from millisatoshis.
+    ///
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    ///
+    /// let amount = AmountInput::from_millisats(1500);
+    /// assert_eq!(amount.as_millisats(), 1500);
+    /// assert_eq!(amount.as_sat(), 1); // 1.5 sats rounds down to 1 sat
+    /// ```
+    pub fn from_millisats(millisats: u64) -> Self {
+        Self { millisats }
+    }
+
+    /// Returns the amount in satoshis (rounded down from millisatoshis).
     ///
     /// # Examples
     /// ```
@@ -104,9 +144,12 @@ impl AmountInput {
     ///
     /// let amount = AmountInput::from_sats(100000000);
     /// assert_eq!(amount.as_sat(), 100000000);
+    ///
+    /// let fractional = AmountInput::from_millisats(1500); // 1.5 sats
+    /// assert_eq!(fractional.as_sat(), 1); // Rounds down to 1 sat
     /// ```
     pub fn as_sat(&self) -> u64 {
-        self.amount.to_sat()
+        self.millisats / 1000
     }
 
     /// Returns the amount in BTC.
@@ -119,13 +162,41 @@ impl AmountInput {
     /// assert_eq!(amount.as_btc(), 1.0);
     /// ```
     pub fn as_btc(&self) -> f64 {
-        self.amount.to_btc()
+        self.millisats as f64 / 100_000_000_000.0
     }
 
-    /// Returns the internal `bitcoin::Amount`.
+    /// Returns the amount in millisatoshis.
     ///
-    /// This method provides access to the underlying `Amount` type for
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    ///
+    /// let amount = AmountInput::from_fractional_sats(1.5)?;
+    /// assert_eq!(amount.as_millisats(), 1500);
+    /// # Ok::<(), cyberkrill::bitcoin_rpc::AmountInputError>(())
+    /// ```
+    pub fn as_millisats(&self) -> u64 {
+        self.millisats
+    }
+
+    /// Returns the amount as fractional satoshis.
+    ///
+    /// # Examples
+    /// ```
+    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    ///
+    /// let amount = AmountInput::from_millisats(1500);
+    /// assert_eq!(amount.as_fractional_sats(), 1.5);
+    /// ```
+    pub fn as_fractional_sats(&self) -> f64 {
+        self.millisats as f64 / 1000.0
+    }
+
+    /// Returns a `bitcoin::Amount` (rounded down to whole satoshis).
+    ///
+    /// This method provides access to a `bitcoin::Amount` type for
     /// operations that require precise Bitcoin amount handling.
+    /// Note: This will lose precision for sub-satoshi amounts.
     ///
     /// # Examples
     /// ```
@@ -137,7 +208,7 @@ impl AmountInput {
     /// assert_eq!(bitcoin_amount.to_sat(), 100000000);
     /// ```
     pub fn as_amount(&self) -> Amount {
-        self.amount
+        Amount::from_sat(self.as_sat())
     }
 }
 
@@ -159,11 +230,16 @@ impl FromStr for AmountInput {
                 &s[..s.len() - 3]
             };
 
-            let sats: u64 = number_part
+            // Try parsing as f64 first to support fractional satoshis
+            let sats: f64 = number_part
                 .parse()
                 .map_err(|_| AmountInputError::InvalidSatoshiAmount(number_part.to_string()))?;
 
-            return Ok(AmountInput::from_sats(sats));
+            if sats < 0.0 {
+                return Err(AmountInputError::NegativeAmount(sats));
+            }
+
+            return AmountInput::from_fractional_sats(sats);
         }
 
         // Check for BTC suffixes
@@ -646,7 +722,7 @@ impl BitcoinRpcClient {
         // Calculate fee if fee_rate is provided
         let calculated_fee_sats = if let Some(rate) = fee_rate {
             let tx_weight = Self::estimate_transaction_weight(num_inputs, num_outputs);
-            let fee_amount = Self::calculate_fee_with_feerate(tx_weight, rate.as_btc());
+            let fee_amount = Self::calculate_fee_with_feerate(tx_weight, rate.as_fractional_sats());
             fee_amount.to_sat()
         } else {
             0
@@ -703,6 +779,160 @@ impl BitcoinRpcClient {
         Ok(psbt)
     }
 
+    /// Derives a change address from input descriptors with <0;1> syntax.
+    /// Returns the first unused change address found, or None if no descriptors support change.
+    async fn derive_change_address_from_inputs(&self, inputs: &[String]) -> Result<Option<String>> {
+        for input in inputs {
+            let input = input.trim();
+
+            // Check if this looks like a descriptor with <0;1> syntax
+            if (input.contains('(') || input.contains('[')) && input.contains("<0;1>") {
+                // Extract the base descriptor and convert to change path
+                let change_descriptor = self.convert_to_change_descriptor(input)?;
+
+                // Find an unused change address
+                if let Some(change_addr) = self.find_unused_address(&change_descriptor).await? {
+                    return Ok(Some(change_addr));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Converts a receive descriptor with <0;1> syntax to a change descriptor.
+    /// Example: wpkh([...]/xpub.../<0;1>/*) -> wpkh([...]/xpub.../1/*)
+    fn convert_to_change_descriptor(&self, descriptor: &str) -> Result<String> {
+        if let Some(start) = descriptor.find("<0;1>") {
+            let before = &descriptor[..start];
+            let after = &descriptor[start + 5..]; // Skip "<0;1>"
+            let change_descriptor = format!("{before}1{after}");
+            Ok(change_descriptor)
+        } else {
+            bail!("Descriptor does not contain <0;1> syntax: {}", descriptor);
+        }
+    }
+
+    /// Finds an unused address from a descriptor using BIP 44 gap limit.
+    /// Returns the first address that has never been used (never received any transactions).
+    async fn find_unused_address(&self, descriptor: &str) -> Result<Option<String>> {
+        let mut consecutive_unused = 0;
+        const GAP_LIMIT: usize = 20; // BIP 44 standard gap limit
+        
+        // Scan addresses following BIP 44 gap limit
+        for index in 0..200 { // Reasonable upper bound
+            let indexed_descriptor = descriptor.replace('*', &index.to_string());
+
+            // Remove any existing checksum and let Bitcoin Core calculate it
+            let desc_without_checksum = if let Some(hash_pos) = indexed_descriptor.find('#') {
+                &indexed_descriptor[..hash_pos]
+            } else {
+                &indexed_descriptor
+            };
+
+            // Get the address for this index
+            if let Ok(address) = self
+                .derive_address_from_descriptor(desc_without_checksum)
+                .await
+            {
+                // Check if this address has ever been used
+                let ever_used = self.check_address_ever_used(&address).await?;
+                
+                if ever_used {
+                    consecutive_unused = 0; // Reset counter
+                } else {
+                    consecutive_unused += 1;
+                    if consecutive_unused == 1 {
+                        // This is the first unused address we found
+                        return Ok(Some(address));
+                    }
+                }
+                
+                // If we hit the gap limit, we can stop scanning
+                if consecutive_unused >= GAP_LIMIT {
+                    break;
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Derives a single address from a specific descriptor (with index).
+    async fn derive_address_from_descriptor(&self, descriptor: &str) -> Result<String> {
+        // First get the descriptor with checksum using getdescriptorinfo
+        let info_params = vec![serde_json::json!(descriptor)];
+        let info_result = self
+            .rpc_call("getdescriptorinfo", serde_json::Value::Array(info_params))
+            .await?;
+
+        let descriptor_with_checksum = info_result
+            .get("descriptor")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Failed to get descriptor with checksum"))?;
+
+        // Now derive addresses using the descriptor with checksum
+        let params = vec![serde_json::json!(descriptor_with_checksum)];
+        let result = self
+            .rpc_call("deriveaddresses", serde_json::Value::Array(params))
+            .await?;
+
+        if let Some(addresses) = result.as_array() {
+            if let Some(address) = addresses.first().and_then(|v| v.as_str()) {
+                return Ok(address.to_string());
+            }
+        }
+
+        bail!("Failed to derive address from descriptor: {}", descriptor);
+    }
+
+    /// Checks if an address has any UTXOs (used or unused).
+    async fn check_address_has_utxos(&self, address: &str) -> Result<bool> {
+        // Use listunspent to check if this address has any UTXOs
+        let params = vec![
+            serde_json::json!(0),         // minconf
+            serde_json::json!(9999999),   // maxconf
+            serde_json::json!([address]), // addresses
+        ];
+
+        let result = self
+            .rpc_call("listunspent", serde_json::Value::Array(params))
+            .await?;
+
+        if let Some(utxos) = result.as_array() {
+            Ok(!utxos.is_empty())
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Checks if an address has ever been used (received any transactions).
+    /// This is more comprehensive than checking current UTXOs as it includes spent outputs.
+    async fn check_address_ever_used(&self, address: &str) -> Result<bool> {
+        // First try getreceivedbyaddress (works if address is watch-only)
+        match self.get_received_by_address(address, 0).await {
+            Ok(amount) => Ok(amount > 0.0),
+            Err(_) => {
+                // If getreceivedbyaddress fails (address not imported), 
+                // fallback to checking current UTXOs as a best effort
+                self.check_address_has_utxos(address).await
+            }
+        }
+    }
+
+    /// Gets the total amount ever received by an address.
+    /// Returns 0.0 if the address has never received funds or is not watch-only.
+    async fn get_received_by_address(&self, address: &str, min_conf: u32) -> Result<f64> {
+        let params = vec![
+            serde_json::json!(address),
+            serde_json::json!(min_conf),
+        ];
+        
+        let result = self
+            .rpc_call("getreceivedbyaddress", serde_json::Value::Array(params))
+            .await?;
+        
+        Ok(result.as_f64().unwrap_or(0.0))
+    }
+
     pub async fn wallet_create_funded_psbt(
         &self,
         inputs: &[String], // Empty slice for automatic input selection
@@ -729,15 +959,31 @@ impl BitcoinRpcClient {
                 );
             }
             let address = parts[0];
-            let amount: f64 = parts[1].parse().map_err(|_| {
-                anyhow!(
-                    "Invalid amount '{amount}' in output '{output}'",
-                    amount = parts[1]
-                )
-            })?;
+            let amount_str = parts[1];
+
+            // Parse amount with support for btc suffix
+            let amount: f64 = if amount_str.to_lowercase().ends_with("btc") {
+                let number_part = &amount_str[..amount_str.len() - 3];
+                number_part.parse().map_err(|_| {
+                    anyhow!(
+                        "Invalid amount '{amount}' in output '{output}'",
+                        amount = parts[1]
+                    )
+                })?
+            } else {
+                amount_str.parse().map_err(|_| {
+                    anyhow!(
+                        "Invalid amount '{amount}' in output '{output}'",
+                        amount = parts[1]
+                    )
+                })?
+            };
 
             output_object.insert(address.to_string(), serde_json::json!(amount));
         }
+
+        // Try to derive a change address from input descriptors
+        let change_address = self.derive_change_address_from_inputs(inputs).await?;
 
         // Build RPC parameters
         let mut params = vec![
@@ -748,8 +994,13 @@ impl BitcoinRpcClient {
         // Add locktime (default 0)
         params.push(serde_json::json!(0));
 
-        // Build options object for fee control
+        // Build options object for fee control and change address
         let mut options = serde_json::Map::new();
+
+        // Add change address if we derived one
+        if let Some(change_addr) = change_address {
+            options.insert("changeAddress".to_string(), serde_json::json!(change_addr));
+        }
 
         if let Some(target) = conf_target {
             options.insert("conf_target".to_string(), serde_json::json!(target));
@@ -760,10 +1011,9 @@ impl BitcoinRpcClient {
         }
 
         if let Some(rate) = fee_rate {
-            // Convert sat/vB to BTC/kvB for Bitcoin Core
-            let rate_sat_per_vb = rate.as_btc(); // Use BTC value as the sat/vB rate
-            let btc_per_kvb = rate_sat_per_vb * 100_000.0 / 100_000_000.0; // sat/vB to BTC/kvB
-            options.insert("fee_rate".to_string(), serde_json::json!(btc_per_kvb));
+            // Bitcoin Core 0.21+ expects fee_rate in sat/vB directly (not BTC/kvB)
+            let rate_sat_per_vb = rate.as_fractional_sats(); // This gives us precise sat/vB including sub-satoshi rates
+            options.insert("fee_rate".to_string(), serde_json::json!(rate_sat_per_vb));
         }
 
         if !options.is_empty() {
@@ -880,8 +1130,8 @@ impl BitcoinRpcClient {
                 let num_inputs = selected_inputs.len();
                 let num_outputs = 1; // Single consolidation output
                 let tx_weight = Self::estimate_transaction_weight(num_inputs, num_outputs);
-                // For fee rate, interpret the value as sat/vB (use the BTC representation as the decimal rate)
-                let rate_sat_per_vb = rate.as_btc();
+                // For fee rate, use fractional satoshi precision for sub-1 sat/vB rates
+                let rate_sat_per_vb = rate.as_fractional_sats();
                 let fee_amount = Self::calculate_fee_with_feerate(tx_weight, rate_sat_per_vb);
                 fee_amount.to_sat()
             }
@@ -1051,8 +1301,37 @@ mod tests {
         assert!(AmountInput::from_str("-1btc").is_err());
         assert!(AmountInput::from_str("-0.5").is_err());
 
-        // Test invalid satoshi amounts (must be integers)
-        assert!(AmountInput::from_str("123.5sats").is_err());
+        // Test fractional satoshi amounts are now supported
+        assert!(AmountInput::from_str("123.5sats").is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_fractional_sats() -> Result<()> {
+        // Test fractional satoshi parsing
+        let amount = AmountInput::from_str("0.5sats")?;
+        assert_eq!(amount.as_millisats(), 500);
+        assert_eq!(amount.as_fractional_sats(), 0.5);
+        assert_eq!(amount.as_sat(), 0); // Rounds down
+
+        let amount = AmountInput::from_str("1.5sats")?;
+        assert_eq!(amount.as_millisats(), 1500);
+        assert_eq!(amount.as_fractional_sats(), 1.5);
+        assert_eq!(amount.as_sat(), 1); // Rounds down
+
+        let amount = AmountInput::from_str("123.456sats")?;
+        assert_eq!(amount.as_millisats(), 123456);
+        assert_eq!(amount.as_fractional_sats(), 123.456);
+        assert_eq!(amount.as_sat(), 123); // Rounds down
+
+        // Test direct creation from millisats
+        let amount = AmountInput::from_millisats(1500);
+        assert_eq!(amount.as_fractional_sats(), 1.5);
+
+        // Test conversion from fractional sats
+        let amount = AmountInput::from_fractional_sats(2.7)?;
+        assert_eq!(amount.as_millisats(), 2700);
 
         Ok(())
     }

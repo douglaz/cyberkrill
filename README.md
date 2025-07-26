@@ -8,7 +8,10 @@ A comprehensive CLI toolkit for Bitcoin and Lightning Network operations, writte
 
 - **Lightning Network**: BOLT11 invoice decoding, LNURL processing, and invoice generation from Lightning addresses
 - **Hardware Wallets** (optional): Full integration with Coinkite Tapsigner and Satscard devices (requires `smartcards` feature)
-- **Bitcoin Core RPC**: UTXO management, PSBT creation, and transaction building
+- **Bitcoin Core RPC**: Advanced UTXO management, PSBT creation with automatic change address derivation, and transaction building
+- **Sub-satoshi Precision**: Support for fractional satoshi fee rates (e.g., "0.1sats/vB") using millisatoshi precision
+- **Smart Coin Selection**: Automatic coin selection with max-amount limits and descriptor-based input selection
+- **Output Descriptor Support**: Use descriptors as inputs with automatic UTXO discovery and change address derivation
 - **JSON Output**: All commands output structured JSON for easy integration with other tools
 
 ## Installation
@@ -148,9 +151,22 @@ cyberkrill bitcoin list-utxos --rpc-user myuser --rpc-password mypass --descript
 ```bash
 # Create PSBT with manual inputs/outputs
 cyberkrill bitcoin create-psbt \
-  --inputs "txid1:0,txid2:1" \
+  --inputs "txid1:0" --inputs "txid2:1" \
   --outputs "bc1qaddr1:0.001,bc1qaddr2:0.002" \
-  --fee-rate 10.5
+  --fee-rate 10.5sats
+
+# Using output descriptors as inputs (NEW!)
+cyberkrill bitcoin create-psbt \
+  --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --outputs "bc1qaddr:0.001btc" \
+  --fee-rate 15sats
+
+# Mix specific UTXOs and descriptors
+cyberkrill bitcoin create-psbt \
+  --inputs "txid1:0" \
+  --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --outputs "bc1qaddr:0.001" \
+  --fee-rate 20.5sats
 
 # Save both JSON and raw PSBT
 cyberkrill bitcoin create-psbt \
@@ -169,12 +185,75 @@ cyberkrill bitcoin create-funded-psbt \
   --conf-target 6 \
   --estimate-mode CONSERVATIVE
 
-# With specific fee rate
+# With specific fee rate (supports fractional sats/vB)
 cyberkrill bitcoin create-funded-psbt \
-  --outputs "bc1qaddr1:0.001" \
-  --fee-rate 15.0 \
+  --outputs "bc1qaddr1:0.01btc" \
+  --fee-rate 0.1sats \
   --output funded.json \
   --psbt-output funded.psbt
+
+# Using descriptors with automatic change address derivation (NEW!)
+cyberkrill bitcoin create-funded-psbt \
+  --inputs "wpkh([fingerprint/84'/0'/0']xpub.../<0;1>/*)" \
+  --outputs "bc1qaddr:0.01btc" \
+  --fee-rate 1.5sats
+
+# Partial input specification with descriptors
+cyberkrill bitcoin create-funded-psbt \
+  --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --outputs "bc1qaddr:0.001" \
+  --fee-rate 20sats
+```
+
+#### Consolidate UTXOs (Move UTXOs)
+
+```bash
+# Consolidate specific UTXOs to single address
+cyberkrill bitcoin move-utxos \
+  --inputs "txid1:0" --inputs "txid2:1" --inputs "txid3:0" \
+  --destination "bc1qconsolidated_address" \
+  --fee-rate 15sats
+
+# Consolidate all UTXOs from a descriptor (NEW!)
+cyberkrill bitcoin move-utxos \
+  --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --destination "bc1qconsolidated_address" \
+  --fee-rate 20sats
+
+# Mix specific UTXOs and descriptors
+cyberkrill bitcoin move-utxos \
+  --inputs "txid1:0" \
+  --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --destination "bc1qmy_address" \
+  --fee-rate 25sats
+
+# Use absolute fee instead of fee rate
+cyberkrill bitcoin move-utxos \
+  --inputs "txid1:0" --inputs "txid2:1" \
+  --destination "bc1qmy_address" \
+  --fee 5000sats
+
+# Limit total amount moved with coin selection (NEW!)
+cyberkrill bitcoin move-utxos \
+  --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --destination "bc1qmy_address" \
+  --fee-rate 15sats \
+  --max-amount 0.5btc
+
+# Max amount in satoshis with absolute fee
+cyberkrill bitcoin move-utxos \
+  --inputs "txid1:0" --inputs "txid2:1" --inputs "txid3:2" \
+  --destination "bc1qmy_address" \
+  --fee 10000sats \
+  --max-amount 25000000sats
+
+# Save to files
+cyberkrill bitcoin move-utxos \
+  --inputs "txid1:0" --inputs "txid2:1" \
+  --destination "bc1qmy_address" \
+  --fee-rate 15sats \
+  --output consolidation.json \
+  --psbt-output consolidation.psbt
 ```
 
 ## Configuration
@@ -221,6 +300,41 @@ Then use:
 cyberkrill bitcoin list-utxos --rpc-user myuser --rpc-password mypassword --descriptor "wpkh([...]xpub...)"
 ```
 
+## Amount Input Formats
+
+CyberKrill supports flexible amount input formats across all Bitcoin commands:
+
+### Fee Rates
+- **Plain numbers**: `15` (interpreted as sats/vB)
+- **Satoshi format**: `15sats`, `0.1sats`, `20.5SATS` (supports fractional satoshis)
+- **BTC format**: `0.00000015btc` (converted to sats/vB)
+
+### Output Amounts
+- **Plain numbers**: `0.001` (interpreted as BTC)
+- **BTC format**: `0.001btc`, `1.5BTC` (case-insensitive)
+- **Satoshi format**: `100000sats`, `150000000sat`
+
+### Examples
+```bash
+# Sub-satoshi fee rates for low-priority transactions
+--fee-rate 0.1sats   # 0.1 sat/vB (using millisatoshi precision)
+--fee-rate 0.5sats   # 0.5 sat/vB
+--fee-rate 1.5sats   # 1.5 sat/vB
+
+# Various output amount formats
+--outputs "bc1qaddr:0.01btc"        # 0.01 BTC
+--outputs "bc1qaddr:1000000sats"    # 1 million satoshis
+--outputs "bc1qaddr:0.001"          # 0.001 BTC (default)
+
+# Absolute fees in move-utxos
+--fee 5000sats       # 5000 satoshi absolute fee
+--fee 0.00005btc     # 5000 satoshi in BTC format
+
+# Max amount limits with coin selection
+--max-amount 0.5btc    # 0.5 BTC maximum
+--max-amount 50000000sats  # 50 million satoshis
+```
+
 ## Example Outputs
 
 ### Lightning Invoice Decoding
@@ -263,16 +377,27 @@ cyberkrill bitcoin list-utxos --rpc-user myuser --rpc-password mypassword --desc
       "txid": "abc123...",
       "vout": 0,
       "address": "bc1qtest123...",
-      "amount_btc": 0.001,
       "amount_sats": 100000,
       "confirmations": 6,
       "spendable": true,
-      "solvable": true
+      "solvable": true,
+      "safe": true,
+      "script_pub_key": "0014...",
+      "descriptor": "wpkh([fingerprint/84'/0'/0']xpub...)#checksum"
     }
   ],
-  "total_amount_btc": 0.001,
   "total_amount_sats": 100000,
-  "utxo_count": 1
+  "total_count": 1
+}
+```
+
+### Bitcoin PSBT Creation
+
+```json
+{
+  "psbt": "cHNidP8BAHECAAAAAea2/lMA5WyAk9UuMJPJ7wfhNzrhAAAAAA0AAAA=",
+  "fee_sats": 21,
+  "change_position": 1
 }
 ```
 
