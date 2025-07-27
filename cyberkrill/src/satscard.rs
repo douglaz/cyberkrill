@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 // Satscard imports - correct API usage
 use bitcoin::{key::CompressedPublicKey, network::Network, Address};
-use rust_cktap::commands::Read;
-use rust_cktap::{pcsc::find_first, CkTapCard}; // Required trait import for read() method
+use cktap_direct::commands::Read;
+use cktap_direct::{discovery::find_first, CkTapCard}; // Required trait import for read() method
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SatscardAddressOutput {
@@ -30,7 +30,7 @@ pub async fn generate_satscard_address(slot: Option<u8>) -> Result<SatscardAddre
     // Connect to Satscard via NFC/PCSC - this automatically gets status
     let card = find_first()
         .await
-        .with_context(|| "Failed to find Satscard. Make sure PCSC daemon is running, NFC reader is connected, and Satscard is placed on the reader")?;
+        .with_context(|| "Failed to find Satscard. Make sure your USB card reader is connected and Satscard is placed on the reader")?;
 
     let mut satscard = match card {
         CkTapCard::SatsCard(satscard) => satscard,

@@ -2,6 +2,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+#[cfg(test)]
+use crate::satscard::{SatscardAddressOutput, SatscardInfo};
+
 // Tapsigner imports
 use bitcoin::{
     bip32::{DerivationPath, Xpub},
@@ -11,7 +14,7 @@ use bitcoin::{
     secp256k1::{PublicKey, Secp256k1},
     Address,
 };
-use rust_cktap::{pcsc::find_first, CkTapCard, TapSigner};
+use cktap_direct::{discovery::find_first, CkTapCard, TapSigner};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,15 +35,6 @@ pub struct TapsignerInitOutput {
     pub card_nonce: String,
     pub slot: u8,
     pub birth_block: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SatscardAddressOutput {
-    pub slot: u8,
-    pub address: String,
-    pub pubkey: String,
-    pub derivation_path: String,
-    pub is_used: bool,
 }
 
 pub async fn generate_tapsigner_address(path: &str) -> Result<TapsignerAddressOutput> {
@@ -201,8 +195,8 @@ fn parse_derivation_path(path: &str) -> Result<Vec<u32>> {
 }
 
 // Real Tapsigner device communication
-enum TapsignerDevice {
-    TapSigner(Box<TapSigner<::pcsc::Card>>),
+enum TapsignerDevice<T: cktap_direct::commands::CkTransport> {
+    TapSigner(Box<TapSigner<T>>),
 }
 
 struct DeriveResult {
@@ -210,17 +204,17 @@ struct DeriveResult {
     chain_code: Vec<u8>,
 }
 
-impl TapsignerDevice {
+impl<T: cktap_direct::commands::CkTransport> TapsignerDevice<T> {
     async fn derive_address(&mut self, path: &[u32]) -> Result<DeriveResult> {
         match self {
             TapsignerDevice::TapSigner(tapsigner) => {
-                // Convert hardened path to raw numbers for rust-cktap API
-                // rust-cktap expects raw numbers and handles hardened derivation internally
+                // Convert hardened path to raw numbers for cktap-direct API
+                // cktap-direct expects raw numbers and handles hardened derivation internally
                 let derive_path: Vec<u32> = path
                     .iter()
                     .map(|&x| {
                         if x >= 0x80000000 {
-                            x - 0x80000000 // Remove hardened bit for rust-cktap
+                            x - 0x80000000 // Remove hardened bit for cktap-direct
                         } else {
                             x
                         }
@@ -236,7 +230,10 @@ impl TapsignerDevice {
                     .await
                     .with_context(|| "Failed to derive key from Tapsigner")?;
                 Ok(DeriveResult {
-                    pubkey: derive_response.pubkey.unwrap_or([0u8; 33]).to_vec(),
+                    pubkey: derive_response
+                        .pubkey
+                        .unwrap_or(derive_response.master_pubkey)
+                        .to_vec(),
                     chain_code: derive_response.chain_code.to_vec(),
                 })
             }
@@ -244,28 +241,31 @@ impl TapsignerDevice {
     }
 }
 
-async fn connect_tapsigner() -> Result<TapsignerDevice> {
+async fn connect_tapsigner() -> Result<TapsignerDevice<cktap_direct::usb_transport::UsbTransport>> {
     // Find and connect to the first available CkTap card
     let card = find_first()
         .await
-        .with_context(|| "Failed to find Tapsigner. Make sure PCSC daemon is running, NFC reader is connected, and Tapsigner card is placed on the reader")?;
+        .with_context(|| "Failed to find Tapsigner. Make sure your USB card reader is connected and Tapsigner card is placed on the reader")?;
 
     match card {
         CkTapCard::TapSigner(tapsigner) => Ok(TapsignerDevice::TapSigner(Box::new(tapsigner))),
+        CkTapCard::SatsChip(tapsigner) => Ok(TapsignerDevice::TapSigner(Box::new(tapsigner))), // SatsChip is also a TapSigner
         _ => {
             anyhow::bail!("Found CkTap card but it's not a TapSigner. Make sure you're using a TapSigner card.")
         }
     }
 }
 
-async fn connect_tapsigner_direct() -> Result<TapSigner<::pcsc::Card>> {
+async fn connect_tapsigner_direct() -> Result<TapSigner<cktap_direct::usb_transport::UsbTransport>>
+{
     // Find and connect to the first available CkTap card - direct access for initialization
     let card = find_first()
         .await
-        .with_context(|| "Failed to find Tapsigner. Make sure PCSC daemon is running, NFC reader is connected, and Tapsigner card is placed on the reader")?;
+        .with_context(|| "Failed to find Tapsigner. Make sure your USB card reader is connected and Tapsigner card is placed on the reader")?;
 
     match card {
         CkTapCard::TapSigner(tapsigner) => Ok(tapsigner),
+        CkTapCard::SatsChip(tapsigner) => Ok(tapsigner), // SatsChip is also a TapSigner
         _ => {
             anyhow::bail!("Found CkTap card but it's not a TapSigner. Make sure you're using a TapSigner card.")
         }
@@ -555,6 +555,14 @@ mod tests {
                 .to_string(),
             derivation_path: "m/0".to_string(),
             is_used: false,
+            card_info: SatscardInfo {
+                proto: 1,
+                ver: "1.0.0".to_string(),
+                birth: 750000,
+                current_slot: 0,
+                max_slot: 9,
+                card_address: None,
+            },
         };
 
         // Test JSON serialization
