@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
-smartcards = ["rust-cktap", "pcsc"]
+default = ["smartcards"]
+smartcards = ["cktap-direct", "rusb"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
@@ -21,9 +21,9 @@ url = "2.5.0"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1.0", features = ["full"] }
 fedimint-lite = { path = "../fedimint-lite" }
-# Tapsigner support (optional feature)
-rust-cktap = { git = "https://github.com/notmandatory/rust-cktap", rev = "0016e3c6ac48a34ea7dedd07b1d88b955c57d466", features = ["pcsc"], optional = true }
-pcsc = { version = "2.8", optional = true }
+# Tapsigner/Satscard support via USB (optional feature)
+cktap-direct = { git = "https://github.com/douglaz/cktap-direct", optional = true }
+rusb = { version = "0.9", optional = true }
 bitcoin = "0.32"
 secp256k1 = "0.29"
 rand = "0.8"

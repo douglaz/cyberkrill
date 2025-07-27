@@ -1,3 +1,7 @@
+[build]
+# Default to musl target for static builds
+target = "x86_64-unknown-linux-musl"
+
 [target.x86_64-unknown-linux-musl]
-linker = "x86_64-unknown-linux-musl-gcc"
-rustflags = ["-C", "target-feature=+crt-static"]
+# Use the linker from the nix shell environment
+linker = "x86_64-unknown-linux-musl-cc"

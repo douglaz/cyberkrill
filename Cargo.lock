@@ -277,6 +277,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cktap-direct"
+version = "0.1.0"
+source = "git+https://github.com/douglaz/cktap-direct#7b5c4be65a24042bedf3834821c403c2b48d65de"
+dependencies = [
+ "bitcoin",
+ "ciborium",
+ "log",
+ "rusb",
+ "serde",
+ "serde_bytes",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
 name = "clap"
 version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -355,14 +370,14 @@ dependencies = [
  "base64",
  "bech32 0.9.1",
  "bitcoin",
+ "cktap-direct",
  "clap",
  "fedimint-lite",
  "hex",
  "lightning-invoice",
- "pcsc",
  "rand 0.8.5",
  "reqwest",
- "rust-cktap",
+ "rusb",
  "secp256k1",
  "serde",
  "serde_json",
@@ -801,6 +816,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1171693293099992e19cddea4e8b849964e9846f4acee11b3948bcc337be8776"
 
 [[package]]
+name = "libusb1-sys"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da050ade7ac4ff1ba5379af847a10a10a8e284181e060105bf8d86960ce9ce0f"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "lightning-invoice"
 version = "0.33.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -917,25 +944,6 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-targets",
-]
-
-[[package]]
-name = "pcsc"
-version = "2.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dd833ecf8967e65934c49d3521a175929839bf6d0e497f3bd0d3a2ca08943da"
-dependencies = [
- "bitflags",
- "pcsc-sys",
-]
-
-[[package]]
-name = "pcsc-sys"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e14ef017e15d2e5592a9e39a346c1dbaea5120bab7ed7106b210ef58ebd97003"
-dependencies = [
- "pkg-config",
 ]
 
 [[package]]
@@ -1180,18 +1188,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-cktap"
-version = "0.1.0"
-source = "git+https://github.com/notmandatory/rust-cktap?rev=0016e3c6ac48a34ea7dedd07b1d88b955c57d466#0016e3c6ac48a34ea7dedd07b1d88b955c57d466"
+name = "rusb"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab9f9ff05b63a786553a4c02943b74b34a988448671001e9a27e2f0565cc05a4"
 dependencies = [
- "bitcoin",
- "ciborium",
- "log",
- "pcsc",
- "serde",
- "serde_bytes",
- "thiserror 2.0.12",
- "tokio",
+ "libc",
+ "libusb1-sys",
 ]
 
 [[package]]
@@ -1679,6 +1682,12 @@ name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version_check"
