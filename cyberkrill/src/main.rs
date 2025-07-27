@@ -1,6 +1,5 @@
 pub mod bitcoin_rpc;
 mod decoder;
-mod fedimint;
 #[cfg(feature = "smartcards")]
 mod satscard;
 #[cfg(feature = "smartcards")]
@@ -417,7 +416,7 @@ fn decode_fedimint_invite(args: DecodeFedimintInviteArgs) -> anyhow::Result<()> 
         None => Box::new(std::io::stdout()),
     };
 
-    let output = fedimint::decode_fedimint_invite(&input)?;
+    let output = fedimint_lite::decode_invite(&input)?;
     serde_json::to_writer_pretty(writer, &output)?;
     Ok(())
 }
@@ -657,7 +656,7 @@ async fn fedimint_config(args: FedimintConfigArgs) -> anyhow::Result<()> {
         None => Box::new(std::io::stdout()),
     };
 
-    let config = fedimint::fetch_fedimint_config(&args.invite_code).await?;
+    let config = fedimint_lite::fetch_config(&args.invite_code).await?;
     serde_json::to_writer_pretty(writer, &config)?;
     Ok(())
 }
@@ -673,7 +672,7 @@ fn fedimint_encode(args: FedimintEncodeArgs) -> anyhow::Result<()> {
     };
 
     // Parse JSON into FedimintInviteOutput
-    let mut invite: fedimint::FedimintInviteOutput =
+    let mut invite: fedimint_lite::InviteCode =
         serde_json::from_str(&input_content).context("Failed to parse JSON input")?;
 
     // Skip API secret if requested for compatibility
@@ -682,7 +681,7 @@ fn fedimint_encode(args: FedimintEncodeArgs) -> anyhow::Result<()> {
     }
 
     // Encode to invite code
-    let encoded_invite = fedimint::encode_fedimint_invite(&invite)?;
+    let encoded_invite = fedimint_lite::encode_invite(&invite)?;
 
     // Write output
     let mut writer: Box<dyn std::io::Write> = match args.output {

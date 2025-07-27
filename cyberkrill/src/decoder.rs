@@ -412,8 +412,7 @@ mod tests {
             assert_eq!(parts.len(), 2);
             assert!(
                 parts[0].is_empty() || parts[1].is_empty(),
-                "Address '{}' should have empty part",
-                address
+                "Address '{address}' should have empty part"
             );
         }
         Ok(())

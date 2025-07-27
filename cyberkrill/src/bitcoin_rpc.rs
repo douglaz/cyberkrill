@@ -1622,8 +1622,7 @@ mod tests {
         // P2WPKH transaction: should be around 110 vbytes (rust-bitcoin's precise calculation)
         assert!(
             (109..=112).contains(&vbytes),
-            "Expected ~110 vbytes, got {}",
-            vbytes
+            "Expected ~110 vbytes, got {vbytes}"
         );
 
         // Two inputs, two outputs (typical send with change)
@@ -1632,8 +1631,7 @@ mod tests {
         // Should be around 208 vbytes
         assert!(
             (206..=212).contains(&vbytes),
-            "Expected ~208 vbytes, got {}",
-            vbytes
+            "Expected ~208 vbytes, got {vbytes}"
         );
 
         // Multiple inputs consolidation
@@ -1642,8 +1640,7 @@ mod tests {
         // Should be around 380 vbytes
         assert!(
             (378..=385).contains(&vbytes),
-            "Expected ~380 vbytes, got {}",
-            vbytes
+            "Expected ~380 vbytes, got {vbytes}"
         );
         Ok(())
     }
@@ -1664,8 +1661,7 @@ mod tests {
         let fee_sats = tx_vbytes as f64 * fee_rate;
         assert!(
             (2600.0..=2900.0).contains(&fee_sats),
-            "Expected fee ~2800 sats, got {} sats",
-            fee_sats
+            "Expected fee ~2800 sats, got {fee_sats} sats"
         );
 
         // Verify BTC conversion is correct
@@ -1689,8 +1685,7 @@ mod tests {
         let fee_sats = fee_amount.to_sat();
         assert!(
             (2600..=2900).contains(&fee_sats),
-            "Expected fee ~2800 sats, got {} sats",
-            fee_sats
+            "Expected fee ~2800 sats, got {fee_sats} sats"
         );
 
         // Compare with manual calculation to ensure consistency
@@ -1718,15 +1713,13 @@ mod tests {
         let fee_sats = fee_amount.to_sat();
         assert!(
             (13..=15).contains(&fee_sats),
-            "Expected fee ~14 sats, got {} sats",
-            fee_sats
+            "Expected fee ~14 sats, got {fee_sats} sats"
         );
 
         // Verify BTC conversion is reasonable for tiny amounts
         assert!(
             fee_btc > 0.0 && fee_btc < 0.00000100,
-            "Expected tiny BTC amount, got {}",
-            fee_btc
+            "Expected tiny BTC amount, got {fee_btc}"
         );
 
         // Test even smaller rate
@@ -1735,8 +1728,7 @@ mod tests {
         let tiny_sats = tiny_fee.to_sat();
         assert!(
             (1..=2).contains(&tiny_sats),
-            "Expected ~1 sat, got {} sats",
-            tiny_sats
+            "Expected ~1 sat, got {tiny_sats} sats"
         );
         Ok(())
     }
@@ -1838,8 +1830,7 @@ mod tests {
         // 3 inputs, 1 output should be around 246-250 vbytes at 15 sat/vB = ~3690-3750 sats
         assert!(
             (3600..=3900).contains(&fee_sats),
-            "Expected ~3700 sats fee, got {} sats",
-            fee_sats
+            "Expected ~3700 sats fee, got {fee_sats} sats"
         );
 
         // Test large consolidation (10 inputs to 1 output)
@@ -1950,8 +1941,7 @@ mod tests {
         // Single input, single output should be minimal size (~110 vbytes * 10 sat/vB = ~1100 sats)
         assert!(
             (1000..=1300).contains(&fee_sats),
-            "Expected ~1100 sats fee for single UTXO move, got {} sats",
-            fee_sats
+            "Expected ~1100 sats fee for single UTXO move, got {fee_sats} sats"
         );
         Ok(())
     }
@@ -2047,7 +2037,7 @@ mod tests {
         for invalid in invalid_inputs {
             let parts: Vec<&str> = invalid.split(':').collect();
             let is_valid = parts.len() == 2 && parts[1].parse::<u32>().is_ok();
-            assert!(!is_valid, "Input '{}' should be invalid", invalid);
+            assert!(!is_valid, "Input '{invalid}' should be invalid");
         }
         Ok(())
     }
@@ -2068,8 +2058,7 @@ mod tests {
             // All should be detected as descriptors
             assert!(
                 desc.contains('(') || desc.contains('['),
-                "Descriptor '{}' should contain parentheses or brackets",
-                desc
+                "Descriptor '{desc}' should contain parentheses or brackets"
             );
         }
 
@@ -2080,8 +2069,7 @@ mod tests {
             // None should be detected as descriptors
             assert!(
                 !non_desc.contains('(') && !non_desc.contains('['),
-                "Non-descriptor '{}' should not contain parentheses or brackets",
-                non_desc
+                "Non-descriptor '{non_desc}' should not contain parentheses or brackets"
             );
         }
         Ok(())
@@ -2131,8 +2119,7 @@ mod tests {
             // All should be detected as descriptors
             assert!(
                 desc.contains('(') || desc.contains('['),
-                "Descriptor '{}' should contain parentheses or brackets",
-                desc
+                "Descriptor '{desc}' should contain parentheses or brackets"
             );
         }
 
@@ -2143,8 +2130,7 @@ mod tests {
             // None should be detected as descriptors
             assert!(
                 !non_desc.contains('(') && !non_desc.contains('['),
-                "Non-descriptor '{}' should not contain parentheses or brackets",
-                non_desc
+                "Non-descriptor '{non_desc}' should not contain parentheses or brackets"
             );
         }
         Ok(())
