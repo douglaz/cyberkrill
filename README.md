@@ -34,11 +34,11 @@ nix run .
 git clone https://github.com/douglaz/cyberkrill.git
 cd cyberkrill
 
-# Build without hardware wallet support
+# Build with hardware wallet support (default)
 cargo build --release
 
-# Build with hardware wallet support (Tapsigner/Satscard)
-cargo build --release --features smartcards
+# Build without hardware wallet support (if needed)
+cargo build --release --no-default-features
 
 ./target/release/cyberkrill --help
 ```
@@ -80,14 +80,7 @@ cyberkrill generate-invoice user@domain.com 1000000 -o invoice.json
 
 ### Hardware Wallet Operations
 
-**Note**: Hardware wallet commands require building with the `smartcards` feature:
-```bash
-# Build with smartcard support
-cargo build --features smartcards
-
-# Or run directly with the feature
-cargo run --features smartcards -- tapsigner --help
-```
+**Note**: Hardware wallet functionality is included by default. No special build flags required.
 
 #### Tapsigner
 
@@ -97,35 +90,35 @@ cargo run --features smartcards -- tapsigner --help
 export TAPSIGNER_CVC=123456
 
 # Initialize new card (IRREVERSIBLE)
-cyberkrill tapsigner-init  # (requires --features smartcards)
+cyberkrill tapsigner-init
 
 # Initialize with custom entropy
-cyberkrill tapsigner-init --chain-code "0123456789abcdef..."  # (requires --features smartcards)
+cyberkrill tapsigner-init --chain-code "0123456789abcdef..."
 ```
 
 **Generate Bitcoin Addresses:**
 ```bash
 # Generate address with default BIP-84 path
-cyberkrill tapsigner-address  # (requires --features smartcards)
+cyberkrill tapsigner-address
 
 # Custom derivation path
-cyberkrill tapsigner-address --path "m/84'/0'/0'/0/5"  # (requires --features smartcards)
+cyberkrill tapsigner-address --path "m/84'/0'/0'/0/5"
 
 # Save to file
-cyberkrill tapsigner-address -o address.json  # (requires --features smartcards)
+cyberkrill tapsigner-address -o address.json
 ```
 
 #### Satscard
 
 ```bash
 # Generate address from current active slot
-cyberkrill satscard-address  # (requires --features smartcards)
+cyberkrill satscard-address
 
 # Generate from specific slot (0-9)
-cyberkrill satscard-address --slot 2  # (requires --features smartcards)
+cyberkrill satscard-address --slot 2
 
 # Save to file
-cyberkrill satscard-address -o satscard_address.json  # (requires --features smartcards)
+cyberkrill satscard-address -o satscard_address.json
 ```
 
 ### Bitcoin Core RPC Operations
@@ -260,16 +253,11 @@ cyberkrill move-utxos \
 
 ### Hardware Wallet Setup
 
-**Feature Requirement:**
-Hardware wallet functionality requires building with the `smartcards` feature:
-```bash
-cargo build --features smartcards
-```
-
 **System Requirements:**
 - USB NFC card reader (e.g., OMNIKEY 5022 CL)
-- PCSC daemon running (`pcscd`)
 - Coinkite Tapsigner or Satscard device
+
+**Note**: Hardware wallet functionality is included by default. No additional system dependencies like PCSC daemon are required.
 
 **Tapsigner Authentication:**
 ```bash
@@ -465,23 +453,20 @@ nix develop
 # Or install dependencies manually:
 # - Rust toolchain
 # - pkg-config
-# - pcsclite (for hardware wallet support)
+# - libusb (for hardware wallet support)
 ```
 
 ### Building and Testing
 
 ```bash
-# Build (without hardware wallet support)
+# Build (hardware wallet support included by default)
 cargo build
 
-# Build with hardware wallet support
-cargo build --features smartcards
+# Build without hardware wallet support (if needed)
+cargo build --no-default-features
 
 # Run tests
 cargo test
-
-# Run tests with hardware wallet features
-cargo test --features smartcards
 
 # Run linting
 cargo clippy
