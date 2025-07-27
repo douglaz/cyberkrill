@@ -34,7 +34,6 @@ pub struct TapsignerInitOutput {
     pub birth_block: usize,
 }
 
-
 pub async fn generate_tapsigner_address(path: &str) -> Result<TapsignerAddressOutput> {
     // Parse the derivation path and split into hardened/non-hardened parts
     let (hardened_path, non_hardened_path) = split_derivation_path(path)?;
@@ -228,7 +227,10 @@ impl<T: cktap_direct::commands::CkTransport> TapsignerDevice<T> {
                     .await
                     .with_context(|| "Failed to derive key from Tapsigner")?;
                 Ok(DeriveResult {
-                    pubkey: derive_response.pubkey.unwrap_or(derive_response.master_pubkey).to_vec(),
+                    pubkey: derive_response
+                        .pubkey
+                        .unwrap_or(derive_response.master_pubkey)
+                        .to_vec(),
                     chain_code: derive_response.chain_code.to_vec(),
                 })
             }
@@ -251,7 +253,8 @@ async fn connect_tapsigner() -> Result<TapsignerDevice<cktap_direct::usb_transpo
     }
 }
 
-async fn connect_tapsigner_direct() -> Result<TapSigner<cktap_direct::usb_transport::UsbTransport>> {
+async fn connect_tapsigner_direct() -> Result<TapSigner<cktap_direct::usb_transport::UsbTransport>>
+{
     // Find and connect to the first available CkTap card - direct access for initialization
     let card = find_first()
         .await
