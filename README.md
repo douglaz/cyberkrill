@@ -2,7 +2,7 @@
 
 <img src="https://github.com/user-attachments/assets/246dc789-4a2d-4040-afeb-3ac9045dddfb" width="200" />
 
-A comprehensive CLI toolkit for Bitcoin and Lightning Network operations, written in Rust.
+A comprehensive CLI toolkit for Bitcoin and Lightning Network operations, written in Rust. CyberKrill consists of a command-line application and a reusable core library.
 
 ## Features
 
@@ -401,6 +401,59 @@ CyberKrill supports flexible amount input formats across all Bitcoin commands:
 }
 ```
 
+## Using cyberkrill-core as a Library
+
+The `cyberkrill-core` crate can be used as a dependency in other Rust projects:
+
+### Adding as Dependency
+
+```toml
+[dependencies]
+# For basic functionality (Lightning, Bitcoin RPC, Fedimint)
+cyberkrill-core = { git = "https://github.com/douglaz/cyberkrill", default-features = false }
+
+# With smartcard support (Tapsigner, Satscard)
+cyberkrill-core = { git = "https://github.com/douglaz/cyberkrill", features = ["smartcards"] }
+
+# With all features (default)
+cyberkrill-core = { git = "https://github.com/douglaz/cyberkrill" }
+```
+
+### Example Usage
+
+```rust
+use cyberkrill_core::{decode_invoice, decode_lnurl, generate_invoice_from_address};
+use cyberkrill_core::{BitcoinRpcClient, AmountInput};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Decode Lightning invoice
+    let invoice_str = "lnbc1m1...";
+    let invoice_data = decode_invoice(invoice_str)?;
+    println!("Amount: {} msat", invoice_data.amount_msat);
+
+    // Generate invoice from Lightning address
+    let invoice = generate_invoice_from_address(
+        "user@domain.com", 
+        1000000, 
+        Some("Payment")
+    ).await?;
+
+    // Bitcoin RPC operations
+    let client = BitcoinRpcClient::new_auto(
+        "http://127.0.0.1:8332".to_string(),
+        Some(std::path::Path::new("~/.bitcoin")),
+        None, None,
+    )?;
+    
+    let utxos = client.list_utxos_for_addresses(vec![
+        "bc1qtest...".to_string()
+    ]).await?;
+
+    Ok(())
+}
+```
+
 ## Development
 
 ### Prerequisites
@@ -446,11 +499,24 @@ cargo test && cargo clippy && cargo fmt --check
 
 ## Architecture
 
-- **`src/main.rs`** - CLI interface and command dispatching
-- **`src/decoder.rs`** - Lightning invoice/LNURL decoding and generation
-- **`src/tapsigner.rs`** - Tapsigner hardware wallet operations (requires `smartcards` feature)
-- **`src/satscard.rs`** - Satscard hardware wallet operations (requires `smartcards` feature)
-- **`src/bitcoin_rpc.rs`** - Bitcoin Core RPC client and transaction building
+CyberKrill is structured as a Rust workspace with multiple crates:
+
+### cyberkrill (CLI Application)
+- **`cyberkrill/src/main.rs`** - CLI interface with argument parsing and command dispatching
+- Focuses on user interaction, input/output handling, and file operations
+- Uses `cyberkrill-core` for all business logic
+
+### cyberkrill-core (Core Library)  
+- **`cyberkrill-core/src/lib.rs`** - Public API exports for external consumption
+- **`cyberkrill-core/src/decoder.rs`** - Lightning invoice/LNURL decoding and generation
+- **`cyberkrill-core/src/tapsigner.rs`** - Tapsigner hardware wallet operations (requires `smartcards` feature)
+- **`cyberkrill-core/src/satscard.rs`** - Satscard hardware wallet operations (requires `smartcards` feature)
+- **`cyberkrill-core/src/bitcoin_rpc.rs`** - Bitcoin Core RPC client and transaction building
+- Can be used as a dependency in other Rust projects
+
+### fedimint-lite (Fedimint Library)
+- **`fedimint-lite/src/lib.rs`** - Standalone Fedimint invite code encoding/decoding
+- Fully compatible with fedimint-cli
 
 ## License
 

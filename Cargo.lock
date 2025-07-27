@@ -367,11 +367,22 @@ name = "cyberkrill"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
+ "cyberkrill-core",
+ "fedimint-lite",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "cyberkrill-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "base64",
  "bech32 0.9.1",
  "bitcoin",
  "cktap-direct",
- "clap",
  "fedimint-lite",
  "hex",
  "lightning-invoice",
