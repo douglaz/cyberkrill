@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "cyberkrill",
+    "cyberkrill-core",
     "fedimint-lite",
 ]
 resolver = "2"

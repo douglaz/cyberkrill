@@ -1,12 +1,5 @@
-pub mod bitcoin_rpc;
-mod decoder;
-#[cfg(feature = "smartcards")]
-mod satscard;
-#[cfg(feature = "smartcards")]
-mod tapsigner;
-
 use anyhow::{bail, Context};
-use bitcoin_rpc::AmountInput;
+use cyberkrill_core::AmountInput;
 use clap::{Parser, Subcommand};
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
@@ -376,7 +369,7 @@ fn decode_lnurl(args: DecodeLnurlArgs) -> anyhow::Result<()> {
         None => Box::new(std::io::stdout()),
     };
 
-    let output = decoder::decode_lnurl(&input)?;
+    let output = cyberkrill_core::decode_lnurl(&input)?;
     serde_json::to_writer_pretty(writer, &output)?;
     Ok(())
 }
@@ -396,7 +389,7 @@ fn decode_invoice(args: DecodeInvoiceArgs) -> anyhow::Result<()> {
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
 
-    let output = decoder::decode_invoice(&input)?;
+    let output = cyberkrill_core::decode_invoice(&input)?;
     serde_json::to_writer_pretty(writer, &output)?;
     Ok(())
 }
@@ -434,7 +427,7 @@ async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
 
-    let invoice = decoder::generate_invoice_from_address(
+    let invoice = cyberkrill_core::generate_invoice_from_address(
         &args.address,
         args.amount_msats,
         args.comment.as_deref(),
@@ -461,7 +454,7 @@ async fn tapsigner_address(args: TapsignerAddressArgs) -> anyhow::Result<()> {
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
 
-    let address_info = tapsigner::generate_tapsigner_address(&args.path).await?;
+    let address_info = cyberkrill_core::generate_tapsigner_address(&args.path).await?;
 
     serde_json::to_writer_pretty(writer, &address_info)?;
     Ok(())
@@ -474,7 +467,7 @@ async fn tapsigner_init(args: TapsignerInitArgs) -> anyhow::Result<()> {
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
 
-    let init_info = tapsigner::initialize_tapsigner(args.chain_code).await?;
+    let init_info = cyberkrill_core::initialize_tapsigner(args.chain_code).await?;
 
     serde_json::to_writer_pretty(writer, &init_info)?;
     Ok(())
@@ -495,7 +488,7 @@ async fn satscard_address(args: SatscardAddressArgs) -> anyhow::Result<()> {
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
 
-    let address_info = satscard::generate_satscard_address(args.slot).await?;
+    let address_info = cyberkrill_core::generate_satscard_address(args.slot).await?;
 
     serde_json::to_writer_pretty(writer, &address_info)?;
     Ok(())
@@ -518,7 +511,7 @@ async fn bitcoin_list_utxos(args: ListUtxosArgs) -> anyhow::Result<()> {
     };
 
     let bitcoin_dir = args.bitcoin_dir.as_ref().map(Path::new);
-    let client = bitcoin_rpc::BitcoinRpcClient::new_auto(
+    let client = cyberkrill_core::BitcoinRpcClient::new_auto(
         args.rpc_url,
         bitcoin_dir,
         args.rpc_user,
@@ -549,7 +542,7 @@ async fn bitcoin_create_psbt(args: CreatePsbtArgs) -> anyhow::Result<()> {
     };
 
     let bitcoin_dir = args.bitcoin_dir.as_ref().map(Path::new);
-    let client = bitcoin_rpc::BitcoinRpcClient::new_auto(
+    let client = cyberkrill_core::BitcoinRpcClient::new_auto(
         args.rpc_url,
         bitcoin_dir,
         args.rpc_user,
@@ -576,7 +569,7 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
     };
 
     let bitcoin_dir = args.bitcoin_dir.as_ref().map(Path::new);
-    let client = bitcoin_rpc::BitcoinRpcClient::new_auto(
+    let client = cyberkrill_core::BitcoinRpcClient::new_auto(
         args.rpc_url,
         bitcoin_dir,
         args.rpc_user,
@@ -609,7 +602,7 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
     };
 
     let bitcoin_dir = args.bitcoin_dir.as_ref().map(Path::new);
-    let client = bitcoin_rpc::BitcoinRpcClient::new_auto(
+    let client = cyberkrill_core::BitcoinRpcClient::new_auto(
         args.rpc_url,
         bitcoin_dir,
         args.rpc_user,
