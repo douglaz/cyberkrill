@@ -51,31 +51,31 @@ cargo build --release --features smartcards
 
 ```bash
 # Decode a BOLT11 invoice
-cyberkrill decode invoice lnbc99810310n1pju0sy7pp555srgtgcg6t4jr4j5v0jysgee4zy6nr4msylnycfjezxm5w6t3csdy9w...
+cyberkrill decode-invoice lnbc99810310n1pju0sy7pp555srgtgcg6t4jr4j5v0jysgee4zy6nr4msylnycfjezxm5w6t3csdy9w...
 
 # From file or stdin
-echo "lnbc..." | cyberkrill decode invoice
-cyberkrill decode invoice -o decoded_invoice.json
+echo "lnbc..." | cyberkrill decode-invoice
+cyberkrill decode-invoice -o decoded_invoice.json
 ```
 
 #### Decode LNURL
 
 ```bash
 # Decode LNURL strings
-cyberkrill decode lnurl lnurl1dp68gurn8ghj7mr0vdskc6r0wd6z7mrww4excttsv9un7um9wdekjmmw84jxywf5x43rvv35xgmr2enrxanr2cfcvsmnwe3jxcukvde48qukgdec89snwde3vfjxvepjxpjnjvtpxd3kvdnxx5crxwpjvyunsephsz36jf
+cyberkrill decode-lnurl lnurl1dp68gurn8ghj7mr0vdskc6r0wd6z7mrww4excttsv9un7um9wdekjmmw84jxywf5x43rvv35xgmr2enrxanr2cfcvsmnwe3jxcukvde48qukgdec89snwde3vfjxvepjxpjnjvtpxd3kvdnxx5crxwpjvyunsephsz36jf
 
 # Save to file
-cyberkrill decode lnurl <lnurl_string> -o decoded_lnurl.json
+cyberkrill decode-lnurl <lnurl_string> -o decoded_lnurl.json
 ```
 
 #### Generate Lightning Invoices
 
 ```bash
 # Generate invoice from Lightning address using LNURL-pay
-cyberkrill generate invoice user@domain.com 1000000 --comment "Payment for service"
+cyberkrill generate-invoice user@domain.com 1000000 --comment "Payment for service"
 
 # Save to file
-cyberkrill generate invoice user@domain.com 1000000 -o invoice.json
+cyberkrill generate-invoice user@domain.com 1000000 -o invoice.json
 ```
 
 ### Hardware Wallet Operations
@@ -97,35 +97,35 @@ cargo run --features smartcards -- tapsigner --help
 export TAPSIGNER_CVC=123456
 
 # Initialize new card (IRREVERSIBLE)
-cyberkrill tapsigner init  # (requires --features smartcards)
+cyberkrill tapsigner-init  # (requires --features smartcards)
 
 # Initialize with custom entropy
-cyberkrill tapsigner init --chain-code "0123456789abcdef..."  # (requires --features smartcards)
+cyberkrill tapsigner-init --chain-code "0123456789abcdef..."  # (requires --features smartcards)
 ```
 
 **Generate Bitcoin Addresses:**
 ```bash
 # Generate address with default BIP-84 path
-cyberkrill tapsigner address  # (requires --features smartcards)
+cyberkrill tapsigner-address  # (requires --features smartcards)
 
 # Custom derivation path
-cyberkrill tapsigner address --path "m/84'/0'/0'/0/5"  # (requires --features smartcards)
+cyberkrill tapsigner-address --path "m/84'/0'/0'/0/5"  # (requires --features smartcards)
 
 # Save to file
-cyberkrill tapsigner address -o address.json  # (requires --features smartcards)
+cyberkrill tapsigner-address -o address.json  # (requires --features smartcards)
 ```
 
 #### Satscard
 
 ```bash
 # Generate address from current active slot
-cyberkrill satscard address  # (requires --features smartcards)
+cyberkrill satscard-address  # (requires --features smartcards)
 
 # Generate from specific slot (0-9)
-cyberkrill satscard address --slot 2  # (requires --features smartcards)
+cyberkrill satscard-address --slot 2  # (requires --features smartcards)
 
 # Save to file
-cyberkrill satscard address -o satscard_address.json  # (requires --features smartcards)
+cyberkrill satscard-address -o satscard_address.json  # (requires --features smartcards)
 ```
 
 ### Bitcoin Core RPC Operations
@@ -134,42 +134,42 @@ cyberkrill satscard address -o satscard_address.json  # (requires --features sma
 
 ```bash
 # Using output descriptor (recommended)
-cyberkrill bitcoin list-utxos --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
+cyberkrill list-utxos --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
 
 # Using specific addresses
-cyberkrill bitcoin list-utxos --addresses "bc1qtest1,bc1qtest2"
+cyberkrill list-utxos --addresses "bc1qtest1,bc1qtest2"
 
 # Custom Bitcoin directory
-cyberkrill bitcoin list-utxos --bitcoin-dir /path/to/.bitcoin --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
+cyberkrill list-utxos --bitcoin-dir /path/to/.bitcoin --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
 
 # Username/password authentication
-cyberkrill bitcoin list-utxos --rpc-user myuser --rpc-password mypass --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
+cyberkrill list-utxos --rpc-user myuser --rpc-password mypass --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
 ```
 
 #### Create PSBT (Partially Signed Bitcoin Transaction)
 
 ```bash
 # Create PSBT with manual inputs/outputs
-cyberkrill bitcoin create-psbt \
+cyberkrill create-psbt \
   --inputs "txid1:0" --inputs "txid2:1" \
   --outputs "bc1qaddr1:0.001,bc1qaddr2:0.002" \
   --fee-rate 10.5sats
 
 # Using output descriptors as inputs (NEW!)
-cyberkrill bitcoin create-psbt \
+cyberkrill create-psbt \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --outputs "bc1qaddr:0.001btc" \
   --fee-rate 15sats
 
 # Mix specific UTXOs and descriptors
-cyberkrill bitcoin create-psbt \
+cyberkrill create-psbt \
   --inputs "txid1:0" \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --outputs "bc1qaddr:0.001" \
   --fee-rate 20.5sats
 
 # Save both JSON and raw PSBT
-cyberkrill bitcoin create-psbt \
+cyberkrill create-psbt \
   --inputs "txid:vout" \
   --outputs "address:amount" \
   --output response.json \
@@ -180,26 +180,26 @@ cyberkrill bitcoin create-psbt \
 
 ```bash
 # Let Bitcoin Core select inputs automatically
-cyberkrill bitcoin create-funded-psbt \
+cyberkrill create-funded-psbt \
   --outputs "bc1qaddr1:0.001,bc1qaddr2:0.002" \
   --conf-target 6 \
   --estimate-mode CONSERVATIVE
 
 # With specific fee rate (supports fractional sats/vB)
-cyberkrill bitcoin create-funded-psbt \
+cyberkrill create-funded-psbt \
   --outputs "bc1qaddr1:0.01btc" \
   --fee-rate 0.1sats \
   --output funded.json \
   --psbt-output funded.psbt
 
 # Using descriptors with automatic change address derivation (NEW!)
-cyberkrill bitcoin create-funded-psbt \
+cyberkrill create-funded-psbt \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub.../<0;1>/*)" \
   --outputs "bc1qaddr:0.01btc" \
   --fee-rate 1.5sats
 
 # Partial input specification with descriptors
-cyberkrill bitcoin create-funded-psbt \
+cyberkrill create-funded-psbt \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --outputs "bc1qaddr:0.001" \
   --fee-rate 20sats
@@ -209,46 +209,46 @@ cyberkrill bitcoin create-funded-psbt \
 
 ```bash
 # Consolidate specific UTXOs to single address
-cyberkrill bitcoin move-utxos \
+cyberkrill move-utxos \
   --inputs "txid1:0" --inputs "txid2:1" --inputs "txid3:0" \
   --destination "bc1qconsolidated_address" \
   --fee-rate 15sats
 
 # Consolidate all UTXOs from a descriptor (NEW!)
-cyberkrill bitcoin move-utxos \
+cyberkrill move-utxos \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --destination "bc1qconsolidated_address" \
   --fee-rate 20sats
 
 # Mix specific UTXOs and descriptors
-cyberkrill bitcoin move-utxos \
+cyberkrill move-utxos \
   --inputs "txid1:0" \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --destination "bc1qmy_address" \
   --fee-rate 25sats
 
 # Use absolute fee instead of fee rate
-cyberkrill bitcoin move-utxos \
+cyberkrill move-utxos \
   --inputs "txid1:0" --inputs "txid2:1" \
   --destination "bc1qmy_address" \
   --fee 5000sats
 
 # Limit total amount moved with coin selection (NEW!)
-cyberkrill bitcoin move-utxos \
+cyberkrill move-utxos \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --destination "bc1qmy_address" \
   --fee-rate 15sats \
   --max-amount 0.5btc
 
 # Max amount in satoshis with absolute fee
-cyberkrill bitcoin move-utxos \
+cyberkrill move-utxos \
   --inputs "txid1:0" --inputs "txid2:1" --inputs "txid3:2" \
   --destination "bc1qmy_address" \
   --fee 10000sats \
   --max-amount 25000000sats
 
 # Save to files
-cyberkrill bitcoin move-utxos \
+cyberkrill move-utxos \
   --inputs "txid1:0" --inputs "txid2:1" \
   --destination "bc1qmy_address" \
   --fee-rate 15sats \
@@ -282,10 +282,10 @@ export TAPSIGNER_CVC=123456
 **Cookie Authentication (Recommended):**
 ```bash
 # Default Bitcoin directory
-cyberkrill bitcoin list-utxos --descriptor "wpkh([...]xpub...)"
+cyberkrill list-utxos --descriptor "wpkh([...]xpub...)"
 
 # Custom directory
-cyberkrill bitcoin list-utxos --bitcoin-dir /custom/bitcoin/dir --descriptor "wpkh([...]xpub...)"
+cyberkrill list-utxos --bitcoin-dir /custom/bitcoin/dir --descriptor "wpkh([...]xpub...)"
 ```
 
 **Username/Password Authentication:**
@@ -297,7 +297,7 @@ rpcpassword=mypassword
 
 Then use:
 ```bash
-cyberkrill bitcoin list-utxos --rpc-user myuser --rpc-password mypassword --descriptor "wpkh([...]xpub...)"
+cyberkrill list-utxos --rpc-user myuser --rpc-password mypassword --descriptor "wpkh([...]xpub...)"
 ```
 
 ## Amount Input Formats
