@@ -7,6 +7,8 @@ use std::path::Path;
 const DEFAULT_BITCOIN_RPC_URL: &str = "http://127.0.0.1:8332";
 
 #[derive(Parser)]
+#[command(name = "cyberkrill")]
+#[command(about = "A CLI toolkit for Bitcoin and Lightning Network operations")]
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
@@ -14,28 +16,45 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    Decode(DecodeArgs),
-    Generate(GenerateArgs),
+    // Lightning Network Operations
+    #[command(about = "Decode BOLT11 Lightning invoice")]
+    DecodeInvoice(DecodeInvoiceArgs),
+    #[command(about = "Decode LNURL string")]
+    DecodeLnurl(DecodeLnurlArgs),
+    #[command(about = "Generate invoice from Lightning address")]
+    GenerateInvoice(GenerateInvoiceArgs),
+
+    // Fedimint Operations
+    #[command(about = "Decode Fedimint invite code")]
+    DecodeFedimintInvite(DecodeFedimintInviteArgs),
+    #[command(about = "Encode Fedimint invite code from JSON")]
+    EncodeFedimintInvite(EncodeFedimintInviteArgs),
+    #[command(about = "Fetch Fedimint federation configuration")]
+    FedimintConfig(FedimintConfigArgs),
+
+    // Hardware Wallet Operations
     #[cfg(feature = "smartcards")]
-    Tapsigner(TapsignerArgs),
+    #[command(about = "Generate Bitcoin address from Tapsigner")]
+    TapsignerAddress(TapsignerAddressArgs),
     #[cfg(feature = "smartcards")]
-    Satscard(SatscardArgs),
-    Bitcoin(BitcoinArgs),
-    Fedimint(FedimintArgs),
+    #[command(about = "Initialize Tapsigner (one-time setup)")]
+    TapsignerInit(TapsignerInitArgs),
+    #[cfg(feature = "smartcards")]
+    #[command(about = "Generate Bitcoin address from Satscard")]
+    SatscardAddress(SatscardAddressArgs),
+
+    // Bitcoin RPC Operations
+    #[command(about = "List UTXOs for addresses or descriptors")]
+    ListUtxos(ListUtxosArgs),
+    #[command(about = "Create PSBT with manual input/output specification")]
+    CreatePsbt(CreatePsbtArgs),
+    #[command(about = "Create funded PSBT with automatic input selection")]
+    CreateFundedPsbt(CreateFundedPsbtArgs),
+    #[command(about = "Consolidate/move UTXOs to a destination address")]
+    MoveUtxos(MoveUtxosArgs),
 }
 
-#[derive(clap::Args, Debug)]
-struct DecodeArgs {
-    #[clap(subcommand)]
-    command: DecodeCommands,
-}
-
-#[derive(Subcommand, Debug)]
-enum DecodeCommands {
-    Invoice(DecodeInvoiceArgs),
-    Lnurl(DecodeLnurlArgs),
-    FedimintInvite(DecodeFedimintInviteArgs),
-}
+// Lightning Network Args
 
 #[derive(clap::Args, Debug)]
 struct DecodeInvoiceArgs {
@@ -58,15 +77,27 @@ struct DecodeFedimintInviteArgs {
     output: Option<String>,
 }
 
+// Fedimint Args
+
 #[derive(clap::Args, Debug)]
-struct GenerateArgs {
-    #[clap(subcommand)]
-    command: GenerateCommands,
+struct EncodeFedimintInviteArgs {
+    /// Input JSON file path (or - for stdin)
+    input: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+    /// Skip API secrets for fedimint-cli compatibility
+    #[clap(long)]
+    skip_api_secret: bool,
 }
 
-#[derive(Subcommand, Debug)]
-enum GenerateCommands {
-    Invoice(GenerateInvoiceArgs),
+#[derive(clap::Args, Debug)]
+struct FedimintConfigArgs {
+    /// Fedimint invite code
+    invite_code: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -83,19 +114,7 @@ struct GenerateInvoiceArgs {
     output: Option<String>,
 }
 
-#[cfg(feature = "smartcards")]
-#[derive(clap::Args, Debug)]
-struct TapsignerArgs {
-    #[clap(subcommand)]
-    command: TapsignerCommands,
-}
-
-#[cfg(feature = "smartcards")]
-#[derive(Subcommand, Debug)]
-enum TapsignerCommands {
-    Address(TapsignerAddressArgs),
-    Init(TapsignerInitArgs),
-}
+// Hardware Wallet Args
 
 #[cfg(feature = "smartcards")]
 #[derive(clap::Args, Debug)]
@@ -119,18 +138,7 @@ struct TapsignerInitArgs {
     output: Option<String>,
 }
 
-#[cfg(feature = "smartcards")]
-#[derive(clap::Args, Debug)]
-struct SatscardArgs {
-    #[clap(subcommand)]
-    command: SatscardCommands,
-}
-
-#[cfg(feature = "smartcards")]
-#[derive(Subcommand, Debug)]
-enum SatscardCommands {
-    Address(SatscardAddressArgs),
-}
+// Bitcoin RPC Args
 
 #[cfg(feature = "smartcards")]
 #[derive(clap::Args, Debug)]
@@ -141,20 +149,6 @@ struct SatscardAddressArgs {
     /// Output file path
     #[clap(short, long)]
     output: Option<String>,
-}
-
-#[derive(clap::Args, Debug)]
-struct BitcoinArgs {
-    #[clap(subcommand)]
-    command: BitcoinCommands,
-}
-
-#[derive(Subcommand, Debug)]
-enum BitcoinCommands {
-    ListUtxos(ListUtxosArgs),
-    CreatePsbt(CreatePsbtArgs),
-    CreateFundedPsbt(CreateFundedPsbtArgs),
-    MoveUtxos(MoveUtxosArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -296,60 +290,33 @@ struct MoveUtxosArgs {
     psbt_output: Option<String>,
 }
 
-#[derive(clap::Args, Debug)]
-struct FedimintArgs {
-    #[clap(subcommand)]
-    command: FedimintCommands,
-}
-
-#[derive(Subcommand, Debug)]
-enum FedimintCommands {
-    Config(FedimintConfigArgs),
-    Encode(FedimintEncodeArgs),
-}
-
-#[derive(clap::Args, Debug)]
-struct FedimintConfigArgs {
-    /// Fedimint invite code
-    invite_code: String,
-    /// Output file path
-    #[clap(short, long)]
-    output: Option<String>,
-}
-
-#[derive(clap::Args, Debug)]
-struct FedimintEncodeArgs {
-    /// Input JSON file path (or - for stdin)
-    input: String,
-    /// Output file path
-    #[clap(short, long)]
-    output: Option<String>,
-    /// Skip API secrets for fedimint-cli compatibility
-    #[clap(long)]
-    skip_api_secret: bool,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Cli = Cli::parse();
     match args.command {
-        Commands::Decode(args) => decode(args)?,
-        Commands::Generate(args) => generate(args).await?,
-        #[cfg(feature = "smartcards")]
-        Commands::Tapsigner(args) => tapsigner(args).await?,
-        #[cfg(feature = "smartcards")]
-        Commands::Satscard(args) => satscard(args).await?,
-        Commands::Bitcoin(args) => bitcoin(args).await?,
-        Commands::Fedimint(args) => fedimint(args).await?,
-    }
-    Ok(())
-}
+        // Lightning Network Operations
+        Commands::DecodeInvoice(args) => decode_invoice(args)?,
+        Commands::DecodeLnurl(args) => decode_lnurl(args)?,
+        Commands::GenerateInvoice(args) => generate_invoice(args).await?,
 
-fn decode(args: DecodeArgs) -> anyhow::Result<()> {
-    match args.command {
-        DecodeCommands::Invoice(args) => decode_invoice(args)?,
-        DecodeCommands::Lnurl(args) => decode_lnurl(args)?,
-        DecodeCommands::FedimintInvite(args) => decode_fedimint_invite(args)?,
+        // Fedimint Operations
+        Commands::DecodeFedimintInvite(args) => decode_fedimint_invite(args)?,
+        Commands::EncodeFedimintInvite(args) => encode_fedimint_invite(args)?,
+        Commands::FedimintConfig(args) => fedimint_config(args).await?,
+
+        // Hardware Wallet Operations
+        #[cfg(feature = "smartcards")]
+        Commands::TapsignerAddress(args) => tapsigner_address(args).await?,
+        #[cfg(feature = "smartcards")]
+        Commands::TapsignerInit(args) => tapsigner_init(args).await?,
+        #[cfg(feature = "smartcards")]
+        Commands::SatscardAddress(args) => satscard_address(args).await?,
+
+        // Bitcoin RPC Operations
+        Commands::ListUtxos(args) => bitcoin_list_utxos(args).await?,
+        Commands::CreatePsbt(args) => bitcoin_create_psbt(args).await?,
+        Commands::CreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
+        Commands::MoveUtxos(args) => bitcoin_move_utxos(args).await?,
     }
     Ok(())
 }
@@ -414,13 +381,6 @@ fn decode_fedimint_invite(args: DecodeFedimintInviteArgs) -> anyhow::Result<()> 
     Ok(())
 }
 
-async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
-    match args.command {
-        GenerateCommands::Invoice(args) => generate_invoice(args).await?,
-    }
-    Ok(())
-}
-
 async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
@@ -435,15 +395,6 @@ async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
     .await?;
 
     serde_json::to_writer_pretty(writer, &invoice)?;
-    Ok(())
-}
-
-#[cfg(feature = "smartcards")]
-async fn tapsigner(args: TapsignerArgs) -> anyhow::Result<()> {
-    match args.command {
-        TapsignerCommands::Address(args) => tapsigner_address(args).await?,
-        TapsignerCommands::Init(args) => tapsigner_init(args).await?,
-    }
     Ok(())
 }
 
@@ -474,14 +425,6 @@ async fn tapsigner_init(args: TapsignerInitArgs) -> anyhow::Result<()> {
 }
 
 #[cfg(feature = "smartcards")]
-async fn satscard(args: SatscardArgs) -> anyhow::Result<()> {
-    match args.command {
-        SatscardCommands::Address(args) => satscard_address(args).await?,
-    }
-    Ok(())
-}
-
-#[cfg(feature = "smartcards")]
 async fn satscard_address(args: SatscardAddressArgs) -> anyhow::Result<()> {
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
@@ -491,16 +434,6 @@ async fn satscard_address(args: SatscardAddressArgs) -> anyhow::Result<()> {
     let address_info = cyberkrill_core::generate_satscard_address(args.slot).await?;
 
     serde_json::to_writer_pretty(writer, &address_info)?;
-    Ok(())
-}
-
-async fn bitcoin(args: BitcoinArgs) -> anyhow::Result<()> {
-    match args.command {
-        BitcoinCommands::ListUtxos(args) => bitcoin_list_utxos(args).await?,
-        BitcoinCommands::CreatePsbt(args) => bitcoin_create_psbt(args).await?,
-        BitcoinCommands::CreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
-        BitcoinCommands::MoveUtxos(args) => bitcoin_move_utxos(args).await?,
-    }
     Ok(())
 }
 
@@ -635,14 +568,6 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn fedimint(args: FedimintArgs) -> anyhow::Result<()> {
-    match args.command {
-        FedimintCommands::Config(args) => fedimint_config(args).await?,
-        FedimintCommands::Encode(args) => fedimint_encode(args)?,
-    }
-    Ok(())
-}
-
 async fn fedimint_config(args: FedimintConfigArgs) -> anyhow::Result<()> {
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
@@ -654,7 +579,7 @@ async fn fedimint_config(args: FedimintConfigArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn fedimint_encode(args: FedimintEncodeArgs) -> anyhow::Result<()> {
+fn encode_fedimint_invite(args: EncodeFedimintInviteArgs) -> anyhow::Result<()> {
     // Read input (JSON)
     let input_content = if args.input == "-" {
         let mut buffer = String::new();
