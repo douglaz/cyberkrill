@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+use crate::satscard::{SatscardAddressOutput, SatscardInfo};
+
 // Tapsigner imports
 use bitcoin::{
     bip32::{DerivationPath, Xpub},
@@ -552,6 +554,14 @@ mod tests {
                 .to_string(),
             derivation_path: "m/0".to_string(),
             is_used: false,
+            card_info: SatscardInfo {
+                proto: 1,
+                ver: "1.0.0".to_string(),
+                birth: 750000,
+                current_slot: 0,
+                max_slot: 9,
+                card_address: None,
+            },
         };
 
         // Test JSON serialization
