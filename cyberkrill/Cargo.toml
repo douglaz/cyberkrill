@@ -1,0 +1,30 @@
+[package]
+name = "cyberkrill"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+smartcards = ["rust-cktap", "pcsc"]
+
+[dependencies]
+anyhow = { version = "1.0.95", features = ["backtrace"] }
+clap = { version = "4.5.28", features = ["derive", "env"] }
+thiserror = "1.0"
+hex = { version = "0.4.3", features = ["serde"] }
+lightning-invoice = { version = "0.33.1", features = ["serde"] }
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+bech32 = "0.9.1"
+base64 = "0.22"
+url = "2.5.0"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1.0", features = ["full"] }
+fedimint-lite = { path = "../fedimint-lite" }
+# Tapsigner support (optional feature)
+rust-cktap = { git = "https://github.com/notmandatory/rust-cktap", rev = "0016e3c6ac48a34ea7dedd07b1d88b955c57d466", features = ["pcsc"], optional = true }
+pcsc = { version = "2.8", optional = true }
+bitcoin = "0.32"
+secp256k1 = "0.29"
+rand = "0.8"
+sha2 = "0.10"

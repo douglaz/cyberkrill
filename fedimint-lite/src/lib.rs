@@ -1,6 +1,41 @@
+//! # fedimint-lite
+//!
+//! A lightweight library for encoding and decoding Fedimint invite codes.
+//!
+//! ## Features
+//! - Decode Fedimint invite codes (bech32m format)
+//! - Encode invite codes from structured data
+//! - Fetch federation configuration from invite codes
+//! - Full compatibility with fedimint-cli
+//!
+//! ## Example
+//! ```no_run
+//! use fedimint_lite::{decode_invite, encode_invite};
+//!
+//! // Decode an invite code
+//! let invite_code = "fed11qgqzx...";
+//! let decoded = decode_invite(invite_code)?;
+//! println!("Federation ID: {}", decoded.federation_id);
+//!
+//! // Encode back to invite code
+//! let encoded = encode_invite(&decoded)?;
+//! assert_eq!(invite_code, encoded);
+//! # Ok::<(), anyhow::Error>(())
+//! ```
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+// Re-export main functions with simpler names
+pub use crate::{
+    decode_fedimint_invite as decode_invite, encode_fedimint_invite as encode_invite,
+    fetch_fedimint_config as fetch_config,
+};
+
+// Re-export types with simpler names
+pub type InviteCode = FedimintInviteOutput;
+pub type FederationConfig = FederationConfigOutput;
 
 // Fedimint invite code structures and functions
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
