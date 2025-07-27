@@ -1,14 +1,15 @@
 pub mod bitcoin_rpc;
 mod decoder;
+mod fedimint;
 #[cfg(feature = "smartcards")]
 mod satscard;
 #[cfg(feature = "smartcards")]
 mod tapsigner;
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use bitcoin_rpc::AmountInput;
 use clap::{Parser, Subcommand};
-use std::io::{BufWriter, Read};
+use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 
 const DEFAULT_BITCOIN_RPC_URL: &str = "http://127.0.0.1:8332";
@@ -28,6 +29,7 @@ enum Commands {
     #[cfg(feature = "smartcards")]
     Satscard(SatscardArgs),
     Bitcoin(BitcoinArgs),
+    Fedimint(FedimintArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -40,6 +42,7 @@ struct DecodeArgs {
 enum DecodeCommands {
     Invoice(DecodeInvoiceArgs),
     Lnurl(DecodeLnurlArgs),
+    FedimintInvite(DecodeFedimintInviteArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -51,6 +54,13 @@ struct DecodeInvoiceArgs {
 
 #[derive(clap::Args, Debug)]
 struct DecodeLnurlArgs {
+    input: Option<String>,
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+#[derive(clap::Args, Debug)]
+struct DecodeFedimintInviteArgs {
     input: Option<String>,
     #[clap(short, long)]
     output: Option<String>,
@@ -294,6 +304,39 @@ struct MoveUtxosArgs {
     psbt_output: Option<String>,
 }
 
+#[derive(clap::Args, Debug)]
+struct FedimintArgs {
+    #[clap(subcommand)]
+    command: FedimintCommands,
+}
+
+#[derive(Subcommand, Debug)]
+enum FedimintCommands {
+    Config(FedimintConfigArgs),
+    Encode(FedimintEncodeArgs),
+}
+
+#[derive(clap::Args, Debug)]
+struct FedimintConfigArgs {
+    /// Fedimint invite code
+    invite_code: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+#[derive(clap::Args, Debug)]
+struct FedimintEncodeArgs {
+    /// Input JSON file path (or - for stdin)
+    input: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+    /// Skip API secrets for fedimint-cli compatibility
+    #[clap(long)]
+    skip_api_secret: bool,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Cli = Cli::parse();
@@ -305,6 +348,7 @@ async fn main() -> anyhow::Result<()> {
         #[cfg(feature = "smartcards")]
         Commands::Satscard(args) => satscard(args).await?,
         Commands::Bitcoin(args) => bitcoin(args).await?,
+        Commands::Fedimint(args) => fedimint(args).await?,
     }
     Ok(())
 }
@@ -313,6 +357,7 @@ fn decode(args: DecodeArgs) -> anyhow::Result<()> {
     match args.command {
         DecodeCommands::Invoice(args) => decode_invoice(args)?,
         DecodeCommands::Lnurl(args) => decode_lnurl(args)?,
+        DecodeCommands::FedimintInvite(args) => decode_fedimint_invite(args)?,
     }
     Ok(())
 }
@@ -353,6 +398,26 @@ fn decode_invoice(args: DecodeInvoiceArgs) -> anyhow::Result<()> {
     };
 
     let output = decoder::decode_invoice(&input)?;
+    serde_json::to_writer_pretty(writer, &output)?;
+    Ok(())
+}
+
+fn decode_fedimint_invite(args: DecodeFedimintInviteArgs) -> anyhow::Result<()> {
+    let input = match args.input {
+        Some(input) => input,
+        None => {
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer.trim().to_string()
+        }
+    };
+
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(std::io::stdout()),
+    };
+
+    let output = fedimint::decode_fedimint_invite(&input)?;
     serde_json::to_writer_pretty(writer, &output)?;
     Ok(())
 }
@@ -575,5 +640,56 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
     }
 
     serde_json::to_writer_pretty(writer, &result)?;
+    Ok(())
+}
+
+async fn fedimint(args: FedimintArgs) -> anyhow::Result<()> {
+    match args.command {
+        FedimintCommands::Config(args) => fedimint_config(args).await?,
+        FedimintCommands::Encode(args) => fedimint_encode(args)?,
+    }
+    Ok(())
+}
+
+async fn fedimint_config(args: FedimintConfigArgs) -> anyhow::Result<()> {
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(std::io::stdout()),
+    };
+
+    let config = fedimint::fetch_fedimint_config(&args.invite_code).await?;
+    serde_json::to_writer_pretty(writer, &config)?;
+    Ok(())
+}
+
+fn fedimint_encode(args: FedimintEncodeArgs) -> anyhow::Result<()> {
+    // Read input (JSON)
+    let input_content = if args.input == "-" {
+        let mut buffer = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut buffer)?;
+        buffer
+    } else {
+        std::fs::read_to_string(&args.input)?
+    };
+
+    // Parse JSON into FedimintInviteOutput
+    let mut invite: fedimint::FedimintInviteOutput =
+        serde_json::from_str(&input_content).context("Failed to parse JSON input")?;
+
+    // Skip API secret if requested for compatibility
+    if args.skip_api_secret {
+        invite.api_secret = None;
+    }
+
+    // Encode to invite code
+    let encoded_invite = fedimint::encode_fedimint_invite(&invite)?;
+
+    // Write output
+    let mut writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(std::io::stdout()),
+    };
+
+    writeln!(writer, "{encoded_invite}")?;
     Ok(())
 }

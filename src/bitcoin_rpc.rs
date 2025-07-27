@@ -1618,7 +1618,7 @@ mod tests {
 
         // Single input, single output
         let weight = BitcoinRpcClient::estimate_transaction_weight(1, 1);
-        let vbytes = ((weight.to_wu() + 3) / 4) as u32;
+        let vbytes = weight.to_wu().div_ceil(4) as u32;
         // P2WPKH transaction: should be around 110 vbytes (rust-bitcoin's precise calculation)
         assert!(
             (109..=112).contains(&vbytes),
@@ -1628,7 +1628,7 @@ mod tests {
 
         // Two inputs, two outputs (typical send with change)
         let weight = BitcoinRpcClient::estimate_transaction_weight(2, 2);
-        let vbytes = ((weight.to_wu() + 3) / 4) as u32;
+        let vbytes = weight.to_wu().div_ceil(4) as u32;
         // Should be around 208 vbytes
         assert!(
             (206..=212).contains(&vbytes),
@@ -1638,7 +1638,7 @@ mod tests {
 
         // Multiple inputs consolidation
         let weight = BitcoinRpcClient::estimate_transaction_weight(5, 1);
-        let vbytes = ((weight.to_wu() + 3) / 4) as u32;
+        let vbytes = weight.to_wu().div_ceil(4) as u32;
         // Should be around 380 vbytes
         assert!(
             (378..=385).contains(&vbytes),
@@ -1656,7 +1656,7 @@ mod tests {
         let fee_rate = 20.0f64; // sat/vB
 
         let tx_weight = BitcoinRpcClient::estimate_transaction_weight(num_inputs, num_outputs);
-        let tx_vbytes = ((tx_weight.to_wu() + 3) / 4) as u32;
+        let tx_vbytes = tx_weight.to_wu().div_ceil(4) as u32;
         let fee_btc = (tx_vbytes as f64 * fee_rate) / 100_000_000.0;
 
         // Fee calculation should be: vbytes * 20 sat/vB converted to BTC
@@ -1694,7 +1694,7 @@ mod tests {
         );
 
         // Compare with manual calculation to ensure consistency
-        let tx_vbytes = ((tx_weight.to_wu() + 3) / 4) as u32;
+        let tx_vbytes = tx_weight.to_wu().div_ceil(4) as u32;
         let manual_fee_btc = (tx_vbytes as f64 * fee_rate) / 100_000_000.0;
         assert!(
             (fee_btc - manual_fee_btc).abs() < 0.0000001,
@@ -1980,8 +1980,7 @@ mod tests {
             // Ensure round-trip conversion is accurate
             assert_eq!(
                 fee_sat, back_to_sat,
-                "Fee conversion should be lossless for {} sats",
-                fee_sat
+                "Fee conversion should be lossless for {fee_sat} sats"
             );
         }
 
@@ -2093,7 +2092,7 @@ mod tests {
         // Test parsing Vec<String> inputs instead of comma-separated strings
         let standard_inputs = vec!["txid1:0".to_string(), "txid2:1".to_string()];
         let descriptor_input = vec!["wpkh([fingerprint/84'/0'/0']xpub...)".to_string()];
-        let mixed_inputs = vec![
+        let mixed_inputs = [
             "txid1:0".to_string(),
             "wpkh([fingerprint/84'/0'/0']xpub...)".to_string(),
             "txid2:1".to_string(),
