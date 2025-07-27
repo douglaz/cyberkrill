@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+#[cfg(test)]
 use crate::satscard::{SatscardAddressOutput, SatscardInfo};
 
 // Tapsigner imports
