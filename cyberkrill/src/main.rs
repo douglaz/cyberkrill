@@ -52,6 +52,10 @@ enum Commands {
     CreateFundedPsbt(CreateFundedPsbtArgs),
     #[command(about = "Consolidate/move UTXOs to a destination address")]
     MoveUtxos(MoveUtxosArgs),
+    
+    // BDK Wallet Operations
+    #[command(about = "List UTXOs using BDK wallet (no blockchain connection)")]
+    BdkListUtxos(BdkListUtxosArgs),
 }
 
 // Lightning Network Args
@@ -290,6 +294,30 @@ struct MoveUtxosArgs {
     psbt_output: Option<String>,
 }
 
+// BDK Wallet Args
+
+#[derive(clap::Args, Debug)]
+struct BdkListUtxosArgs {
+    /// Output descriptor (e.g., "wpkh([fingerprint/84'/0'/0']xpub...)")
+    #[clap(long, required = true)]
+    descriptor: String,
+    /// Bitcoin network (mainnet, testnet, signet, regtest)
+    #[clap(long, default_value = "mainnet")]
+    network: String,
+    /// Bitcoin directory path (for reading wallet data)
+    #[clap(long)]
+    bitcoin_dir: Option<String>,
+    /// Electrum server URL (e.g., ssl://electrum.blockstream.info:50002)
+    #[clap(long)]
+    electrum: Option<String>,
+    /// Stop gap for address derivation scanning
+    #[clap(long, default_value = "200")]
+    stop_gap: u32,
+    /// Output file path for JSON response
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Cli = Cli::parse();
@@ -317,6 +345,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::CreatePsbt(args) => bitcoin_create_psbt(args).await?,
         Commands::CreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
         Commands::MoveUtxos(args) => bitcoin_move_utxos(args).await?,
+        
+        // BDK Wallet Operations
+        Commands::BdkListUtxos(args) => bdk_list_utxos(args).await?,
     }
     Ok(())
 }
@@ -608,5 +639,52 @@ fn encode_fedimint_invite(args: EncodeFedimintInviteArgs) -> anyhow::Result<()> 
     };
 
     writeln!(writer, "{encoded_invite}")?;
+    Ok(())
+}
+
+async fn bdk_list_utxos(args: BdkListUtxosArgs) -> anyhow::Result<()> {
+    
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    // Parse network
+    let network = match args.network.to_lowercase().as_str() {
+        "mainnet" | "bitcoin" => cyberkrill_core::Network::Bitcoin,
+        "testnet" => cyberkrill_core::Network::Testnet,
+        "signet" => cyberkrill_core::Network::Signet,
+        "regtest" => cyberkrill_core::Network::Regtest,
+        _ => bail!("Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest", args.network),
+    };
+
+    let result = if let Some(electrum_url) = args.electrum {
+        // Use Electrum backend to scan blockchain
+        cyberkrill_core::scan_and_list_utxos_electrum(
+            &args.descriptor,
+            network,
+            &electrum_url,
+            args.stop_gap,
+        )
+        .await?
+    } else if let Some(bitcoin_dir) = args.bitcoin_dir {
+        // Use Bitcoin Core backend to scan blockchain
+        let bitcoin_path = std::path::Path::new(&bitcoin_dir);
+        cyberkrill_core::scan_and_list_utxos_bitcoind(
+            &args.descriptor,
+            network,
+            bitcoin_path,
+        )
+        .await?
+    } else {
+        // Use local wallet (no blockchain connection)
+        let utxos = cyberkrill_core::list_utxos_bdk(&args.descriptor, network)?;
+        utxos
+    };
+
+    // Create summary
+    let summary = cyberkrill_core::get_utxo_summary(result);
+    
+    serde_json::to_writer_pretty(writer, &summary)?;
     Ok(())
 }
