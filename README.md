@@ -123,6 +123,21 @@ cyberkrill satscard-address -o satscard_address.json
 
 ### Bitcoin Core RPC Operations
 
+CyberKrill provides three distinct commands for creating PSBTs (Partially Signed Bitcoin Transactions), each designed for different use cases:
+
+#### PSBT Creation Commands - Key Differences
+
+| Command | Input Selection | Output Specification | Change Handling | Primary Use Case |
+|---------|----------------|---------------------|-----------------|------------------|
+| **`create-psbt`** | Manual - you specify exact UTXOs | Manual - you specify all outputs including change | Manual - you calculate and add change output | Full control transactions |
+| **`create-funded-psbt`** | Automatic - wallet selects optimal inputs | Manual - you specify recipient outputs only | Automatic - wallet adds change output | Standard send transactions |
+| **`move-utxos`** | Manual - you specify UTXOs to consolidate | Automatic - single output (total - fee) | N/A - all funds go to destination | UTXO consolidation |
+
+**Quick Guide:**
+- **`create-psbt`**: Use when you need complete control over every aspect of the transaction
+- **`create-funded-psbt`**: Use for typical "send payment" scenarios where you want the wallet to handle complexity
+- **`move-utxos`**: Use specifically for consolidating UTXOs or moving all funds from specific inputs
+
 #### List UTXOs
 
 ```bash
@@ -139,10 +154,12 @@ cyberkrill list-utxos --bitcoin-dir /path/to/.bitcoin --descriptor "wpkh([finger
 cyberkrill list-utxos --rpc-user myuser --rpc-password mypass --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
 ```
 
-#### Create PSBT (Partially Signed Bitcoin Transaction)
+#### Create PSBT (Manual Transaction Building)
+
+**When to use**: When you need complete control over every aspect of the transaction - which UTXOs to spend, exact output amounts, and manual change calculation. Perfect for advanced use cases like specific UTXO selection for privacy or when implementing custom transaction logic.
 
 ```bash
-# Create PSBT with manual inputs/outputs
+# Create PSBT with manual inputs/outputs - you calculate change yourself
 cyberkrill create-psbt \
   --inputs "txid1:0" --inputs "txid2:1" \
   --outputs "bc1qaddr1:0.001,bc1qaddr2:0.002" \
@@ -169,10 +186,12 @@ cyberkrill create-psbt \
   --psbt-output transaction.psbt
 ```
 
-#### Create Funded PSBT (Automatic Input Selection)
+#### Create Funded PSBT (Automatic Input Selection & Change)
+
+**When to use**: For standard "send payment" transactions where you want Bitcoin Core to handle the complexity. The wallet automatically selects optimal inputs, calculates fees, and adds a change output. This is the recommended approach for most payment scenarios.
 
 ```bash
-# Let Bitcoin Core select inputs automatically
+# Let Bitcoin Core select inputs and handle change automatically
 cyberkrill create-funded-psbt \
   --outputs "bc1qaddr1:0.001,bc1qaddr2:0.002" \
   --conf-target 6 \
@@ -200,8 +219,10 @@ cyberkrill create-funded-psbt \
 
 #### Consolidate UTXOs (Move UTXOs)
 
+**When to use**: Specifically for UTXO consolidation or moving all funds from selected inputs to a single destination. Unlike the other commands, you don't specify output amounts - the command automatically sends (total input value - fee) to the destination address. Perfect for cleaning up fragmented UTXOs or emptying specific addresses.
+
 ```bash
-# Consolidate specific UTXOs to single address
+# Consolidate specific UTXOs to single address - output = inputs - fee
 cyberkrill move-utxos \
   --inputs "txid1:0" --inputs "txid2:1" --inputs "txid3:0" \
   --destination "bc1qconsolidated_address" \
