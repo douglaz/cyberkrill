@@ -154,12 +154,9 @@ pub async fn scan_and_list_utxos_electrum(
         let request = wallet
             .start_full_scan()
             .inspect({
-                let mut stdout = std::io::stdout();
                 move |keychain, spk_i, _| {
-                    use std::io::Write;
                     // Progress output to stderr to keep stdout clean for JSON
-                    let _ = write!(stdout, "\rScanning {keychain:?} {spk_i}...");
-                    let _ = stdout.flush();
+                    eprint!("\rScanning {keychain:?} {spk_i}...");
                 }
             })
             .build();
