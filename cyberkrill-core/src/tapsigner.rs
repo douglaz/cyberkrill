@@ -436,11 +436,7 @@ mod tests {
 
         for path in invalid_paths {
             let result = parse_derivation_path(path);
-            assert!(
-                result.is_err(),
-                "Path '{path}' should be invalid",
-                path = path
-            );
+            assert!(result.is_err(), "Path '{path}' should be invalid");
         }
         Ok(())
     }
@@ -579,16 +575,12 @@ mod tests {
 
         // Valid slots
         for slot in 0..=9 {
-            assert!(slot <= max_slot, "Slot {slot} should be valid", slot = slot);
+            assert!(slot <= max_slot, "Slot {slot} should be valid");
         }
 
         // Invalid slots
         for slot in 10..=20 {
-            assert!(
-                slot > max_slot,
-                "Slot {slot} should be invalid",
-                slot = slot
-            );
+            assert!(slot > max_slot, "Slot {slot} should be invalid");
         }
     }
 

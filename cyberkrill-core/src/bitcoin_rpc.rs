@@ -428,7 +428,7 @@ impl BitcoinRpcClient {
         let response = request.send().await?;
 
         if !response.status().is_success() {
-            bail!("HTTP error: {}", response.status());
+            bail!("HTTP error: {status}", status = response.status());
         }
 
         let json: serde_json::Value = response.json().await?;
@@ -808,7 +808,7 @@ impl BitcoinRpcClient {
             let change_descriptor = format!("{before}1{after}");
             Ok(change_descriptor)
         } else {
-            bail!("Descriptor does not contain <0;1> syntax: {}", descriptor);
+            bail!("Descriptor does not contain <0;1> syntax: {descriptor}");
         }
     }
 
@@ -882,7 +882,7 @@ impl BitcoinRpcClient {
             }
         }
 
-        bail!("Failed to derive address from descriptor: {}", descriptor);
+        bail!("Failed to derive address from descriptor: {descriptor}");
     }
 
     /// Checks if an address has any UTXOs (used or unused).

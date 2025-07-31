@@ -284,10 +284,10 @@ pub async fn scan_and_list_utxos_bitcoind(
                     let script = bitcoin::ScriptBuf::from(script_bytes);
                     match bitcoin::Address::from_script(&script, _network) {
                         Ok(addr) => addr.to_string(),
-                        Err(_) => format!("script:{}", utxo.script_pub_key), // Fallback to script hex
+                        Err(_) => format!("script:{script}", script = utxo.script_pub_key), // Fallback to script hex
                     }
                 }
-                Err(_) => format!("script:{}", utxo.script_pub_key), // Fallback to script hex
+                Err(_) => format!("script:{script}", script = utxo.script_pub_key), // Fallback to script hex
             }
         };
 
