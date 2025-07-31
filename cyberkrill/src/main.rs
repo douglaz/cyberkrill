@@ -46,15 +46,23 @@ enum Commands {
     // Bitcoin RPC Operations
     #[command(about = "List UTXOs for addresses or descriptors")]
     ListUtxos(ListUtxosArgs),
-    #[command(about = "Create PSBT with manual input/output specification (you specify exact inputs, outputs, and change)")]
+    #[command(
+        about = "Create PSBT with manual input/output specification (you specify exact inputs, outputs, and change)"
+    )]
     CreatePsbt(CreatePsbtArgs),
-    #[command(about = "Create funded PSBT with automatic input selection and change output (wallet handles coin selection)")]
+    #[command(
+        about = "Create funded PSBT with automatic input selection and change output (wallet handles coin selection)"
+    )]
     CreateFundedPsbt(CreateFundedPsbtArgs),
-    #[command(about = "Consolidate/move UTXOs to a single destination address (output = total inputs - fee)")]
+    #[command(
+        about = "Consolidate/move UTXOs to a single destination address (output = total inputs - fee)"
+    )]
     MoveUtxos(MoveUtxosArgs),
 
     // BDK Wallet Operations
-    #[command(about = "List UTXOs using BDK wallet (supports Bitcoin Core, Electrum backends, or local wallet)")]
+    #[command(
+        about = "List UTXOs using BDK wallet (supports Bitcoin Core, Electrum backends, or local wallet)"
+    )]
     BdkListUtxos(BdkListUtxosArgs),
 }
 
@@ -321,10 +329,13 @@ struct BdkListUtxosArgs {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize rustls crypto provider for TLS connections (required for Electrum)
-    if let Err(_) = rustls::crypto::ring::default_provider().install_default() {
+    if rustls::crypto::ring::default_provider()
+        .install_default()
+        .is_err()
+    {
         bail!("Failed to initialize rustls crypto provider");
     }
-    
+
     let args: Cli = Cli::parse();
     match args.command {
         // Lightning Network Operations

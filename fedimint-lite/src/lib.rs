@@ -107,7 +107,7 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
 
     for i in 0..num_parts {
         if pos >= bytes.len() {
-            anyhow::bail!("Unexpected end of data at part {}", i);
+            anyhow::bail!("Unexpected end of data at part {i}");
         }
 
         // Read variant discriminator (VarInt)
@@ -160,7 +160,7 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
                 pos += bytes_read;
 
                 if fed_id_len != 32 {
-                    anyhow::bail!("Federation ID length should be 32, got {}", fed_id_len);
+                    anyhow::bail!("Federation ID length should be 32, got {fed_id_len}");
                 }
 
                 if pos + 32 > bytes.len() {
@@ -216,7 +216,7 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
 // Read BigSize VarInt at specific position, returns (value, bytes_consumed)
 fn read_varint_at(bytes: &[u8], pos: usize) -> Result<(u64, usize)> {
     if pos >= bytes.len() {
-        anyhow::bail!("Position {} exceeds buffer length {}", pos, bytes.len());
+        anyhow::bail!("Position {pos} exceeds buffer length {}", bytes.len());
     }
 
     let first_byte = bytes[pos];
@@ -287,7 +287,7 @@ pub fn encode_fedimint_invite(invite: &FedimintInviteOutput) -> Result<String> {
     // Only support bech32m format
     let format = invite.encoding_format.as_str();
     if format != "bech32m" {
-        anyhow::bail!("Only bech32m encoding format is supported, got: {}", format);
+        anyhow::bail!("Only bech32m encoding format is supported, got: {format}");
     }
 
     // Build the consensus-encoded bytes
@@ -486,7 +486,7 @@ pub async fn fetch_fedimint_config(invite_code: &str) -> Result<FederationConfig
                 return parse_federation_config(config, &invite);
             }
             Err(e) => {
-                eprintln!("Failed to fetch config from {}: {}", guardian.url, e);
+                eprintln!("Failed to fetch config from {}: {e}", guardian.url);
                 last_error = Some(e);
                 continue;
             }
@@ -521,7 +521,10 @@ async fn fetch_config_from_guardian(
     };
 
     if !response.status().is_success() {
-        anyhow::bail!("HTTP request failed with status: {}", response.status());
+        anyhow::bail!(
+            "HTTP request failed with status: {status}",
+            status = response.status()
+        );
     }
 
     let config: serde_json::Value = response
