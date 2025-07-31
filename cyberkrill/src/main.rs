@@ -320,6 +320,11 @@ struct BdkListUtxosArgs {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize rustls crypto provider for TLS connections (required for Electrum)
+    if let Err(_) = rustls::crypto::ring::default_provider().install_default() {
+        bail!("Failed to initialize rustls crypto provider");
+    }
+    
     let args: Cli = Cli::parse();
     match args.command {
         // Lightning Network Operations
