@@ -28,20 +28,20 @@ pub struct BdkUtxo {
 }
 
 /// Expand multipath descriptors (e.g., <0;1>) into individual descriptors
-/// 
+///
 /// BDK 2.0 doesn't natively support multipath descriptors, which are commonly used
 /// in wallet descriptors to specify both external (0) and internal/change (1) derivation paths.
 /// This function expands descriptors like "wpkh(xpub.../<0;1>/*)" into:
 /// - "wpkh(xpub.../0/*)" for external addresses
 /// - "wpkh(xpub.../1/*)" for internal (change) addresses
-/// 
+///
 /// This is necessary for compatibility with descriptors from other tools like
 /// Bitcoin Core's `getdescriptorinfo` which often use this notation.
 fn expand_multipath_descriptor(descriptor: &str) -> Vec<String> {
     if descriptor.contains("<") && descriptor.contains(">") {
         // Extract the multipath part and expand it
         let mut expanded = Vec::new();
-        
+
         // For now, handle the simple case of <0;1>
         if descriptor.contains("<0;1>") {
             expanded.push(descriptor.replace("<0;1>", "0"));
@@ -50,7 +50,7 @@ fn expand_multipath_descriptor(descriptor: &str) -> Vec<String> {
             // If it's a different multipath pattern, just return the original
             expanded.push(descriptor.to_string());
         }
-        
+
         expanded
     } else {
         vec![descriptor.to_string()]
@@ -61,16 +61,17 @@ fn expand_multipath_descriptor(descriptor: &str) -> Vec<String> {
 pub fn list_utxos_bdk(descriptor: &str, network: Network) -> Result<Vec<BdkUtxo>> {
     let descriptors = expand_multipath_descriptor(descriptor);
     let mut all_utxos = Vec::new();
-    
+
     for desc in descriptors {
         // Create a new in-memory wallet with only external descriptor
         match Wallet::create_single(desc.clone())
             .network(network)
-            .create_wallet_no_persist() {
+            .create_wallet_no_persist()
+        {
             Ok(wallet) => {
                 // Get the wallet's UTXOs
                 let utxos = wallet.list_unspent();
-                
+
                 for utxo in utxos {
                     // Get the address for this output
                     let script = &utxo.txout.script_pubkey;
@@ -86,7 +87,9 @@ pub fn list_utxos_bdk(descriptor: &str, network: Network) -> Result<Vec<BdkUtxo>
 
                     // Calculate confirmations based on chain position
                     let confirmations = match &utxo.chain_position {
-                        bdk_wallet::chain::ChainPosition::Confirmed { anchor, .. } => anchor.block_id.height,
+                        bdk_wallet::chain::ChainPosition::Confirmed { anchor, .. } => {
+                            anchor.block_id.height
+                        }
                         bdk_wallet::chain::ChainPosition::Unconfirmed { .. } => 0,
                     };
 
@@ -105,14 +108,14 @@ pub fn list_utxos_bdk(descriptor: &str, network: Network) -> Result<Vec<BdkUtxo>
             }
             Err(e) => {
                 // If this descriptor fails, log it but continue with others
-                eprintln!("Warning: Failed to create wallet for descriptor '{}': {}", desc, e);
+                eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
             }
         }
     }
-    
+
     // Sort by amount descending for consistency
     all_utxos.sort_by(|a, b| b.amount.cmp(&a.amount));
-    
+
     Ok(all_utxos)
 }
 
@@ -123,27 +126,26 @@ pub async fn scan_and_list_utxos_electrum(
     electrum_url: &str,
     stop_gap: u32,
 ) -> Result<Vec<BdkUtxo>> {
-    use bdk_electrum::{BdkElectrumClient, electrum_client};
+    use bdk_electrum::{electrum_client, BdkElectrumClient};
 
     let descriptors = expand_multipath_descriptor(descriptor);
     let mut all_utxos = Vec::new();
-    
+
     // Create Electrum client once for all descriptors
     let client = BdkElectrumClient::new(
-        electrum_client::Client::new(electrum_url)
-            .context("Failed to create Electrum client")?
+        electrum_client::Client::new(electrum_url).context("Failed to create Electrum client")?,
     );
-    
+
     for desc in descriptors {
         // Create wallet with only external descriptor
         let wallet_result = Wallet::create_single(desc.clone())
             .network(network)
             .create_wallet_no_persist();
-            
+
         let mut wallet = match wallet_result {
             Ok(w) => w,
             Err(e) => {
-                eprintln!("Warning: Failed to create wallet for descriptor '{}': {}", desc, e);
+                eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
                 continue;
             }
         };
@@ -155,8 +157,9 @@ pub async fn scan_and_list_utxos_electrum(
                 let mut stdout = std::io::stdout();
                 move |keychain, spk_i, _| {
                     use std::io::Write;
-                    write!(stdout, "\rScanning {keychain:?} {spk_i}...").unwrap();
-                    stdout.flush().unwrap();
+                    // Progress output to stderr to keep stdout clean for JSON
+                    let _ = write!(stdout, "\rScanning {keychain:?} {spk_i}...");
+                    let _ = stdout.flush();
                 }
             })
             .build();
@@ -166,7 +169,7 @@ pub async fn scan_and_list_utxos_electrum(
             Ok(update) => {
                 // Apply the update to the wallet
                 if let Err(e) = wallet.apply_update(update) {
-                    eprintln!("Warning: Failed to apply update for descriptor '{}': {}", desc, e);
+                    eprintln!("Warning: Failed to apply update for descriptor '{desc}': {e}");
                     continue;
                 }
 
@@ -175,7 +178,7 @@ pub async fn scan_and_list_utxos_electrum(
 
                 // List unspent outputs
                 let utxos = wallet.list_unspent();
-                
+
                 for utxo in utxos {
                     // Get the address for this output
                     let script = &utxo.txout.script_pubkey;
@@ -214,13 +217,13 @@ pub async fn scan_and_list_utxos_electrum(
                             });
                         }
                         Err(e) => {
-                            eprintln!("Warning: Failed to derive address from script: {}", e);
+                            eprintln!("Warning: Failed to derive address from script: {e}");
                         }
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Failed to scan with Electrum for descriptor '{}': {}", desc, e);
+                eprintln!("Warning: Failed to scan with Electrum for descriptor '{desc}': {e}");
             }
         }
     }
@@ -232,21 +235,21 @@ pub async fn scan_and_list_utxos_electrum(
 }
 
 /// Scan blockchain for UTXOs using BDK wallet with Bitcoin Core RPC backend
-/// 
+///
 /// This function bridges BDK wallet functionality with Bitcoin Core RPC. It uses
 /// the existing BitcoinRpcClient to query UTXOs via `scantxoutset` and converts
 /// the results to BDK-compatible structures.
-/// 
+///
 /// # Important Implementation Details:
-/// 
+///
 /// 1. **Address Derivation**: Bitcoin Core's `scantxoutset` doesn't return addresses,
 ///    only scriptPubKey hex. We derive addresses from the scriptPubKey to provide
 ///    a complete UTXO representation.
-/// 
+///
 /// 2. **Why not use bdk_bitcoind_rpc?**: The bdk_bitcoind_rpc crate underwent major
 ///    API changes in v0.20 that are incompatible with the current BDK 2.0 release.
 ///    Using the existing RPC client provides a stable integration path.
-/// 
+///
 /// 3. **Missing BDK metadata**: Some BDK-specific fields (keychain type, derivation
 ///    index) aren't available from Bitcoin Core and are filled with defaults.
 pub async fn scan_and_list_utxos_bitcoind(
@@ -255,9 +258,9 @@ pub async fn scan_and_list_utxos_bitcoind(
     bitcoin_dir: &Path,
 ) -> Result<Vec<BdkUtxo>> {
     use crate::BitcoinRpcClient;
-    
+
     let mut all_utxos = Vec::new();
-    
+
     // Use our existing Bitcoin RPC client to get UTXOs for the descriptor
     let client = BitcoinRpcClient::new_auto(
         "http://127.0.0.1:8332".to_string(),
@@ -265,13 +268,12 @@ pub async fn scan_and_list_utxos_bitcoind(
         None,
         None,
     )?;
-    
+
     // Use the existing list_utxos_for_descriptor method
     let utxo_result = client.list_utxos_for_descriptor(descriptor).await?;
-    
+
     // Convert from RPC UTXOs to BDK UTXOs
     for utxo in utxo_result.utxos {
-        
         // Try to derive address from scriptPubKey if not provided
         // This is a critical step because Bitcoin Core's scantxoutset doesn't include addresses
         // in the response. Without this, UTXOs would appear to be "missing" if code filters
@@ -287,24 +289,24 @@ pub async fn scan_and_list_utxos_bitcoind(
                         Ok(addr) => addr.to_string(),
                         Err(_) => format!("script:{}", utxo.script_pub_key), // Fallback to script hex
                     }
-                },
+                }
                 Err(_) => format!("script:{}", utxo.script_pub_key), // Fallback to script hex
             }
         };
-        
+
         all_utxos.push(BdkUtxo {
             txid: utxo.txid,
             vout: utxo.vout,
             address,
             amount: utxo.amount_sats,
-            amount_btc: utxo.amount_sats as f64 / 100_000_000.0,
+            amount_btc: bitcoin::Amount::from_sat(utxo.amount_sats).to_btc(),
             confirmations: utxo.confirmations,
-            is_change: false, // We don't have this info from RPC
+            is_change: false,                // We don't have this info from RPC
             keychain: "unknown".to_string(), // We don't have this info from RPC
             derivation_index: None,
         });
     }
-    
+
     Ok(all_utxos)
 }
 
@@ -333,7 +335,7 @@ pub fn get_utxo_summary(utxos: Vec<BdkUtxo>) -> BdkUtxoSummary {
     BdkUtxoSummary {
         total_count: utxos.len(),
         total_amount,
-        total_amount_btc: total_amount as f64 / 100_000_000.0,
+        total_amount_btc: bitcoin::Amount::from_sat(total_amount).to_btc(),
         confirmed_count,
         unconfirmed_count,
         utxos,
@@ -348,7 +350,7 @@ mod tests {
     fn test_bdk_wallet_creation() -> Result<()> {
         // Test descriptor for a simple wallet
         let descriptor = "wpkh([c258d2e4/84h/1h/0h]tpubDDYkZojQFQjht8Tm4jsS3iuEmKjTiEGjG6KnuFNKKJb5A6ZUCUZKdvLdSDWofKi4ToRCwb9poe1XdqfUnP4jaJjCB2Zwv11ZLgSbnZSNecE/0/*)";
-        
+
         let wallet = Wallet::create_single(descriptor)
             .network(Network::Testnet)
             .create_wallet_no_persist()?;

@@ -1,5 +1,5 @@
-pub mod bitcoin_rpc;
 pub mod bdk_wallet;
+pub mod bitcoin_rpc;
 pub mod decoder;
 #[cfg(feature = "smartcards")]
 pub mod satscard;

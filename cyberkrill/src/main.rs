@@ -52,7 +52,7 @@ enum Commands {
     CreateFundedPsbt(CreateFundedPsbtArgs),
     #[command(about = "Consolidate/move UTXOs to a destination address")]
     MoveUtxos(MoveUtxosArgs),
-    
+
     // BDK Wallet Operations
     #[command(about = "List UTXOs using BDK wallet (no blockchain connection)")]
     BdkListUtxos(BdkListUtxosArgs),
@@ -345,7 +345,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::CreatePsbt(args) => bitcoin_create_psbt(args).await?,
         Commands::CreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
         Commands::MoveUtxos(args) => bitcoin_move_utxos(args).await?,
-        
+
         // BDK Wallet Operations
         Commands::BdkListUtxos(args) => bdk_list_utxos(args).await?,
     }
@@ -643,7 +643,6 @@ fn encode_fedimint_invite(args: EncodeFedimintInviteArgs) -> anyhow::Result<()> 
 }
 
 async fn bdk_list_utxos(args: BdkListUtxosArgs) -> anyhow::Result<()> {
-    
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
         None => Box::new(BufWriter::new(std::io::stdout())),
@@ -655,7 +654,10 @@ async fn bdk_list_utxos(args: BdkListUtxosArgs) -> anyhow::Result<()> {
         "testnet" => cyberkrill_core::Network::Testnet,
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
-        _ => bail!("Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest", args.network),
+        _ => bail!(
+            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
+            args.network
+        ),
     };
 
     let result = if let Some(electrum_url) = args.electrum {
@@ -670,21 +672,16 @@ async fn bdk_list_utxos(args: BdkListUtxosArgs) -> anyhow::Result<()> {
     } else if let Some(bitcoin_dir) = args.bitcoin_dir {
         // Use Bitcoin Core backend to scan blockchain
         let bitcoin_path = std::path::Path::new(&bitcoin_dir);
-        cyberkrill_core::scan_and_list_utxos_bitcoind(
-            &args.descriptor,
-            network,
-            bitcoin_path,
-        )
-        .await?
+        cyberkrill_core::scan_and_list_utxos_bitcoind(&args.descriptor, network, bitcoin_path)
+            .await?
     } else {
         // Use local wallet (no blockchain connection)
-        let utxos = cyberkrill_core::list_utxos_bdk(&args.descriptor, network)?;
-        utxos
+        cyberkrill_core::list_utxos_bdk(&args.descriptor, network)?
     };
 
     // Create summary
     let summary = cyberkrill_core::get_utxo_summary(result);
-    
+
     serde_json::to_writer_pretty(writer, &summary)?;
     Ok(())
 }
