@@ -249,6 +249,59 @@ cyberkrill move-utxos \
   --psbt-output consolidation.psbt
 ```
 
+### BDK Wallet Operations (Bitcoin Development Kit)
+
+CyberKrill includes BDK 2.0 integration for working with Bitcoin descriptors and UTXOs. The `bdk-list-utxos` command provides an alternative way to list UTXOs using BDK's wallet functionality.
+
+#### List UTXOs with BDK
+
+```bash
+# List UTXOs using BDK with Bitcoin Core backend
+cyberkrill bdk-list-utxos \
+  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --bitcoin-dir ~/libre
+
+# With multipath descriptors (automatically expanded)
+cyberkrill bdk-list-utxos \
+  --descriptor "wpkh([fingerprint/84'/0'/0']xpub.../<0;1>/*)" \
+  --bitcoin-dir ~/.bitcoin
+
+# Complex multisig with multipath
+cyberkrill bdk-list-utxos \
+  --descriptor "wsh(sortedmulti(4,xpub1/<0;1>/*,xpub2/<0;1>/*,...))" \
+  --bitcoin-dir ~/libre
+
+# Different networks
+cyberkrill bdk-list-utxos \
+  --descriptor "wpkh([fingerprint/84'/1'/0']tpub...)" \
+  --network testnet \
+  --bitcoin-dir ~/.bitcoin/testnet3
+
+# Save output to file
+cyberkrill bdk-list-utxos \
+  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --bitcoin-dir ~/libre \
+  --output utxos.json
+```
+
+#### BDK Features and Limitations
+
+**Key Features:**
+- Supports complex descriptors including multisig and miniscript
+- Automatically expands multipath descriptors (`<0;1>/*` syntax)
+- Derives addresses from scriptPubKey when not provided by Bitcoin Core
+- Compatible with BDK 2.0 API
+
+**Important Notes:**
+- **Multipath Descriptors**: BDK doesn't natively support `<0;1>/*` syntax. CyberKrill automatically expands these into separate descriptors for external (0) and internal/change (1) addresses
+- **Bitcoin Core Integration**: Requires `--bitcoin-dir` to connect to Bitcoin Core RPC. Without it, only shows UTXOs already in the BDK wallet (typically none)
+- **Address Derivation**: When using Bitcoin Core's `scantxoutset`, addresses aren't included in the response. CyberKrill automatically derives them from the scriptPubKey
+
+**Common Gotchas:**
+1. **Missing UTXOs**: If you don't see expected UTXOs, ensure Bitcoin Core is running and `--bitcoin-dir` points to the correct data directory
+2. **Multipath Syntax**: Always use `<0;1>/*` for descriptors that need both receive and change addresses
+3. **Network Mismatch**: Ensure the descriptor network matches the `--network` parameter (mainnet by default)
+
 ## Configuration
 
 ### Hardware Wallet Setup
