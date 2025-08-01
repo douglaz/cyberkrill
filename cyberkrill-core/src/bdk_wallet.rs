@@ -503,13 +503,73 @@ pub async fn create_psbt_bdk(
     network: Network,
     backend: &str,
 ) -> Result<BdkPsbtResponse> {
-    // First, we need to scan for UTXOs to build our wallet state
+    // Create wallet and sync with backend
+    let mut wallet = Wallet::create_single(descriptor.to_string())
+        .network(network)
+        .create_wallet_no_persist()?;
+
+    // Sync wallet with blockchain and get UTXOs
     let utxos = if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
-        scan_and_list_utxos_electrum(descriptor, network, url, 200).await?
+        use bdk_electrum::{electrum_client, BdkElectrumClient};
+        
+        let client = BdkElectrumClient::new(
+            electrum_client::Client::new(url).context("Failed to create Electrum client")?,
+        );
+        
+        let request = wallet.start_full_scan().build();
+        let update = client.full_scan(request, 200, 10, false)?;
+        wallet.apply_update(update)?;
+        
+        // Now get the UTXOs from the synced wallet
+        let wallet_utxos = wallet.list_unspent();
+        let mut utxos = Vec::new();
+        for utxo in wallet_utxos {
+            utxos.push(BdkUtxo {
+                txid: utxo.outpoint.txid.to_string(),
+                vout: utxo.outpoint.vout,
+                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?.to_string(),
+                amount: utxo.txout.value.to_sat(),
+                amount_btc: utxo.txout.value.to_btc(),
+                confirmations: 0, // Not needed for this use case
+                is_change: utxo.keychain == KeychainKind::Internal,
+                keychain: match utxo.keychain {
+                    KeychainKind::External => "external",
+                    KeychainKind::Internal => "internal",
+                }.to_string(),
+                derivation_index: None,
+            });
+        }
+        utxos
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
-        scan_and_list_utxos_esplora(descriptor, network, url, 200).await?
+        use bdk_esplora::{esplora_client, EsploraExt};
+        
+        let client = esplora_client::Builder::new(url).build_blocking();
+        let request = wallet.start_full_scan().build();
+        let update = client.full_scan(request, 200, 10)?;
+        wallet.apply_update(update)?;
+        
+        // Now get the UTXOs from the synced wallet
+        let wallet_utxos = wallet.list_unspent();
+        let mut utxos = Vec::new();
+        for utxo in wallet_utxos {
+            utxos.push(BdkUtxo {
+                txid: utxo.outpoint.txid.to_string(),
+                vout: utxo.outpoint.vout,
+                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?.to_string(),
+                amount: utxo.txout.value.to_sat(),
+                amount_btc: utxo.txout.value.to_btc(),
+                confirmations: 0, // Not needed for this use case
+                is_change: utxo.keychain == KeychainKind::Internal,
+                keychain: match utxo.keychain {
+                    KeychainKind::External => "external",
+                    KeychainKind::Internal => "internal",
+                }.to_string(),
+                derivation_index: None,
+            });
+        }
+        utxos
     } else if backend.starts_with("bitcoind://") {
         let path_str = backend.strip_prefix("bitcoind://").unwrap();
         let path = Path::new(path_str);
@@ -546,11 +606,6 @@ pub async fn create_psbt_bdk(
             }
         }
     }
-
-    // Create wallet
-    let mut wallet = Wallet::create_single(descriptor.to_string())
-        .network(network)
-        .create_wallet_no_persist()?;
 
     // Build transaction
     let mut tx_builder = wallet.build_tx();
@@ -610,28 +665,45 @@ pub async fn create_funded_psbt_bdk(
     network: Network,
     backend: &str,
 ) -> Result<BdkPsbtResponse> {
-    // First, scan for UTXOs
-    let _utxos = if backend.starts_with("electrum://") {
+    // Create wallet and sync with backend
+    let mut wallet = Wallet::create_single(descriptor.to_string())
+        .network(network)
+        .create_wallet_no_persist()?;
+
+    // Sync wallet with blockchain
+    if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
-        scan_and_list_utxos_electrum(descriptor, network, url, 200).await?
+        use bdk_electrum::{electrum_client, BdkElectrumClient};
+        
+        let client = BdkElectrumClient::new(
+            electrum_client::Client::new(url).context("Failed to create Electrum client")?,
+        );
+        
+        let request = wallet.start_full_scan().build();
+        let update = client.full_scan(request, 200, 10, false)?;
+        wallet.apply_update(update)?;
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
-        scan_and_list_utxos_esplora(descriptor, network, url, 200).await?
+        use bdk_esplora::{esplora_client, EsploraExt};
+        
+        let client = esplora_client::Builder::new(url).build_blocking();
+        let request = wallet.start_full_scan().build();
+        let update = client.full_scan(request, 200, 10)?;
+        wallet.apply_update(update)?;
     } else if backend.starts_with("bitcoind://") {
+        // For Bitcoin Core, we'll use the existing RPC approach
+        // since BDK's bitcoind integration is limited
         let path_str = backend.strip_prefix("bitcoind://").unwrap();
         let path = Path::new(path_str);
-        scan_and_list_utxos_bitcoind(descriptor, network, path).await?
+        let _utxos = scan_and_list_utxos_bitcoind(descriptor, network, path).await?;
+        // Note: Bitcoin Core backend doesn't provide the same update mechanism
+        // so the wallet won't be fully aware of pending transactions
     } else {
         bail!(
             "Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://",
             backend
         )
-    };
-
-    // Create wallet
-    let mut wallet = Wallet::create_single(descriptor.to_string())
-        .network(network)
-        .create_wallet_no_persist()?;
+    }
 
     // Build transaction
     let mut tx_builder = wallet.build_tx();
@@ -689,13 +761,73 @@ pub async fn move_utxos_bdk(
     network: Network,
     backend: &str,
 ) -> Result<BdkPsbtResponse> {
-    // First, scan for UTXOs
+    // Create wallet and sync with backend
+    let mut wallet = Wallet::create_single(descriptor.to_string())
+        .network(network)
+        .create_wallet_no_persist()?;
+
+    // Sync wallet with blockchain and get UTXOs
     let utxos = if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
-        scan_and_list_utxos_electrum(descriptor, network, url, 200).await?
+        use bdk_electrum::{electrum_client, BdkElectrumClient};
+        
+        let client = BdkElectrumClient::new(
+            electrum_client::Client::new(url).context("Failed to create Electrum client")?,
+        );
+        
+        let request = wallet.start_full_scan().build();
+        let update = client.full_scan(request, 200, 10, false)?;
+        wallet.apply_update(update)?;
+        
+        // Now get the UTXOs from the synced wallet
+        let wallet_utxos = wallet.list_unspent();
+        let mut utxos = Vec::new();
+        for utxo in wallet_utxos {
+            utxos.push(BdkUtxo {
+                txid: utxo.outpoint.txid.to_string(),
+                vout: utxo.outpoint.vout,
+                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?.to_string(),
+                amount: utxo.txout.value.to_sat(),
+                amount_btc: utxo.txout.value.to_btc(),
+                confirmations: 0, // Not needed for this use case
+                is_change: utxo.keychain == KeychainKind::Internal,
+                keychain: match utxo.keychain {
+                    KeychainKind::External => "external",
+                    KeychainKind::Internal => "internal",
+                }.to_string(),
+                derivation_index: None,
+            });
+        }
+        utxos
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
-        scan_and_list_utxos_esplora(descriptor, network, url, 200).await?
+        use bdk_esplora::{esplora_client, EsploraExt};
+        
+        let client = esplora_client::Builder::new(url).build_blocking();
+        let request = wallet.start_full_scan().build();
+        let update = client.full_scan(request, 200, 10)?;
+        wallet.apply_update(update)?;
+        
+        // Now get the UTXOs from the synced wallet
+        let wallet_utxos = wallet.list_unspent();
+        let mut utxos = Vec::new();
+        for utxo in wallet_utxos {
+            utxos.push(BdkUtxo {
+                txid: utxo.outpoint.txid.to_string(),
+                vout: utxo.outpoint.vout,
+                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?.to_string(),
+                amount: utxo.txout.value.to_sat(),
+                amount_btc: utxo.txout.value.to_btc(),
+                confirmations: 0, // Not needed for this use case
+                is_change: utxo.keychain == KeychainKind::Internal,
+                keychain: match utxo.keychain {
+                    KeychainKind::External => "external",
+                    KeychainKind::Internal => "internal",
+                }.to_string(),
+                derivation_index: None,
+            });
+        }
+        utxos
     } else if backend.starts_with("bitcoind://") {
         let path_str = backend.strip_prefix("bitcoind://").unwrap();
         let path = Path::new(path_str);
@@ -751,11 +883,6 @@ pub async fn move_utxos_bdk(
 
         selected_utxos = final_selection;
     }
-
-    // Create wallet
-    let mut wallet = Wallet::create_single(descriptor.to_string())
-        .network(network)
-        .create_wallet_no_persist()?;
 
     // Build transaction
     let mut tx_builder = wallet.build_tx();
