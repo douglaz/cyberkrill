@@ -678,6 +678,7 @@ pub async fn create_funded_psbt_bdk(
 }
 
 /// Move/consolidate UTXOs to a single destination using BDK
+#[allow(clippy::too_many_arguments)]
 pub async fn move_utxos_bdk(
     inputs: &[String],
     destination: &str,
