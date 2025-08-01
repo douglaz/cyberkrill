@@ -452,10 +452,11 @@ impl BitcoinRpcClient {
     ) -> Result<Vec<Utxo>> {
         let mut params = vec![];
 
+        // Use 0 as minimum to include mempool transactions
         if let Some(min) = min_conf {
             params.push(serde_json::Value::Number(min.into()));
         } else {
-            params.push(serde_json::Value::Number(1.into()));
+            params.push(serde_json::Value::Number(0.into())); // Changed from 1 to 0
         }
 
         if let Some(max) = max_conf {
@@ -560,7 +561,8 @@ impl BitcoinRpcClient {
     }
 
     pub async fn list_utxos_for_descriptor(&self, descriptor: &str) -> Result<UtxoListResponse> {
-        let utxos = self.scan_tx_out_set(descriptor).await?;
+        // Use the new wallet-based method to include mempool transactions
+        let utxos = self.list_unspent_for_descriptor(descriptor).await?;
         let total_amount_sats: u64 = utxos
             .iter()
             .map(|u| Amount::from_btc(u.amount).unwrap_or(Amount::ZERO).to_sat())
@@ -579,7 +581,8 @@ impl BitcoinRpcClient {
         &self,
         addresses: Vec<String>,
     ) -> Result<UtxoListResponse> {
-        let utxos = self.list_unspent(Some(1), None, Some(addresses)).await?;
+        // Use min_conf=0 to include mempool transactions
+        let utxos = self.list_unspent(Some(0), None, Some(addresses)).await?;
         let total_amount_sats: u64 = utxos
             .iter()
             .map(|u| Amount::from_btc(u.amount).unwrap_or(Amount::ZERO).to_sat())
@@ -607,6 +610,117 @@ impl BitcoinRpcClient {
             })
     }
 
+    /// Import a descriptor as a watch-only wallet
+    async fn import_descriptor(&self, descriptor: &str, rescan: bool) -> Result<()> {
+        // First, get descriptor info to validate and get checksum
+        let info_params = vec![serde_json::json!(descriptor)];
+        let info_result = self
+            .rpc_call("getdescriptorinfo", serde_json::Value::Array(info_params))
+            .await?;
+        
+        let descriptor_with_checksum = info_result
+            .get("descriptor")
+            .and_then(|d| d.as_str())
+            .context("Failed to get descriptor with checksum")?;
+
+        // Import the descriptor
+        let timestamp_value = if rescan {
+            serde_json::json!(0)
+        } else {
+            serde_json::json!("now")
+        };
+        
+        let import_params = vec![serde_json::json!([{
+            "desc": descriptor_with_checksum,
+            "timestamp": timestamp_value,
+            "range": [0, 1000], // Import first 1000 addresses
+            "watchonly": true,
+            "label": "cyberkrill_import"
+        }])];
+
+        self.rpc_call("importdescriptors", serde_json::Value::Array(import_params))
+            .await?;
+
+        Ok(())
+    }
+
+    /// List unspent outputs for a descriptor using wallet functionality
+    pub async fn list_unspent_for_descriptor(&self, descriptor: &str) -> Result<Vec<Utxo>> {
+        // Import the descriptor if not already imported
+        // We'll ignore errors as it might already be imported
+        let _ = self.import_descriptor(descriptor, false).await;
+
+        // Expand <0;1> syntax if present
+        let descriptors = if descriptor.contains("<0;1>") {
+            vec![
+                descriptor.replace("<0;1>", "0"),
+                descriptor.replace("<0;1>", "1"),
+            ]
+        } else {
+            vec![descriptor.to_string()]
+        };
+
+        let mut all_utxos = Vec::new();
+        let mut seen_outpoints = std::collections::HashSet::new();
+        
+        for desc in descriptors {
+            // Get addresses from the descriptor
+            let addresses = self.get_addresses_from_descriptor(&desc, 100).await?;
+            
+            // Use listunspent with min_conf=0 to include mempool
+            let utxos = self.list_unspent(Some(0), None, Some(addresses)).await?;
+            
+            // Only add UTXOs we haven't seen before (deduplication for multipath descriptors)
+            for utxo in utxos {
+                let outpoint = (utxo.txid.clone(), utxo.vout);
+                if seen_outpoints.insert(outpoint) {
+                    all_utxos.push(utxo);
+                }
+            }
+        }
+
+        Ok(all_utxos)
+    }
+
+    /// Get addresses from a descriptor
+    async fn get_addresses_from_descriptor(&self, descriptor: &str, count: u32) -> Result<Vec<String>> {
+        let mut addresses = Vec::new();
+
+        // Get descriptor info first
+        let info_params = vec![serde_json::json!(descriptor)];
+        let info_result = self
+            .rpc_call("getdescriptorinfo", serde_json::Value::Array(info_params))
+            .await?;
+        
+        let descriptor_with_checksum = info_result
+            .get("descriptor")
+            .and_then(|d| d.as_str())
+            .context("Failed to get descriptor with checksum")?;
+
+        // Derive addresses
+        for i in 0..count {
+            let derive_params = vec![
+                serde_json::json!(descriptor_with_checksum),
+                serde_json::json!([i]), // range
+            ];
+            
+            if let Ok(result) = self
+                .rpc_call("deriveaddresses", serde_json::Value::Array(derive_params))
+                .await
+            {
+                if let Some(addr_array) = result.as_array() {
+                    for addr in addr_array {
+                        if let Some(addr_str) = addr.as_str() {
+                            addresses.push(addr_str.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(addresses)
+    }
+
     /// Parse input list and expand descriptors to UTXOs if needed
     /// Supports:
     /// - Standard format: "txid:vout"
@@ -620,9 +734,9 @@ impl BitcoinRpcClient {
 
             // Check if this looks like a descriptor (contains parentheses and/or brackets)
             if input.contains('(') || input.contains('[') {
-                // This is a descriptor - expand it to UTXOs
+                // This is a descriptor - expand it to UTXOs using wallet method to include mempool
                 let utxos = self
-                    .scan_tx_out_set(input)
+                    .list_unspent_for_descriptor(input)
                     .await
                     .with_context(|| format!("Failed to expand descriptor: {input}"))?;
 
