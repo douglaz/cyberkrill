@@ -307,6 +307,116 @@ pub async fn scan_and_list_utxos_bitcoind(
     Ok(all_utxos)
 }
 
+/// Scan blockchain for UTXOs using BDK wallet with Esplora backend
+pub async fn scan_and_list_utxos_esplora(
+    descriptor: &str,
+    network: Network,
+    esplora_url: &str,
+    stop_gap: u32,
+) -> Result<Vec<BdkUtxo>> {
+    use bdk_esplora::{esplora_client, EsploraExt};
+
+    let descriptors = expand_multipath_descriptor(descriptor);
+    let mut all_utxos = Vec::new();
+
+    // Create Esplora client once for all descriptors
+    let client = esplora_client::Builder::new(esplora_url).build_blocking();
+
+    for desc in descriptors {
+        // Create wallet with only external descriptor
+        let wallet_result = Wallet::create_single(desc.clone())
+            .network(network)
+            .create_wallet_no_persist();
+
+        let mut wallet = match wallet_result {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
+                continue;
+            }
+        };
+
+        // Create a full scan request
+        let request = wallet
+            .start_full_scan()
+            .inspect({
+                move |keychain, spk_i, _| {
+                    // Progress output to stderr to keep stdout clean for JSON
+                    eprint!("\rScanning {keychain:?} {spk_i}...");
+                }
+            })
+            .build();
+
+        // Perform the scan with Esplora
+        match client.full_scan(request, stop_gap as usize, 10) {
+            Ok(update) => {
+                // Apply the update to the wallet
+                if let Err(e) = wallet.apply_update(update) {
+                    eprintln!("Warning: Failed to apply update for descriptor '{desc}': {e}");
+                    continue;
+                }
+
+                // Get current tip height for confirmation calculations
+                let tip_height = wallet.latest_checkpoint().height();
+
+                // List unspent outputs
+                let utxos = wallet.list_unspent();
+
+                for utxo in utxos {
+                    // Get the address for this output
+                    let script = &utxo.txout.script_pubkey;
+                    match bitcoin::Address::from_script(script, network) {
+                        Ok(address) => {
+                            // Determine keychain type
+                            let keychain = match utxo.keychain {
+                                KeychainKind::External => "external",
+                                KeychainKind::Internal => "internal",
+                            };
+                            let is_change = utxo.keychain == KeychainKind::Internal;
+
+                            // Calculate confirmations based on chain position
+                            let confirmations = match &utxo.chain_position {
+                                bdk_wallet::chain::ChainPosition::Confirmed { anchor, .. } => {
+                                    let block_height = anchor.block_id.height;
+                                    if tip_height >= block_height {
+                                        tip_height - block_height + 1
+                                    } else {
+                                        0
+                                    }
+                                }
+                                bdk_wallet::chain::ChainPosition::Unconfirmed { .. } => 0,
+                            };
+
+                            all_utxos.push(BdkUtxo {
+                                txid: utxo.outpoint.txid.to_string(),
+                                vout: utxo.outpoint.vout,
+                                address: address.to_string(),
+                                amount: utxo.txout.value.to_sat(),
+                                amount_btc: utxo.txout.value.to_btc(),
+                                confirmations,
+                                is_change,
+                                keychain: keychain.to_string(),
+                                derivation_index: None,
+                            });
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: Failed to derive address from script: {e}");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to scan with Esplora for descriptor '{desc}': {e}");
+            }
+        }
+    }
+
+    // Sort by amount descending
+    all_utxos.sort_by(|a, b| b.amount.cmp(&a.amount));
+
+    Ok(all_utxos)
+}
+
 /// Summary of UTXOs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BdkUtxoSummary {
