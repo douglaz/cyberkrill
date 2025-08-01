@@ -121,9 +121,20 @@ cyberkrill satscard-address --slot 2
 cyberkrill satscard-address -o satscard_address.json
 ```
 
-### Bitcoin Core RPC Operations
+### Bitcoin Operations
 
-CyberKrill provides three distinct commands for creating PSBTs (Partially Signed Bitcoin Transactions), each designed for different use cases:
+CyberKrill provides a unified interface for Bitcoin operations with support for multiple backends:
+
+**Backend Options:**
+- **Bitcoin Core RPC** (default): Direct connection to your Bitcoin node
+- **Electrum**: Fast and lightweight blockchain queries via Electrum protocol
+- **Esplora**: RESTful API for blockchain data (no authentication required)
+
+All Bitcoin commands support these backends through backend selection flags:
+- `--bitcoin-dir` - Use Bitcoin Core RPC with cookie authentication (default)
+- `--rpc-user/--rpc-password` - Use Bitcoin Core RPC with username/password
+- `--electrum <URL>` - Use Electrum server (e.g., `ssl://electrum.blockstream.info:50002`)
+- `--esplora <URL>` - Use Esplora API (e.g., `https://blockstream.info/api`)
 
 #### PSBT Creation Commands - Key Differences
 
@@ -141,10 +152,18 @@ CyberKrill provides three distinct commands for creating PSBTs (Partially Signed
 #### List UTXOs
 
 ```bash
-# Using output descriptor (recommended)
+# Using Bitcoin Core RPC (default)
 cyberkrill list-utxos --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
 
-# Using specific addresses
+# Using Electrum backend
+cyberkrill list-utxos --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --electrum ssl://electrum.blockstream.info:50002
+
+# Using Esplora backend
+cyberkrill list-utxos --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --esplora https://blockstream.info/api
+
+# Using specific addresses with Bitcoin Core
 cyberkrill list-utxos --addresses "bc1qtest1,bc1qtest2"
 
 # Custom Bitcoin directory
@@ -159,11 +178,25 @@ cyberkrill list-utxos --rpc-user myuser --rpc-password mypass --descriptor "wpkh
 **When to use**: When you need complete control over every aspect of the transaction - which UTXOs to spend, exact output amounts, and manual change calculation. Perfect for advanced use cases like specific UTXO selection for privacy or when implementing custom transaction logic.
 
 ```bash
-# Create PSBT with manual inputs/outputs - you calculate change yourself
+# Create PSBT with manual inputs/outputs using Bitcoin Core (default)
 cyberkrill create-psbt \
   --inputs "txid1:0" --inputs "txid2:1" \
   --outputs "bc1qaddr1:0.001,bc1qaddr2:0.002" \
   --fee-rate 10.5sats
+
+# Using Electrum backend
+cyberkrill create-psbt \
+  --inputs "txid1:0" --inputs "txid2:1" \
+  --outputs "bc1qaddr:0.001" \
+  --fee-rate 15sats \
+  --electrum ssl://electrum.blockstream.info:50002
+
+# Using Esplora backend
+cyberkrill create-psbt \
+  --inputs "txid1:0" --inputs "txid2:1" \
+  --outputs "bc1qaddr:0.001" \
+  --fee-rate 20sats \
+  --esplora https://blockstream.info/api
 
 # Using output descriptors as inputs (NEW!)
 cyberkrill create-psbt \
@@ -191,11 +224,23 @@ cyberkrill create-psbt \
 **When to use**: For standard "send payment" transactions where you want Bitcoin Core to handle the complexity. The wallet automatically selects optimal inputs, calculates fees, and adds a change output. This is the recommended approach for most payment scenarios.
 
 ```bash
-# Let Bitcoin Core select inputs and handle change automatically
+# Let wallet select inputs and handle change automatically
 cyberkrill create-funded-psbt \
   --outputs "bc1qaddr1:0.001,bc1qaddr2:0.002" \
   --conf-target 6 \
   --estimate-mode CONSERVATIVE
+
+# Using Electrum backend with automatic input selection
+cyberkrill create-funded-psbt \
+  --outputs "bc1qaddr:0.01btc" \
+  --fee-rate 0.1sats \
+  --electrum ssl://electrum.blockstream.info:50002
+
+# Using Esplora backend
+cyberkrill create-funded-psbt \
+  --outputs "bc1qaddr:0.01btc" \
+  --fee-rate 1.5sats \
+  --esplora https://blockstream.info/api
 
 # With specific fee rate (supports fractional sats/vB)
 cyberkrill create-funded-psbt \
@@ -222,11 +267,25 @@ cyberkrill create-funded-psbt \
 **When to use**: Specifically for UTXO consolidation or moving all funds from selected inputs to a single destination. Unlike the other commands, you don't specify output amounts - the command automatically sends (total input value - fee) to the destination address. Perfect for cleaning up fragmented UTXOs or emptying specific addresses.
 
 ```bash
-# Consolidate specific UTXOs to single address - output = inputs - fee
+# Consolidate specific UTXOs to single address using Bitcoin Core (default)
 cyberkrill move-utxos \
   --inputs "txid1:0" --inputs "txid2:1" --inputs "txid3:0" \
   --destination "bc1qconsolidated_address" \
   --fee-rate 15sats
+
+# Using Electrum backend
+cyberkrill move-utxos \
+  --inputs "txid1:0" --inputs "txid2:1" \
+  --destination "bc1qmy_address" \
+  --fee-rate 20sats \
+  --electrum ssl://electrum.blockstream.info:50002
+
+# Using Esplora backend
+cyberkrill move-utxos \
+  --inputs "txid1:0" --inputs "txid2:1" \
+  --destination "bc1qmy_address" \
+  --fee-rate 25sats \
+  --esplora https://blockstream.info/api
 
 # Consolidate all UTXOs from a descriptor (NEW!)
 cyberkrill move-utxos \
@@ -270,87 +329,35 @@ cyberkrill move-utxos \
   --psbt-output consolidation.psbt
 ```
 
-### BDK Wallet Operations (Bitcoin Development Kit)
+### Backend Details
 
-CyberKrill includes BDK 2.0 integration for working with Bitcoin descriptors and UTXOs. The `bdk-list-utxos` command provides an alternative way to list UTXOs using BDK's wallet functionality with support for multiple blockchain backends.
+**Bitcoin Core RPC (Default)**
+- Uses your local Bitcoin node for maximum privacy and security
+- Supports both cookie and username/password authentication
+- Requires Bitcoin Core to be running and accessible
+- Best for users running their own node
 
-#### List UTXOs with BDK
+**Electrum Backend**
+- Fast and lightweight - doesn't require a full node
+- Uses the Electrum protocol for efficient blockchain queries
+- Example servers:
+  - Mainnet: `ssl://electrum.blockstream.info:50002`
+  - Testnet: `ssl://electrum.blockstream.info:60002`
+- Some privacy trade-offs as queries go to external servers
 
-**Backend Options:**
-- **Electrum**: Fast and lightweight blockchain queries
-- **Esplora**: RESTful API for blockchain data (no authentication required)
-- **Bitcoin Core**: Direct RPC connection to your Bitcoin node
-- **Local**: BDK wallet without blockchain connection (offline mode)
-
-```bash
-# Using Electrum backend (fast and lightweight)
-cyberkrill bdk-list-utxos \
-  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
-  --electrum ssl://electrum.blockstream.info:50002
-
-# Using Esplora backend (REST API, no auth required)
-cyberkrill bdk-list-utxos \
-  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
-  --esplora https://blockstream.info/api
-
-# Using Bitcoin Core backend (requires local node)
-cyberkrill bdk-list-utxos \
-  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
-  --bitcoin-dir ~/libre
-
-# With multipath descriptors (automatically expanded)
-cyberkrill bdk-list-utxos \
-  --descriptor "wpkh([fingerprint/84'/0'/0']xpub.../<0;1>/*)" \
-  --electrum ssl://electrum.blockstream.info:50002
-
-# Complex multisig with multipath
-cyberkrill bdk-list-utxos \
-  --descriptor "wsh(sortedmulti(4,xpub1/<0;1>/*,xpub2/<0;1>/*,...))" \
-  --esplora https://blockstream.info/api
-
-# Different networks with appropriate backends
-# Testnet with Esplora
-cyberkrill bdk-list-utxos \
-  --descriptor "wpkh([fingerprint/84'/1'/0']tpub...)" \
-  --network testnet \
-  --esplora https://blockstream.info/testnet/api
-
-# Testnet with Electrum
-cyberkrill bdk-list-utxos \
-  --descriptor "wpkh([fingerprint/84'/1'/0']tpub...)" \
-  --network testnet \
-  --electrum ssl://electrum.blockstream.info:60002
-
-# Testnet with Bitcoin Core
-cyberkrill bdk-list-utxos \
-  --descriptor "wpkh([fingerprint/84'/1'/0']tpub...)" \
-  --network testnet \
-  --bitcoin-dir ~/.bitcoin/testnet3
-
-# Save output to file
-cyberkrill bdk-list-utxos \
-  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
-  --esplora https://blockstream.info/api \
-  --output utxos.json
-```
-
-#### BDK Features and Limitations
-
-**Key Features:**
-- Supports complex descriptors including multisig and miniscript
-- Automatically expands multipath descriptors (`<0;1>/*` syntax)
-- Derives addresses from scriptPubKey when not provided by Bitcoin Core
-- Compatible with BDK 2.0 API
+**Esplora Backend**
+- RESTful API for blockchain data
+- No authentication required
+- Example servers:
+  - Mainnet: `https://blockstream.info/api`
+  - Testnet: `https://blockstream.info/testnet/api`
+- Good for quick queries without running infrastructure
 
 **Important Notes:**
-- **Multipath Descriptors**: BDK doesn't natively support `<0;1>/*` syntax. CyberKrill automatically expands these into separate descriptors for external (0) and internal/change (1) addresses
-- **Bitcoin Core Integration**: Requires `--bitcoin-dir` to connect to Bitcoin Core RPC. Without it, only shows UTXOs already in the BDK wallet (typically none)
-- **Address Derivation**: When using Bitcoin Core's `scantxoutset`, addresses aren't included in the response. CyberKrill automatically derives them from the scriptPubKey
-
-**Common Gotchas:**
-1. **Missing UTXOs**: If you don't see expected UTXOs, ensure Bitcoin Core is running and `--bitcoin-dir` points to the correct data directory
-2. **Multipath Syntax**: Always use `<0;1>/*` for descriptors that need both receive and change addresses
-3. **Network Mismatch**: Ensure the descriptor network matches the `--network` parameter (mainnet by default)
+- All backends support the same functionality
+- Multipath descriptors (`<0;1>/*`) are automatically expanded
+- Address derivation is handled automatically when needed
+- Network must match between descriptor and backend
 
 ## Configuration
 
