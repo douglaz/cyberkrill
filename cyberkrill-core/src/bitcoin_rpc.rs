@@ -661,6 +661,7 @@ impl BitcoinRpcClient {
         };
 
         let mut all_utxos = Vec::new();
+        let mut seen_outpoints = std::collections::HashSet::new();
         
         for desc in descriptors {
             // Get addresses from the descriptor
@@ -668,7 +669,14 @@ impl BitcoinRpcClient {
             
             // Use listunspent with min_conf=0 to include mempool
             let utxos = self.list_unspent(Some(0), None, Some(addresses)).await?;
-            all_utxos.extend(utxos);
+            
+            // Only add UTXOs we haven't seen before (deduplication for multipath descriptors)
+            for utxo in utxos {
+                let outpoint = (utxo.txid.clone(), utxo.vout);
+                if seen_outpoints.insert(outpoint) {
+                    all_utxos.push(utxo);
+                }
+            }
         }
 
         Ok(all_utxos)
