@@ -61,7 +61,7 @@ enum Commands {
 
     // BDK Wallet Operations
     #[command(
-        about = "List UTXOs using BDK wallet (supports Bitcoin Core, Electrum backends, or local wallet)"
+        about = "List UTXOs using BDK wallet (supports Bitcoin Core, Electrum, Esplora backends, or local wallet)"
     )]
     BdkListUtxos(BdkListUtxosArgs),
 }
@@ -313,11 +313,14 @@ struct BdkListUtxosArgs {
     #[clap(long, default_value = "mainnet")]
     network: String,
     /// Bitcoin directory path (for reading wallet data)
-    #[clap(long)]
+    #[clap(long, conflicts_with_all = ["electrum", "esplora"])]
     bitcoin_dir: Option<String>,
     /// Electrum server URL (e.g., ssl://electrum.blockstream.info:50002)
-    #[clap(long)]
+    #[clap(long, conflicts_with_all = ["bitcoin_dir", "esplora"])]
     electrum: Option<String>,
+    /// Esplora server URL (e.g., https://blockstream.info/api)
+    #[clap(long, conflicts_with_all = ["bitcoin_dir", "electrum"])]
+    esplora: Option<String>,
     /// Stop gap for address derivation scanning
     #[clap(long, default_value = "200")]
     stop_gap: u32,
@@ -682,6 +685,15 @@ async fn bdk_list_utxos(args: BdkListUtxosArgs) -> anyhow::Result<()> {
             &args.descriptor,
             network,
             &electrum_url,
+            args.stop_gap,
+        )
+        .await?
+    } else if let Some(esplora_url) = args.esplora {
+        // Use Esplora backend to scan blockchain
+        cyberkrill_core::scan_and_list_utxos_esplora(
+            &args.descriptor,
+            network,
+            &esplora_url,
             args.stop_gap,
         )
         .await?

@@ -272,12 +272,28 @@ cyberkrill move-utxos \
 
 ### BDK Wallet Operations (Bitcoin Development Kit)
 
-CyberKrill includes BDK 2.0 integration for working with Bitcoin descriptors and UTXOs. The `bdk-list-utxos` command provides an alternative way to list UTXOs using BDK's wallet functionality.
+CyberKrill includes BDK 2.0 integration for working with Bitcoin descriptors and UTXOs. The `bdk-list-utxos` command provides an alternative way to list UTXOs using BDK's wallet functionality with support for multiple blockchain backends.
 
 #### List UTXOs with BDK
 
+**Backend Options:**
+- **Electrum**: Fast and lightweight blockchain queries
+- **Esplora**: RESTful API for blockchain data (no authentication required)
+- **Bitcoin Core**: Direct RPC connection to your Bitcoin node
+- **Local**: BDK wallet without blockchain connection (offline mode)
+
 ```bash
-# List UTXOs using BDK with Bitcoin Core backend
+# Using Electrum backend (fast and lightweight)
+cyberkrill bdk-list-utxos \
+  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --electrum ssl://electrum.blockstream.info:50002
+
+# Using Esplora backend (REST API, no auth required)
+cyberkrill bdk-list-utxos \
+  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --esplora https://blockstream.info/api
+
+# Using Bitcoin Core backend (requires local node)
 cyberkrill bdk-list-utxos \
   --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --bitcoin-dir ~/libre
@@ -285,14 +301,27 @@ cyberkrill bdk-list-utxos \
 # With multipath descriptors (automatically expanded)
 cyberkrill bdk-list-utxos \
   --descriptor "wpkh([fingerprint/84'/0'/0']xpub.../<0;1>/*)" \
-  --bitcoin-dir ~/.bitcoin
+  --electrum ssl://electrum.blockstream.info:50002
 
 # Complex multisig with multipath
 cyberkrill bdk-list-utxos \
   --descriptor "wsh(sortedmulti(4,xpub1/<0;1>/*,xpub2/<0;1>/*,...))" \
-  --bitcoin-dir ~/libre
+  --esplora https://blockstream.info/api
 
-# Different networks
+# Different networks with appropriate backends
+# Testnet with Esplora
+cyberkrill bdk-list-utxos \
+  --descriptor "wpkh([fingerprint/84'/1'/0']tpub...)" \
+  --network testnet \
+  --esplora https://blockstream.info/testnet/api
+
+# Testnet with Electrum
+cyberkrill bdk-list-utxos \
+  --descriptor "wpkh([fingerprint/84'/1'/0']tpub...)" \
+  --network testnet \
+  --electrum ssl://electrum.blockstream.info:60002
+
+# Testnet with Bitcoin Core
 cyberkrill bdk-list-utxos \
   --descriptor "wpkh([fingerprint/84'/1'/0']tpub...)" \
   --network testnet \
@@ -301,7 +330,7 @@ cyberkrill bdk-list-utxos \
 # Save output to file
 cyberkrill bdk-list-utxos \
   --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
-  --bitcoin-dir ~/libre \
+  --esplora https://blockstream.info/api \
   --output utxos.json
 ```
 
