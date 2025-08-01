@@ -22,12 +22,13 @@ pub use tapsigner::{
 pub use bitcoin_rpc::{AmountInput, BitcoinRpcClient};
 
 pub use bdk_wallet::{
-    get_utxo_summary, list_utxos_bdk, scan_and_list_utxos_bitcoind, scan_and_list_utxos_electrum,
-    scan_and_list_utxos_esplora, BdkUtxo, BdkUtxoSummary,
+    create_funded_psbt_bdk, create_psbt_bdk, get_utxo_summary, list_utxos_bdk, move_utxos_bdk,
+    scan_and_list_utxos_bitcoind, scan_and_list_utxos_electrum, scan_and_list_utxos_esplora,
+    BdkPsbtResponse, BdkUtxo, BdkUtxoSummary,
 };
 
 // Re-export bitcoin types needed by CLI
-pub use bitcoin::Network;
+pub use bitcoin::{self, Network};
 
 // Re-export fedimint functionality
 pub use fedimint_lite;

@@ -1,8 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use base64::Engine;
 use bdk_wallet::{KeychainKind, Wallet};
-use bitcoin::Network;
+use bitcoin::{Amount, FeeRate, Network, OutPoint, Txid};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::str::FromStr;
 
 /// UTXO information returned by BDK wallet
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -447,6 +449,354 @@ pub fn get_utxo_summary(utxos: Vec<BdkUtxo>) -> BdkUtxoSummary {
         unconfirmed_count,
         utxos,
     }
+}
+
+/// Response structure for PSBT creation
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BdkPsbtResponse {
+    /// Base64-encoded PSBT
+    pub psbt: String,
+    /// Fee amount in satoshis
+    pub fee_sats: u64,
+    /// Change output position (if any)
+    pub change_position: Option<u32>,
+}
+
+/// Input structure that can be either a UTXO (txid:vout) or a descriptor
+#[derive(Debug, Clone)]
+pub enum InputSpec {
+    /// Specific UTXO: txid:vout
+    Utxo { txid: Txid, vout: u32 },
+    /// Descriptor to expand into UTXOs
+    Descriptor(String),
+}
+
+impl FromStr for InputSpec {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Check if this looks like a descriptor (contains parentheses or brackets)
+        if s.contains('(') || s.contains('[') {
+            Ok(InputSpec::Descriptor(s.to_string()))
+        } else {
+            // Try to parse as txid:vout
+            let parts: Vec<&str> = s.split(':').collect();
+            if parts.len() != 2 {
+                bail!("Invalid input format: '{}'. Expected 'txid:vout' or a descriptor", s);
+            }
+            let txid = Txid::from_str(parts[0])
+                .context("Invalid transaction ID")?;
+            let vout: u32 = parts[1].parse()
+                .context("Invalid output index")?;
+            Ok(InputSpec::Utxo { txid, vout })
+        }
+    }
+}
+
+/// Create a PSBT with manual input/output specification using BDK
+pub async fn create_psbt_bdk(
+    inputs: &[String],
+    outputs: &[(String, Amount)],
+    fee_rate: Option<f64>, // sat/vB
+    descriptor: &str,
+    network: Network,
+    backend: &str,
+) -> Result<BdkPsbtResponse> {
+    // First, we need to scan for UTXOs to build our wallet state
+    let utxos = if backend.starts_with("electrum://") {
+        let url = backend.strip_prefix("electrum://").unwrap();
+        scan_and_list_utxos_electrum(descriptor, network, url, 200).await?
+    } else if backend.starts_with("esplora://") {
+        let url = backend.strip_prefix("esplora://").unwrap();
+        scan_and_list_utxos_esplora(descriptor, network, url, 200).await?
+    } else if backend.starts_with("bitcoind://") {
+        let path_str = backend.strip_prefix("bitcoind://").unwrap();
+        let path = Path::new(path_str);
+        scan_and_list_utxos_bitcoind(descriptor, network, path).await?
+    } else {
+        bail!("Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://", backend)
+    };
+
+    // Parse inputs
+    let mut input_specs = Vec::new();
+    for input in inputs {
+        input_specs.push(InputSpec::from_str(input)?);
+    }
+
+    // Expand descriptors to UTXOs
+    let mut selected_utxos = Vec::new();
+    for spec in input_specs {
+        match spec {
+            InputSpec::Utxo { txid, vout } => {
+                // Find this specific UTXO in our wallet
+                let utxo = utxos.iter()
+                    .find(|u| u.txid == txid.to_string() && u.vout == vout)
+                    .ok_or_else(|| anyhow::anyhow!("UTXO {}:{} not found in wallet", txid, vout))?;
+                selected_utxos.push(utxo.clone());
+            }
+            InputSpec::Descriptor(_desc) => {
+                // For descriptors, we need to scan and add all UTXOs
+                // This is a simplified version - in reality we'd want to expand the descriptor
+                bail!("Descriptor input expansion not yet implemented for BDK PSBT creation");
+            }
+        }
+    }
+
+    // Create wallet
+    let mut wallet = Wallet::create_single(descriptor.to_string())
+        .network(network)
+        .create_wallet_no_persist()?;
+
+    // Build transaction
+    let mut tx_builder = wallet.build_tx();
+
+    // Add inputs
+    for utxo in &selected_utxos {
+        let outpoint = OutPoint {
+            txid: Txid::from_str(&utxo.txid)?,
+            vout: utxo.vout,
+        };
+        tx_builder.add_utxo(outpoint)?;
+    }
+
+    // Add outputs
+    for (address, amount) in outputs {
+        let script = bitcoin::Address::from_str(address)?
+            .require_network(network)?
+            .script_pubkey();
+        tx_builder.add_recipient(script, *amount);
+    }
+
+    // Set fee rate if provided
+    if let Some(rate) = fee_rate {
+        // BDK expects fee rate in sat/vB
+        tx_builder.fee_rate(FeeRate::from_sat_per_vb(rate as u64).expect("Valid fee rate"));
+    }
+
+    // Manually select UTXOs (disable coin selection)
+    tx_builder.manually_selected_only();
+
+    // Finish building
+    let psbt = tx_builder.finish()?;
+
+    // Calculate fee
+    let fee = psbt.fee()?;
+
+    // Find change position if any
+    let change_position = None; // TODO: Detect change output
+
+    // Serialize PSBT to base64
+    let psbt_bytes = psbt.serialize();
+    let psbt_base64 = base64::engine::general_purpose::STANDARD.encode(&psbt_bytes);
+
+    Ok(BdkPsbtResponse {
+        psbt: psbt_base64,
+        fee_sats: fee.to_sat(),
+        change_position,
+    })
+}
+
+/// Create a funded PSBT with automatic input selection using BDK
+pub async fn create_funded_psbt_bdk(
+    outputs: &[(String, Amount)],
+    conf_target: Option<u32>,
+    fee_rate: Option<f64>, // sat/vB
+    descriptor: &str,
+    network: Network,
+    backend: &str,
+) -> Result<BdkPsbtResponse> {
+    // First, scan for UTXOs
+    let _utxos = if backend.starts_with("electrum://") {
+        let url = backend.strip_prefix("electrum://").unwrap();
+        scan_and_list_utxos_electrum(descriptor, network, url, 200).await?
+    } else if backend.starts_with("esplora://") {
+        let url = backend.strip_prefix("esplora://").unwrap();
+        scan_and_list_utxos_esplora(descriptor, network, url, 200).await?
+    } else if backend.starts_with("bitcoind://") {
+        let path_str = backend.strip_prefix("bitcoind://").unwrap();
+        let path = Path::new(path_str);
+        scan_and_list_utxos_bitcoind(descriptor, network, path).await?
+    } else {
+        bail!("Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://", backend)
+    };
+
+    // Create wallet
+    let mut wallet = Wallet::create_single(descriptor.to_string())
+        .network(network)
+        .create_wallet_no_persist()?;
+
+    // Build transaction
+    let mut tx_builder = wallet.build_tx();
+
+    // Add outputs
+    for (address, amount) in outputs {
+        let script = bitcoin::Address::from_str(address)?
+            .require_network(network)?
+            .script_pubkey();
+        tx_builder.add_recipient(script, *amount);
+    }
+
+    // Set fee rate
+    if let Some(rate) = fee_rate {
+        // BDK expects fee rate in sat/vB
+        tx_builder.fee_rate(FeeRate::from_sat_per_vb(rate as u64).expect("Valid fee rate"));
+    } else if let Some(_target) = conf_target {
+        // TODO: Implement fee estimation based on confirmation target
+        // For now, use a default fee rate
+        tx_builder.fee_rate(FeeRate::from_sat_per_vb(10).expect("Valid fee rate"));
+    }
+
+    // Enable RBF is not available in BDK 2.0
+    // tx_builder.enable_rbf();
+
+    // Finish building
+    let psbt = tx_builder.finish()?;
+
+    // Calculate fee
+    let fee = psbt.fee()?;
+
+    // Find change position
+    let change_position = None; // TODO: Detect change output position
+
+    // Serialize PSBT to base64
+    let psbt_bytes = psbt.serialize();
+    let psbt_base64 = base64::engine::general_purpose::STANDARD.encode(&psbt_bytes);
+
+    Ok(BdkPsbtResponse {
+        psbt: psbt_base64,
+        fee_sats: fee.to_sat(),
+        change_position,
+    })
+}
+
+/// Move/consolidate UTXOs to a single destination using BDK
+pub async fn move_utxos_bdk(
+    inputs: &[String],
+    destination: &str,
+    fee_rate: Option<f64>,
+    fee_sats: Option<u64>,
+    max_amount: Option<Amount>,
+    descriptor: &str,
+    network: Network,
+    backend: &str,
+) -> Result<BdkPsbtResponse> {
+    // First, scan for UTXOs
+    let utxos = if backend.starts_with("electrum://") {
+        let url = backend.strip_prefix("electrum://").unwrap();
+        scan_and_list_utxos_electrum(descriptor, network, url, 200).await?
+    } else if backend.starts_with("esplora://") {
+        let url = backend.strip_prefix("esplora://").unwrap();
+        scan_and_list_utxos_esplora(descriptor, network, url, 200).await?
+    } else if backend.starts_with("bitcoind://") {
+        let path_str = backend.strip_prefix("bitcoind://").unwrap();
+        let path = Path::new(path_str);
+        scan_and_list_utxos_bitcoind(descriptor, network, path).await?
+    } else {
+        bail!("Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://", backend)
+    };
+
+    // Parse inputs
+    let mut input_specs = Vec::new();
+    for input in inputs {
+        input_specs.push(InputSpec::from_str(input)?);
+    }
+
+    // Expand descriptors to UTXOs
+    let mut selected_utxos = Vec::new();
+    for spec in input_specs {
+        match spec {
+            InputSpec::Utxo { txid, vout } => {
+                // Find this specific UTXO
+                let utxo = utxos.iter()
+                    .find(|u| u.txid == txid.to_string() && u.vout == vout)
+                    .ok_or_else(|| anyhow::anyhow!("UTXO {}:{} not found", txid, vout))?;
+                selected_utxos.push(utxo.clone());
+            }
+            InputSpec::Descriptor(_desc) => {
+                // For descriptors, add all UTXOs from that descriptor
+                // This is simplified - we'd need to filter by descriptor
+                selected_utxos.extend(utxos.clone());
+            }
+        }
+    }
+
+    // Apply max amount selection if specified
+    if let Some(max_amt) = max_amount {
+        // Sort by amount descending
+        selected_utxos.sort_by(|a, b| b.amount.cmp(&a.amount));
+        
+        let mut total = 0u64;
+        let mut final_selection = Vec::new();
+        
+        for utxo in selected_utxos {
+            if total >= max_amt.to_sat() {
+                break;
+            }
+            total += utxo.amount;
+            final_selection.push(utxo);
+        }
+        
+        selected_utxos = final_selection;
+    }
+
+    // Create wallet
+    let mut wallet = Wallet::create_single(descriptor.to_string())
+        .network(network)
+        .create_wallet_no_persist()?;
+
+    // Build transaction
+    let mut tx_builder = wallet.build_tx();
+
+    // Add all selected inputs
+    for utxo in &selected_utxos {
+        let outpoint = OutPoint {
+            txid: Txid::from_str(&utxo.txid)?,
+            vout: utxo.vout,
+        };
+        tx_builder.add_utxo(outpoint)?;
+    }
+
+    // Calculate total input value
+    let total_input: u64 = selected_utxos.iter().map(|u| u.amount).sum();
+
+    // Determine fee
+    let fee = if let Some(sats) = fee_sats {
+        sats
+    } else if let Some(rate) = fee_rate {
+        // Estimate fee based on transaction size
+        // Rough estimate: 10 + 41*inputs + 32*outputs
+        let estimated_vbytes = 10 + 41 * selected_utxos.len() + 32;
+        (estimated_vbytes as f64 * rate) as u64
+    } else {
+        bail!("Must specify either fee_rate or fee_sats");
+    };
+
+    // Add single output (total - fee)
+    let output_amount = total_input.saturating_sub(fee);
+    if output_amount == 0 {
+        bail!("Output amount would be zero after fees");
+    }
+
+    let dest_script = bitcoin::Address::from_str(destination)?
+        .require_network(network)?
+        .script_pubkey();
+    tx_builder.add_recipient(dest_script, Amount::from_sat(output_amount));
+
+    // Manually select UTXOs (disable coin selection)
+    tx_builder.manually_selected_only();
+
+    // Finish building
+    let psbt = tx_builder.finish()?;
+
+    // Serialize PSBT to base64
+    let psbt_bytes = psbt.serialize();
+    let psbt_base64 = base64::engine::general_purpose::STANDARD.encode(&psbt_bytes);
+
+    Ok(BdkPsbtResponse {
+        psbt: psbt_base64,
+        fee_sats: fee,
+        change_position: None, // No change in consolidation
+    })
 }
 
 #[cfg(test)]
