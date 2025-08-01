@@ -482,12 +482,13 @@ impl FromStr for InputSpec {
             // Try to parse as txid:vout
             let parts: Vec<&str> = s.split(':').collect();
             if parts.len() != 2 {
-                bail!("Invalid input format: '{}'. Expected 'txid:vout' or a descriptor", s);
+                bail!(
+                    "Invalid input format: '{}'. Expected 'txid:vout' or a descriptor",
+                    s
+                );
             }
-            let txid = Txid::from_str(parts[0])
-                .context("Invalid transaction ID")?;
-            let vout: u32 = parts[1].parse()
-                .context("Invalid output index")?;
+            let txid = Txid::from_str(parts[0]).context("Invalid transaction ID")?;
+            let vout: u32 = parts[1].parse().context("Invalid output index")?;
             Ok(InputSpec::Utxo { txid, vout })
         }
     }
@@ -514,7 +515,10 @@ pub async fn create_psbt_bdk(
         let path = Path::new(path_str);
         scan_and_list_utxos_bitcoind(descriptor, network, path).await?
     } else {
-        bail!("Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://", backend)
+        bail!(
+            "Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://",
+            backend
+        )
     };
 
     // Parse inputs
@@ -529,7 +533,8 @@ pub async fn create_psbt_bdk(
         match spec {
             InputSpec::Utxo { txid, vout } => {
                 // Find this specific UTXO in our wallet
-                let utxo = utxos.iter()
+                let utxo = utxos
+                    .iter()
                     .find(|u| u.txid == txid.to_string() && u.vout == vout)
                     .ok_or_else(|| anyhow::anyhow!("UTXO {}:{} not found in wallet", txid, vout))?;
                 selected_utxos.push(utxo.clone());
@@ -617,7 +622,10 @@ pub async fn create_funded_psbt_bdk(
         let path = Path::new(path_str);
         scan_and_list_utxos_bitcoind(descriptor, network, path).await?
     } else {
-        bail!("Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://", backend)
+        bail!(
+            "Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://",
+            backend
+        )
     };
 
     // Create wallet
@@ -692,7 +700,10 @@ pub async fn move_utxos_bdk(
         let path = Path::new(path_str);
         scan_and_list_utxos_bitcoind(descriptor, network, path).await?
     } else {
-        bail!("Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://", backend)
+        bail!(
+            "Unsupported backend: {}. Expected electrum://, esplora://, or bitcoind://",
+            backend
+        )
     };
 
     // Parse inputs
@@ -707,7 +718,8 @@ pub async fn move_utxos_bdk(
         match spec {
             InputSpec::Utxo { txid, vout } => {
                 // Find this specific UTXO
-                let utxo = utxos.iter()
+                let utxo = utxos
+                    .iter()
                     .find(|u| u.txid == txid.to_string() && u.vout == vout)
                     .ok_or_else(|| anyhow::anyhow!("UTXO {}:{} not found", txid, vout))?;
                 selected_utxos.push(utxo.clone());
@@ -724,10 +736,10 @@ pub async fn move_utxos_bdk(
     if let Some(max_amt) = max_amount {
         // Sort by amount descending
         selected_utxos.sort_by(|a, b| b.amount.cmp(&a.amount));
-        
+
         let mut total = 0u64;
         let mut final_selection = Vec::new();
-        
+
         for utxo in selected_utxos {
             if total >= max_amt.to_sat() {
                 break;
@@ -735,7 +747,7 @@ pub async fn move_utxos_bdk(
             total += utxo.amount;
             final_selection.push(utxo);
         }
-        
+
         selected_utxos = final_selection;
     }
 

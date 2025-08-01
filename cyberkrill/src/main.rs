@@ -58,7 +58,6 @@ enum Commands {
         about = "Consolidate/move UTXOs to a single destination address (output = total inputs - fee)"
     )]
     MoveUtxos(MoveUtxosArgs),
-
 }
 
 // Lightning Network Args
@@ -166,7 +165,7 @@ struct ListUtxosArgs {
     /// Comma-separated list of addresses to list UTXOs for (only for Bitcoin Core RPC)
     #[clap(long, conflicts_with = "descriptor")]
     addresses: Option<String>,
-    
+
     // Backend selection options (mutually exclusive)
     /// Electrum server URL (e.g., ssl://electrum.blockstream.info:50002)
     #[clap(long, conflicts_with_all = ["esplora", "bitcoin_dir", "rpc_url", "rpc_user", "rpc_password"])]
@@ -174,7 +173,7 @@ struct ListUtxosArgs {
     /// Esplora server URL (e.g., https://blockstream.info/api)
     #[clap(long, conflicts_with_all = ["electrum", "bitcoin_dir", "rpc_url", "rpc_user", "rpc_password"])]
     esplora: Option<String>,
-    
+
     // Bitcoin Core RPC options (default backend)
     /// Bitcoin Core RPC URL (default: http://127.0.0.1:8332)
     #[clap(long, default_value = DEFAULT_BITCOIN_RPC_URL, conflicts_with_all = ["electrum", "esplora"])]
@@ -188,7 +187,7 @@ struct ListUtxosArgs {
     /// RPC password (conflicts with bitcoin-dir)
     #[clap(long, conflicts_with_all = ["bitcoin_dir", "electrum", "esplora"])]
     rpc_password: Option<String>,
-    
+
     /// Bitcoin network (mainnet, testnet, signet, regtest)
     #[clap(long, default_value = "mainnet")]
     network: String,
@@ -208,7 +207,7 @@ struct CreatePsbtArgs {
     /// Output descriptor (required when using BDK backends)
     #[clap(long)]
     descriptor: Option<String>,
-    
+
     // Backend selection options (mutually exclusive)
     /// Electrum server URL (e.g., ssl://electrum.blockstream.info:50002)
     #[clap(long, conflicts_with_all = ["esplora", "bitcoin_dir", "rpc_url", "rpc_user", "rpc_password"])]
@@ -216,7 +215,7 @@ struct CreatePsbtArgs {
     /// Esplora server URL (e.g., https://blockstream.info/api)
     #[clap(long, conflicts_with_all = ["electrum", "bitcoin_dir", "rpc_url", "rpc_user", "rpc_password"])]
     esplora: Option<String>,
-    
+
     // Bitcoin Core RPC options (default backend)
     /// Bitcoin Core RPC URL (default: http://127.0.0.1:8332)
     #[clap(long, default_value = DEFAULT_BITCOIN_RPC_URL, conflicts_with_all = ["electrum", "esplora"])]
@@ -230,7 +229,7 @@ struct CreatePsbtArgs {
     /// RPC password (conflicts with bitcoin-dir)
     #[clap(long, conflicts_with_all = ["bitcoin_dir", "electrum", "esplora"])]
     rpc_password: Option<String>,
-    
+
     /// Bitcoin network (mainnet, testnet, signet, regtest)
     #[clap(long, default_value = "mainnet")]
     network: String,
@@ -257,7 +256,7 @@ struct CreateFundedPsbtArgs {
     /// Output descriptor (required when using BDK backends)
     #[clap(long)]
     descriptor: Option<String>,
-    
+
     // Backend selection options (mutually exclusive)
     /// Electrum server URL (e.g., ssl://electrum.blockstream.info:50002)
     #[clap(long, conflicts_with_all = ["esplora", "bitcoin_dir", "rpc_url", "rpc_user", "rpc_password"])]
@@ -265,7 +264,7 @@ struct CreateFundedPsbtArgs {
     /// Esplora server URL (e.g., https://blockstream.info/api)
     #[clap(long, conflicts_with_all = ["electrum", "bitcoin_dir", "rpc_url", "rpc_user", "rpc_password"])]
     esplora: Option<String>,
-    
+
     // Bitcoin Core RPC options (default backend)
     /// Bitcoin Core RPC URL (default: http://127.0.0.1:8332)
     #[clap(long, default_value = DEFAULT_BITCOIN_RPC_URL, conflicts_with_all = ["electrum", "esplora"])]
@@ -279,7 +278,7 @@ struct CreateFundedPsbtArgs {
     /// RPC password (conflicts with bitcoin-dir)
     #[clap(long, conflicts_with_all = ["bitcoin_dir", "electrum", "esplora"])]
     rpc_password: Option<String>,
-    
+
     /// Bitcoin network (mainnet, testnet, signet, regtest)
     #[clap(long, default_value = "mainnet")]
     network: String,
@@ -312,7 +311,7 @@ struct MoveUtxosArgs {
     /// Output descriptor (required when using BDK backends)
     #[clap(long)]
     descriptor: Option<String>,
-    
+
     // Backend selection options (mutually exclusive)
     /// Electrum server URL (e.g., ssl://electrum.blockstream.info:50002)
     #[clap(long, conflicts_with_all = ["esplora", "bitcoin_dir", "rpc_url", "rpc_user", "rpc_password"])]
@@ -320,7 +319,7 @@ struct MoveUtxosArgs {
     /// Esplora server URL (e.g., https://blockstream.info/api)
     #[clap(long, conflicts_with_all = ["electrum", "bitcoin_dir", "rpc_url", "rpc_user", "rpc_password"])]
     esplora: Option<String>,
-    
+
     // Bitcoin Core RPC options (default backend)
     /// Bitcoin Core RPC URL (default: http://127.0.0.1:8332)
     #[clap(long, default_value = DEFAULT_BITCOIN_RPC_URL, conflicts_with_all = ["electrum", "esplora"])]
@@ -334,7 +333,7 @@ struct MoveUtxosArgs {
     /// RPC password (conflicts with bitcoin-dir)
     #[clap(long, conflicts_with_all = ["bitcoin_dir", "electrum", "esplora"])]
     rpc_password: Option<String>,
-    
+
     /// Bitcoin network (mainnet, testnet, signet, regtest)
     #[clap(long, default_value = "mainnet")]
     network: String,
@@ -397,7 +396,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::CreatePsbt(args) => bitcoin_create_psbt(args).await?,
         Commands::CreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
         Commands::MoveUtxos(args) => bitcoin_move_utxos(args).await?,
-
     }
     Ok(())
 }
@@ -530,13 +528,20 @@ async fn bitcoin_list_utxos(args: ListUtxosArgs) -> anyhow::Result<()> {
         "testnet" => cyberkrill_core::Network::Testnet,
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
-        _ => bail!("Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest", args.network),
+        _ => bail!(
+            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
+            args.network
+        ),
     };
 
     // Check if we're using BDK backends
-    if args.electrum.is_some() || args.esplora.is_some() || (args.descriptor.is_some() && args.bitcoin_dir.is_some()) {
+    if args.electrum.is_some()
+        || args.esplora.is_some()
+        || (args.descriptor.is_some() && args.bitcoin_dir.is_some())
+    {
         // BDK path: require descriptor
-        let descriptor = args.descriptor
+        let descriptor = args
+            .descriptor
             .ok_or_else(|| anyhow::anyhow!("--descriptor is required when using BDK backends"))?;
 
         let result = if let Some(electrum_url) = args.electrum {
@@ -595,7 +600,7 @@ async fn bitcoin_list_utxos(args: ListUtxosArgs) -> anyhow::Result<()> {
 
         serde_json::to_writer_pretty(writer, &result)?;
     }
-    
+
     Ok(())
 }
 
@@ -611,13 +616,20 @@ async fn bitcoin_create_psbt(args: CreatePsbtArgs) -> anyhow::Result<()> {
         "testnet" => cyberkrill_core::Network::Testnet,
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
-        _ => bail!("Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest", args.network),
+        _ => bail!(
+            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
+            args.network
+        ),
     };
 
     // Check if we're using BDK backends
-    if args.electrum.is_some() || args.esplora.is_some() || (args.descriptor.is_some() && args.bitcoin_dir.is_some()) {
+    if args.electrum.is_some()
+        || args.esplora.is_some()
+        || (args.descriptor.is_some() && args.bitcoin_dir.is_some())
+    {
         // BDK path: require descriptor
-        let descriptor = args.descriptor
+        let descriptor = args
+            .descriptor
             .ok_or_else(|| anyhow::anyhow!("--descriptor is required when using BDK backends"))?;
 
         // Parse outputs
@@ -631,11 +643,11 @@ async fn bitcoin_create_psbt(args: CreatePsbtArgs) -> anyhow::Result<()> {
 
         // Determine backend URL
         let backend = if let Some(electrum_url) = args.electrum {
-            format!("electrum://{}", electrum_url)
+            format!("electrum://{electrum_url}")
         } else if let Some(esplora_url) = args.esplora {
-            format!("esplora://{}", esplora_url)
+            format!("esplora://{esplora_url}")
         } else if let Some(bitcoin_dir) = args.bitcoin_dir {
-            format!("bitcoind://{}", bitcoin_dir)
+            format!("bitcoind://{bitcoin_dir}")
         } else {
             bail!("No backend specified. Use --electrum, --esplora, or --bitcoin-dir")
         };
@@ -693,13 +705,20 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
         "testnet" => cyberkrill_core::Network::Testnet,
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
-        _ => bail!("Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest", args.network),
+        _ => bail!(
+            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
+            args.network
+        ),
     };
 
     // Check if we're using BDK backends
-    if args.electrum.is_some() || args.esplora.is_some() || (args.descriptor.is_some() && args.bitcoin_dir.is_some()) {
+    if args.electrum.is_some()
+        || args.esplora.is_some()
+        || (args.descriptor.is_some() && args.bitcoin_dir.is_some())
+    {
         // BDK path: require descriptor
-        let descriptor = args.descriptor
+        let descriptor = args
+            .descriptor
             .ok_or_else(|| anyhow::anyhow!("--descriptor is required when using BDK backends"))?;
 
         // Parse outputs
@@ -713,11 +732,11 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
 
         // Determine backend URL
         let backend = if let Some(electrum_url) = args.electrum {
-            format!("electrum://{}", electrum_url)
+            format!("electrum://{electrum_url}")
         } else if let Some(esplora_url) = args.esplora {
-            format!("esplora://{}", esplora_url)
+            format!("esplora://{esplora_url}")
         } else if let Some(bitcoin_dir) = args.bitcoin_dir {
-            format!("bitcoind://{}", bitcoin_dir)
+            format!("bitcoind://{bitcoin_dir}")
         } else {
             bail!("No backend specified. Use --electrum, --esplora, or --bitcoin-dir")
         };
@@ -788,13 +807,20 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
         "testnet" => cyberkrill_core::Network::Testnet,
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
-        _ => bail!("Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest", args.network),
+        _ => bail!(
+            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
+            args.network
+        ),
     };
 
     // Check if we're using BDK backends
-    if args.electrum.is_some() || args.esplora.is_some() || (args.descriptor.is_some() && args.bitcoin_dir.is_some()) {
+    if args.electrum.is_some()
+        || args.esplora.is_some()
+        || (args.descriptor.is_some() && args.bitcoin_dir.is_some())
+    {
         // BDK path: require descriptor
-        let descriptor = args.descriptor
+        let descriptor = args
+            .descriptor
             .ok_or_else(|| anyhow::anyhow!("--descriptor is required when using BDK backends"))?;
 
         // Convert fee rate if provided
@@ -802,22 +828,22 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
             // Convert AmountInput to sats/vB
             rate.as_fractional_sats()
         });
-        
+
         // Convert fee to satoshis if provided
         let fee_sats = args.fee.map(|fee| fee.as_sat());
-        
+
         // Convert max amount to bitcoin::Amount if provided
-        let max_amount = args.max_amount.map(|amt| {
-            cyberkrill_core::bitcoin::Amount::from_sat(amt.as_sat())
-        });
+        let max_amount = args
+            .max_amount
+            .map(|amt| cyberkrill_core::bitcoin::Amount::from_sat(amt.as_sat()));
 
         // Determine backend URL
         let backend = if let Some(electrum_url) = args.electrum {
-            format!("electrum://{}", electrum_url)
+            format!("electrum://{electrum_url}")
         } else if let Some(esplora_url) = args.esplora {
-            format!("esplora://{}", esplora_url)
+            format!("esplora://{esplora_url}")
         } else if let Some(bitcoin_dir) = args.bitcoin_dir {
-            format!("bitcoind://{}", bitcoin_dir)
+            format!("bitcoind://{bitcoin_dir}")
         } else {
             bail!("No backend specified. Use --electrum, --esplora, or --bitcoin-dir")
         };
@@ -915,23 +941,29 @@ fn encode_fedimint_invite(args: EncodeFedimintInviteArgs) -> anyhow::Result<()> 
 }
 
 /// Parse output string in format "address:amount,address:amount" into Vec<(String, Amount)>
-fn parse_outputs(outputs_str: &str) -> anyhow::Result<Vec<(String, cyberkrill_core::bitcoin::Amount)>> {
+fn parse_outputs(
+    outputs_str: &str,
+) -> anyhow::Result<Vec<(String, cyberkrill_core::bitcoin::Amount)>> {
     let mut outputs = Vec::new();
     for output in outputs_str.split(',') {
         let parts: Vec<&str> = output.trim().split(':').collect();
         if parts.len() != 2 {
-            bail!("Invalid output format: '{}'. Expected 'address:amount'", output);
+            bail!(
+                "Invalid output format: '{}'. Expected 'address:amount'",
+                output
+            );
         }
-        
+
         let address = parts[0].trim().to_string();
         let amount_str = parts[1].trim();
-        
+
         // Parse amount as BTC
-        let amount_btc: f64 = amount_str.parse()
+        let amount_btc: f64 = amount_str
+            .parse()
             .context("Failed to parse amount as BTC")?;
-        let amount = cyberkrill_core::bitcoin::Amount::from_btc(amount_btc)
-            .context("Invalid BTC amount")?;
-        
+        let amount =
+            cyberkrill_core::bitcoin::Amount::from_btc(amount_btc).context("Invalid BTC amount")?;
+
         outputs.push((address, amount));
     }
     Ok(outputs)
