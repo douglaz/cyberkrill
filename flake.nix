@@ -37,6 +37,8 @@
             lockFile = ./Cargo.lock;
             outputHashes = {
               "cktap-direct-0.1.0" = "sha256-ddQhghrmtwXKr750bTzjolSDLwyNZFUskNhJrR2vyBo=";
+              "bip39-2.2.0" = "sha256-gtUvFo0A8mPdBfqp5jwMzS/tpNc1YRHWliIc27FYioA=";
+              "frozenkrill-core-0.0.0" = "sha256-awlbxP38IvzRRMorKa/tZNY9cXJ3EokAIkt/9J2MuRs=";
             };
           };
           
@@ -97,6 +99,8 @@
             lockFile = ./Cargo.lock;
             outputHashes = {
               "cktap-direct-0.1.0" = "sha256-ddQhghrmtwXKr750bTzjolSDLwyNZFUskNhJrR2vyBo=";
+              "bip39-2.2.0" = "sha256-gtUvFo0A8mPdBfqp5jwMzS/tpNc1YRHWliIc27FYioA=";
+              "frozenkrill-core-0.0.0" = "sha256-awlbxP38IvzRRMorKa/tZNY9cXJ3EokAIkt/9J2MuRs=";
             };
           };
           
