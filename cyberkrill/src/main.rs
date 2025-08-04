@@ -1038,7 +1038,7 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
     };
     
     // Parse PSBT
-    let psbt = Psbt::from_str(&psbt_string.trim())?;
+    let psbt = Psbt::from_str(psbt_string.trim())?;
     
     // Create output structure
     let mut output = serde_json::json!({
