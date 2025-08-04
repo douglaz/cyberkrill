@@ -512,15 +512,15 @@ pub async fn create_psbt_bdk(
     let utxos = if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
         use bdk_electrum::{electrum_client, BdkElectrumClient};
-        
+
         let client = BdkElectrumClient::new(
             electrum_client::Client::new(url).context("Failed to create Electrum client")?,
         );
-        
+
         let request = wallet.start_full_scan().build();
         let update = client.full_scan(request, 200, 10, false)?;
         wallet.apply_update(update)?;
-        
+
         // Now get the UTXOs from the synced wallet
         let wallet_utxos = wallet.list_unspent();
         let mut utxos = Vec::new();
@@ -528,7 +528,8 @@ pub async fn create_psbt_bdk(
             utxos.push(BdkUtxo {
                 txid: utxo.outpoint.txid.to_string(),
                 vout: utxo.outpoint.vout,
-                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?.to_string(),
+                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?
+                    .to_string(),
                 amount: utxo.txout.value.to_sat(),
                 amount_btc: utxo.txout.value.to_btc(),
                 confirmations: 0, // Not needed for this use case
@@ -536,7 +537,8 @@ pub async fn create_psbt_bdk(
                 keychain: match utxo.keychain {
                     KeychainKind::External => "external",
                     KeychainKind::Internal => "internal",
-                }.to_string(),
+                }
+                .to_string(),
                 derivation_index: None,
             });
         }
@@ -544,12 +546,12 @@ pub async fn create_psbt_bdk(
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
         use bdk_esplora::{esplora_client, EsploraExt};
-        
+
         let client = esplora_client::Builder::new(url).build_blocking();
         let request = wallet.start_full_scan().build();
         let update = client.full_scan(request, 200, 10)?;
         wallet.apply_update(update)?;
-        
+
         // Now get the UTXOs from the synced wallet
         let wallet_utxos = wallet.list_unspent();
         let mut utxos = Vec::new();
@@ -557,7 +559,8 @@ pub async fn create_psbt_bdk(
             utxos.push(BdkUtxo {
                 txid: utxo.outpoint.txid.to_string(),
                 vout: utxo.outpoint.vout,
-                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?.to_string(),
+                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?
+                    .to_string(),
                 amount: utxo.txout.value.to_sat(),
                 amount_btc: utxo.txout.value.to_btc(),
                 confirmations: 0, // Not needed for this use case
@@ -565,7 +568,8 @@ pub async fn create_psbt_bdk(
                 keychain: match utxo.keychain {
                     KeychainKind::External => "external",
                     KeychainKind::Internal => "internal",
-                }.to_string(),
+                }
+                .to_string(),
                 derivation_index: None,
             });
         }
@@ -674,18 +678,18 @@ pub async fn create_funded_psbt_bdk(
     if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
         use bdk_electrum::{electrum_client, BdkElectrumClient};
-        
+
         let client = BdkElectrumClient::new(
             electrum_client::Client::new(url).context("Failed to create Electrum client")?,
         );
-        
+
         let request = wallet.start_full_scan().build();
         let update = client.full_scan(request, 200, 10, false)?;
         wallet.apply_update(update)?;
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
         use bdk_esplora::{esplora_client, EsploraExt};
-        
+
         let client = esplora_client::Builder::new(url).build_blocking();
         let request = wallet.start_full_scan().build();
         let update = client.full_scan(request, 200, 10)?;
@@ -770,15 +774,15 @@ pub async fn move_utxos_bdk(
     let utxos = if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
         use bdk_electrum::{electrum_client, BdkElectrumClient};
-        
+
         let client = BdkElectrumClient::new(
             electrum_client::Client::new(url).context("Failed to create Electrum client")?,
         );
-        
+
         let request = wallet.start_full_scan().build();
         let update = client.full_scan(request, 200, 10, false)?;
         wallet.apply_update(update)?;
-        
+
         // Now get the UTXOs from the synced wallet
         let wallet_utxos = wallet.list_unspent();
         let mut utxos = Vec::new();
@@ -786,7 +790,8 @@ pub async fn move_utxos_bdk(
             utxos.push(BdkUtxo {
                 txid: utxo.outpoint.txid.to_string(),
                 vout: utxo.outpoint.vout,
-                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?.to_string(),
+                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?
+                    .to_string(),
                 amount: utxo.txout.value.to_sat(),
                 amount_btc: utxo.txout.value.to_btc(),
                 confirmations: 0, // Not needed for this use case
@@ -794,7 +799,8 @@ pub async fn move_utxos_bdk(
                 keychain: match utxo.keychain {
                     KeychainKind::External => "external",
                     KeychainKind::Internal => "internal",
-                }.to_string(),
+                }
+                .to_string(),
                 derivation_index: None,
             });
         }
@@ -802,12 +808,12 @@ pub async fn move_utxos_bdk(
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
         use bdk_esplora::{esplora_client, EsploraExt};
-        
+
         let client = esplora_client::Builder::new(url).build_blocking();
         let request = wallet.start_full_scan().build();
         let update = client.full_scan(request, 200, 10)?;
         wallet.apply_update(update)?;
-        
+
         // Now get the UTXOs from the synced wallet
         let wallet_utxos = wallet.list_unspent();
         let mut utxos = Vec::new();
@@ -815,7 +821,8 @@ pub async fn move_utxos_bdk(
             utxos.push(BdkUtxo {
                 txid: utxo.outpoint.txid.to_string(),
                 vout: utxo.outpoint.vout,
-                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?.to_string(),
+                address: bitcoin::Address::from_script(&utxo.txout.script_pubkey, network)?
+                    .to_string(),
                 amount: utxo.txout.value.to_sat(),
                 amount_btc: utxo.txout.value.to_btc(),
                 confirmations: 0, // Not needed for this use case
@@ -823,7 +830,8 @@ pub async fn move_utxos_bdk(
                 keychain: match utxo.keychain {
                     KeychainKind::External => "external",
                     KeychainKind::Internal => "internal",
-                }.to_string(),
+                }
+                .to_string(),
                 derivation_index: None,
             });
         }

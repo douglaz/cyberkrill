@@ -368,11 +368,11 @@ struct MoveUtxosArgs {
 struct DecodePsbtArgs {
     /// PSBT string (base64 encoded) or file path containing PSBT
     input: Option<String>,
-    
+
     /// Path to output file (default: stdout)
     #[clap(short, long)]
     output: Option<String>,
-    
+
     /// Network (mainnet, testnet, signet, regtest)
     #[clap(long, default_value = "mainnet")]
     network: String,
@@ -777,21 +777,18 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
         serde_json::to_writer_pretty(writer, &result)?;
     } else {
         // Bitcoin Core RPC path (original behavior)
-        
-        // Validate that inputs don't contain descriptors
-        for input in &args.inputs {
-            if input.contains('(') || input.contains('[') {
-                bail!(
-                    "Error: Descriptors are not allowed in --inputs for create-funded-psbt.\n\
-                     Input '{}' appears to be a descriptor.\n\
-                     For automatic coin selection from a descriptor, use:\n\
-                     - --descriptor with BDK backends (--electrum, --esplora, or --bitcoin-dir)\n\
-                     - Or leave --inputs empty for automatic selection from the wallet",
-                    input
-                );
-            }
+
+        // Validate that inputs are not empty
+        if args.inputs.is_empty() {
+            bail!(
+                "Error: --inputs is required for create-funded-psbt.\n\
+                 You must provide either:\n\
+                 - Specific UTXOs: --inputs \"txid:vout\"\n\
+                 - A descriptor: --inputs \"wpkh([fingerprint/path]xpub.../<0;1>/*)\"\n\n\
+                 For automatic selection with BDK backends, use --descriptor with --electrum or --esplora"
+            );
         }
-        
+
         let bitcoin_dir = args.bitcoin_dir.as_ref().map(Path::new);
         let client = cyberkrill_core::BitcoinRpcClient::new_auto(
             args.rpc_url,
@@ -1005,7 +1002,7 @@ fn parse_outputs(
 fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
     use cyberkrill_core::bitcoin::{psbt::Psbt, Network};
     use std::str::FromStr;
-    
+
     // Parse network
     let network = match args.network.to_lowercase().as_str() {
         "mainnet" | "bitcoin" => Network::Bitcoin,
@@ -1017,7 +1014,7 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
             args.network
         ),
     };
-    
+
     // Get PSBT string from input or stdin
     let psbt_string = match args.input {
         Some(input) => {
@@ -1036,10 +1033,10 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
             buffer
         }
     };
-    
+
     // Parse PSBT
     let psbt = Psbt::from_str(psbt_string.trim())?;
-    
+
     // Create output structure
     let mut output = serde_json::json!({
         "network": network.to_string(),
@@ -1053,20 +1050,26 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
         "total_output_value": 0u64,
         "fee": null,
     });
-    
+
     // Process inputs
     let mut total_input_value = 0u64;
     let mut all_inputs_have_value = true;
     let inputs_array = output["inputs"].as_array_mut().unwrap();
-    
-    for (i, (input, psbt_input)) in psbt.unsigned_tx.input.iter().zip(psbt.inputs.iter()).enumerate() {
+
+    for (i, (input, psbt_input)) in psbt
+        .unsigned_tx
+        .input
+        .iter()
+        .zip(psbt.inputs.iter())
+        .enumerate()
+    {
         let mut input_json = serde_json::json!({
             "index": i,
             "txid": input.previous_output.txid.to_string(),
             "vout": input.previous_output.vout,
             "sequence": input.sequence.0,
         });
-        
+
         // Try to get witness UTXO for value
         if let Some(witness_utxo) = &psbt_input.witness_utxo {
             input_json["value_sats"] = serde_json::json!(witness_utxo.value.to_sat());
@@ -1074,7 +1077,10 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
             total_input_value += witness_utxo.value.to_sat();
         } else if let Some(non_witness_utxo) = &psbt_input.non_witness_utxo {
             // For non-witness UTXOs, we need to look up the output
-            if let Some(output) = non_witness_utxo.output.get(input.previous_output.vout as usize) {
+            if let Some(output) = non_witness_utxo
+                .output
+                .get(input.previous_output.vout as usize)
+            {
                 input_json["value_sats"] = serde_json::json!(output.value.to_sat());
                 input_json["value_btc"] = serde_json::json!(output.value.to_btc());
                 total_input_value += output.value.to_sat();
@@ -1084,20 +1090,20 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
         } else {
             all_inputs_have_value = false;
         }
-        
+
         // Add signature info
         let num_sigs = psbt_input.partial_sigs.len();
         if num_sigs > 0 {
             input_json["signatures"] = serde_json::json!(num_sigs);
         }
-        
+
         inputs_array.push(input_json);
     }
-    
+
     // Process outputs
     let outputs_array = output["outputs"].as_array_mut().unwrap();
     let mut total_output_value = 0u64;
-    
+
     for (i, tx_output) in psbt.unsigned_tx.output.iter().enumerate() {
         let output_json = serde_json::json!({
             "index": i,
@@ -1111,14 +1117,14 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
         outputs_array.push(output_json);
         total_output_value += tx_output.value.to_sat();
     }
-    
+
     // Update totals
     output["total_output_value"] = serde_json::json!(total_output_value);
     if all_inputs_have_value {
         output["total_input_value"] = serde_json::json!(total_input_value);
         output["fee"] = serde_json::json!(total_input_value.saturating_sub(total_output_value));
     }
-    
+
     // Write output
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
@@ -1127,6 +1133,6 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
     let mut writer = writer;
     serde_json::to_writer_pretty(&mut writer, &output)?;
     writeln!(&mut writer)?;
-    
+
     Ok(())
 }

@@ -617,7 +617,7 @@ impl BitcoinRpcClient {
         let info_result = self
             .rpc_call("getdescriptorinfo", serde_json::Value::Array(info_params))
             .await?;
-        
+
         let descriptor_with_checksum = info_result
             .get("descriptor")
             .and_then(|d| d.as_str())
@@ -629,7 +629,7 @@ impl BitcoinRpcClient {
         } else {
             serde_json::json!("now")
         };
-        
+
         let import_params = vec![serde_json::json!([{
             "desc": descriptor_with_checksum,
             "timestamp": timestamp_value,
@@ -662,14 +662,14 @@ impl BitcoinRpcClient {
 
         let mut all_utxos = Vec::new();
         let mut seen_outpoints = std::collections::HashSet::new();
-        
+
         for desc in descriptors {
             // Get addresses from the descriptor
             let addresses = self.get_addresses_from_descriptor(&desc, 100).await?;
-            
+
             // Use listunspent with min_conf=0 to include mempool
             let utxos = self.list_unspent(Some(0), None, Some(addresses)).await?;
-            
+
             // Only add UTXOs we haven't seen before (deduplication for multipath descriptors)
             for utxo in utxos {
                 let outpoint = (utxo.txid.clone(), utxo.vout);
@@ -683,7 +683,11 @@ impl BitcoinRpcClient {
     }
 
     /// Get addresses from a descriptor
-    async fn get_addresses_from_descriptor(&self, descriptor: &str, count: u32) -> Result<Vec<String>> {
+    async fn get_addresses_from_descriptor(
+        &self,
+        descriptor: &str,
+        count: u32,
+    ) -> Result<Vec<String>> {
         let mut addresses = Vec::new();
 
         // Get descriptor info first
@@ -691,28 +695,27 @@ impl BitcoinRpcClient {
         let info_result = self
             .rpc_call("getdescriptorinfo", serde_json::Value::Array(info_params))
             .await?;
-        
+
         let descriptor_with_checksum = info_result
             .get("descriptor")
             .and_then(|d| d.as_str())
             .context("Failed to get descriptor with checksum")?;
 
-        // Derive addresses
-        for i in 0..count {
-            let derive_params = vec![
-                serde_json::json!(descriptor_with_checksum),
-                serde_json::json!([i]), // range
-            ];
-            
-            if let Ok(result) = self
-                .rpc_call("deriveaddresses", serde_json::Value::Array(derive_params))
-                .await
-            {
-                if let Some(addr_array) = result.as_array() {
-                    for addr in addr_array {
-                        if let Some(addr_str) = addr.as_str() {
-                            addresses.push(addr_str.to_string());
-                        }
+        // Derive addresses using proper range syntax for wildcard descriptors
+        // The range should be [start, end] inclusive
+        let derive_params = vec![
+            serde_json::json!(descriptor_with_checksum),
+            serde_json::json!([0, count - 1]), // Derive from index 0 to count-1
+        ];
+
+        if let Ok(result) = self
+            .rpc_call("deriveaddresses", serde_json::Value::Array(derive_params))
+            .await
+        {
+            if let Some(addr_array) = result.as_array() {
+                for addr in addr_array {
+                    if let Some(addr_str) = addr.as_str() {
+                        addresses.push(addr_str.to_string());
                     }
                 }
             }
