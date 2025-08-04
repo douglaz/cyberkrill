@@ -161,11 +161,20 @@ struct SatscardAddressArgs {
 
 #[derive(clap::Args, Debug)]
 struct ListUtxosArgs {
+    /// frozenkrill wallet export file to list UTXOs from
+    #[cfg(feature = "frozenkrill")]
+    #[clap(long, conflicts_with_all = ["descriptor", "addresses"])]
+    wallet_file: Option<std::path::PathBuf>,
     /// Output descriptor to scan for UTXOs (required when using BDK backends)
-    #[clap(long, conflicts_with = "addresses")]
+    #[cfg_attr(feature = "frozenkrill", clap(long, conflicts_with_all = ["addresses", "wallet_file"]))]
+    #[cfg_attr(not(feature = "frozenkrill"), clap(long, conflicts_with = "addresses"))]
     descriptor: Option<String>,
     /// Comma-separated list of addresses to list UTXOs for (only for Bitcoin Core RPC)
-    #[clap(long, conflicts_with = "descriptor")]
+    #[cfg_attr(feature = "frozenkrill", clap(long, conflicts_with_all = ["descriptor", "wallet_file"]))]
+    #[cfg_attr(
+        not(feature = "frozenkrill"),
+        clap(long, conflicts_with = "descriptor")
+    )]
     addresses: Option<String>,
 
     // Backend selection options (mutually exclusive)
@@ -613,6 +622,13 @@ async fn bitcoin_list_utxos(args: ListUtxosArgs) -> anyhow::Result<()> {
                 .collect();
             client.list_utxos_for_addresses(addresses).await?
         } else {
+            #[cfg(feature = "frozenkrill")]
+            if let Some(wallet_file) = args.wallet_file {
+                client.list_utxos_from_wallet_file(&wallet_file).await?
+            } else {
+                bail!("Either --descriptor, --addresses, or --wallet-file must be provided");
+            }
+            #[cfg(not(feature = "frozenkrill"))]
             bail!("Either --descriptor or --addresses must be provided");
         };
 

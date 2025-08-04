@@ -12,6 +12,7 @@ A comprehensive CLI toolkit for Bitcoin and Lightning Network operations, writte
 - **Sub-satoshi Precision**: Support for fractional satoshi fee rates (e.g., "0.1sats/vB") using millisatoshi precision
 - **Smart Coin Selection**: Automatic coin selection with max-amount limits and descriptor-based input selection
 - **Output Descriptor Support**: Use descriptors as inputs with automatic UTXO discovery and change address derivation
+- **frozenkrill Wallet Support**: Import and use frozenkrill wallet export files instead of raw descriptors
 - **JSON Output**: All commands output structured JSON for easy integration with other tools
 
 ## Installation
@@ -165,6 +166,9 @@ cyberkrill list-utxos --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
 
 # Using specific addresses with Bitcoin Core
 cyberkrill list-utxos --addresses "bc1qtest1,bc1qtest2"
+
+# Using frozenkrill wallet export file
+cyberkrill list-utxos --wallet-file mywallet_pub.json
 
 # Custom Bitcoin directory
 cyberkrill list-utxos --bitcoin-dir /path/to/.bitcoin --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
@@ -397,6 +401,32 @@ Then use:
 ```bash
 cyberkrill list-utxos --rpc-user myuser --rpc-password mypassword --descriptor "wpkh([...]xpub...)"
 ```
+
+### frozenkrill Wallet Integration
+
+CyberKrill supports frozenkrill wallet export files as an alternative to raw descriptors. This provides a more user-friendly way to work with wallets that have pre-generated addresses and metadata.
+
+**Using frozenkrill wallet files:**
+```bash
+# List UTXOs from a frozenkrill wallet export
+cyberkrill list-utxos --wallet-file mywallet_pub.json
+
+# Create PSBT with wallet file (future enhancement)
+cyberkrill create-psbt --wallet-file mywallet_pub.json --outputs "bc1qaddr:0.001btc"
+
+# Move UTXOs using wallet file (future enhancement)
+cyberkrill move-utxos --wallet-file mywallet_pub.json --destination "bc1qconsolidated"
+```
+
+**Supported wallet types:**
+- Single-signature wallets (singlesig)
+- Multi-signature wallets (2-of-3, 3-of-5, etc.)
+
+**Benefits:**
+- No need to manually specify descriptors
+- Automatically includes both receiving and change addresses
+- Pre-validated addresses with derivation paths
+- Network and script type metadata included
 
 ## Amount Input Formats
 

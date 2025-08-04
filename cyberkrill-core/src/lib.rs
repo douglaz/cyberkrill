@@ -1,6 +1,8 @@
 pub mod bdk_wallet;
 pub mod bitcoin_rpc;
 pub mod decoder;
+#[cfg(feature = "frozenkrill")]
+pub mod frozenkrill;
 #[cfg(feature = "smartcards")]
 pub mod satscard;
 #[cfg(feature = "smartcards")]
@@ -32,3 +34,7 @@ pub use bitcoin::{self, Network};
 
 // Re-export fedimint functionality
 pub use fedimint_lite;
+
+// Re-export frozenkrill functionality
+#[cfg(feature = "frozenkrill")]
+pub use frozenkrill::FrozenkrillWallet;

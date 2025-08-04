@@ -9,8 +9,9 @@ keywords = ["bitcoin", "lightning", "lnurl", "fedimint", "tapsigner"]
 categories = ["cryptography::cryptocurrencies"]
 
 [features]
-default = ["smartcards"]
+default = ["smartcards", "frozenkrill"]
 smartcards = ["cktap-direct", "rusb"]
+frozenkrill = ["frozenkrill-core"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
@@ -36,3 +37,8 @@ sha2 = "0.10"
 bdk_wallet = "2.0.0"
 bdk_electrum = { version = "0.23.0", default-features = false, features = ["use-rustls"] }
 bdk_esplora = { version = "0.22.0", default-features = false, features = ["blocking", "blocking-https-rustls"] }
+# frozenkrill support
+frozenkrill-core = { git = "https://github.com/planktonlabs/frozenkrill", optional = true }
+
+[dev-dependencies]
+tempfile = "3.0"
