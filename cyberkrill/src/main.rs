@@ -58,6 +58,8 @@ enum Commands {
         about = "Consolidate/move UTXOs to a single destination address (output = total inputs - fee)"
     )]
     MoveUtxos(MoveUtxosArgs),
+    #[command(about = "Decode a PSBT (Partially Signed Bitcoin Transaction)")]
+    DecodePsbt(DecodePsbtArgs),
 }
 
 // Lightning Network Args
@@ -282,8 +284,9 @@ struct CreateFundedPsbtArgs {
     /// Bitcoin network (mainnet, testnet, signet, regtest)
     #[clap(long, default_value = "mainnet")]
     network: String,
-    /// Input UTXOs in format txid:vout or output descriptors (can be specified multiple times). Leave empty for automatic input selection.
-    /// Examples: --inputs txid1:0 --inputs txid2:1 or --inputs "wpkh([fingerprint/84'/0'/0']xpub...)"
+    /// Input UTXOs in format txid:vout (can be specified multiple times). Leave empty for automatic input selection.
+    /// Examples: --inputs txid1:0 --inputs txid2:1
+    /// Note: For automatic selection from a descriptor, use --descriptor instead
     #[clap(long)]
     inputs: Vec<String>,
     /// Output addresses and amounts in format address:amount_btc (comma-separated)
@@ -361,6 +364,20 @@ struct MoveUtxosArgs {
     psbt_output: Option<String>,
 }
 
+#[derive(clap::Args, Debug)]
+struct DecodePsbtArgs {
+    /// PSBT string (base64 encoded) or file path containing PSBT
+    input: Option<String>,
+    
+    /// Path to output file (default: stdout)
+    #[clap(short, long)]
+    output: Option<String>,
+    
+    /// Network (mainnet, testnet, signet, regtest)
+    #[clap(long, default_value = "mainnet")]
+    network: String,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize rustls crypto provider for TLS connections (required for Electrum)
@@ -396,6 +413,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::CreatePsbt(args) => bitcoin_create_psbt(args).await?,
         Commands::CreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
         Commands::MoveUtxos(args) => bitcoin_move_utxos(args).await?,
+        Commands::DecodePsbt(args) => decode_psbt(args)?,
     }
     Ok(())
 }
@@ -759,6 +777,21 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
         serde_json::to_writer_pretty(writer, &result)?;
     } else {
         // Bitcoin Core RPC path (original behavior)
+        
+        // Validate that inputs don't contain descriptors
+        for input in &args.inputs {
+            if input.contains('(') || input.contains('[') {
+                bail!(
+                    "Error: Descriptors are not allowed in --inputs for create-funded-psbt.\n\
+                     Input '{}' appears to be a descriptor.\n\
+                     For automatic coin selection from a descriptor, use:\n\
+                     - --descriptor with BDK backends (--electrum, --esplora, or --bitcoin-dir)\n\
+                     - Or leave --inputs empty for automatic selection from the wallet",
+                    input
+                );
+            }
+        }
+        
         let bitcoin_dir = args.bitcoin_dir.as_ref().map(Path::new);
         let client = cyberkrill_core::BitcoinRpcClient::new_auto(
             args.rpc_url,
@@ -967,4 +1000,133 @@ fn parse_outputs(
         outputs.push((address, amount));
     }
     Ok(outputs)
+}
+
+fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::bitcoin::{psbt::Psbt, Network};
+    use std::str::FromStr;
+    
+    // Parse network
+    let network = match args.network.to_lowercase().as_str() {
+        "mainnet" | "bitcoin" => Network::Bitcoin,
+        "testnet" => Network::Testnet,
+        "signet" => Network::Signet,
+        "regtest" => Network::Regtest,
+        _ => bail!(
+            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
+            args.network
+        ),
+    };
+    
+    // Get PSBT string from input or stdin
+    let psbt_string = match args.input {
+        Some(input) => {
+            // Check if it's a file path
+            if std::path::Path::new(&input).exists() {
+                std::fs::read_to_string(&input)?
+            } else {
+                // Assume it's the PSBT string directly
+                input
+            }
+        }
+        None => {
+            // Read from stdin
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        }
+    };
+    
+    // Parse PSBT
+    let psbt = Psbt::from_str(&psbt_string.trim())?;
+    
+    // Create output structure
+    let mut output = serde_json::json!({
+        "network": network.to_string(),
+        "version": psbt.unsigned_tx.version.0,
+        "locktime": psbt.unsigned_tx.lock_time.to_consensus_u32(),
+        "input_count": psbt.unsigned_tx.input.len(),
+        "output_count": psbt.unsigned_tx.output.len(),
+        "inputs": [],
+        "outputs": [],
+        "total_input_value": null,
+        "total_output_value": 0u64,
+        "fee": null,
+    });
+    
+    // Process inputs
+    let mut total_input_value = 0u64;
+    let mut all_inputs_have_value = true;
+    let inputs_array = output["inputs"].as_array_mut().unwrap();
+    
+    for (i, (input, psbt_input)) in psbt.unsigned_tx.input.iter().zip(psbt.inputs.iter()).enumerate() {
+        let mut input_json = serde_json::json!({
+            "index": i,
+            "txid": input.previous_output.txid.to_string(),
+            "vout": input.previous_output.vout,
+            "sequence": input.sequence.0,
+        });
+        
+        // Try to get witness UTXO for value
+        if let Some(witness_utxo) = &psbt_input.witness_utxo {
+            input_json["value_sats"] = serde_json::json!(witness_utxo.value.to_sat());
+            input_json["value_btc"] = serde_json::json!(witness_utxo.value.to_btc());
+            total_input_value += witness_utxo.value.to_sat();
+        } else if let Some(non_witness_utxo) = &psbt_input.non_witness_utxo {
+            // For non-witness UTXOs, we need to look up the output
+            if let Some(output) = non_witness_utxo.output.get(input.previous_output.vout as usize) {
+                input_json["value_sats"] = serde_json::json!(output.value.to_sat());
+                input_json["value_btc"] = serde_json::json!(output.value.to_btc());
+                total_input_value += output.value.to_sat();
+            } else {
+                all_inputs_have_value = false;
+            }
+        } else {
+            all_inputs_have_value = false;
+        }
+        
+        // Add signature info
+        let num_sigs = psbt_input.partial_sigs.len();
+        if num_sigs > 0 {
+            input_json["signatures"] = serde_json::json!(num_sigs);
+        }
+        
+        inputs_array.push(input_json);
+    }
+    
+    // Process outputs
+    let outputs_array = output["outputs"].as_array_mut().unwrap();
+    let mut total_output_value = 0u64;
+    
+    for (i, tx_output) in psbt.unsigned_tx.output.iter().enumerate() {
+        let output_json = serde_json::json!({
+            "index": i,
+            "value_sats": tx_output.value.to_sat(),
+            "value_btc": tx_output.value.to_btc(),
+            "script_pubkey": tx_output.script_pubkey.to_hex_string(),
+            "address": cyberkrill_core::bitcoin::Address::from_script(&tx_output.script_pubkey, network)
+                .map(|a| a.to_string())
+                .ok(),
+        });
+        outputs_array.push(output_json);
+        total_output_value += tx_output.value.to_sat();
+    }
+    
+    // Update totals
+    output["total_output_value"] = serde_json::json!(total_output_value);
+    if all_inputs_have_value {
+        output["total_input_value"] = serde_json::json!(total_input_value);
+        output["fee"] = serde_json::json!(total_input_value.saturating_sub(total_output_value));
+    }
+    
+    // Write output
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+    let mut writer = writer;
+    serde_json::to_writer_pretty(&mut writer, &output)?;
+    writeln!(&mut writer)?;
+    
+    Ok(())
 }
