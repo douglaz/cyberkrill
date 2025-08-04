@@ -27,6 +27,8 @@ jobs:
     - name: Setup Magic Nix Cache
       uses: DeterminateSystems/magic-nix-cache-action@main
     
+    # Only cache cargo registry (dependencies), not target directory
+    # Target caching conflicts with nix environment and multiple build targets
     - name: Cache Cargo registry
       uses: actions/cache@v4
       with:
@@ -37,15 +39,6 @@ jobs:
         key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           cargo-registry-${{ runner.os }}-
-    
-    - name: Cache Cargo target directory
-      uses: actions/cache@v4
-      with:
-        path: target/
-        key: cargo-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
-        restore-keys: |
-          cargo-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-target-${{ runner.os }}-
     - name: Check formatting
       run: nix develop -c cargo fmt --check
     
