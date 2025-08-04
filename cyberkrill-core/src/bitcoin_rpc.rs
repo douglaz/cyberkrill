@@ -42,7 +42,7 @@ pub enum AmountInputError {
 /// # Examples
 /// ```
 /// use std::str::FromStr;
-/// use cyberkrill::bitcoin_rpc::AmountInput;
+/// use cyberkrill_core::bitcoin_rpc::AmountInput;
 ///
 /// // Parse from different formats
 /// let amount1 = AmountInput::from_str("0.5")?;
@@ -69,11 +69,11 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     ///
     /// let amount = AmountInput::from_btc(1.5)?;
     /// assert_eq!(amount.as_btc(), 1.5);
-    /// # Ok::<(), cyberkrill::bitcoin_rpc::AmountInputError>(())
+    /// # Ok::<(), cyberkrill_core::bitcoin_rpc::AmountInputError>(())
     /// ```
     ///
     /// # Errors
@@ -91,7 +91,7 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     ///
     /// let amount = AmountInput::from_sats(150000000);
     /// assert_eq!(amount.as_sat(), 150000000);
@@ -107,11 +107,12 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     ///
-    /// let amount = AmountInput::from_fractional_sats(1.5);
+    /// let amount = AmountInput::from_fractional_sats(1.5)?;
     /// assert_eq!(amount.as_millisats(), 1500);
     /// assert_eq!(amount.as_sat(), 1); // Rounds down to whole satoshis
+    /// # Ok::<(), cyberkrill_core::bitcoin_rpc::AmountInputError>(())
     /// ```
     pub fn from_fractional_sats(sats: f64) -> Result<Self, AmountInputError> {
         if sats < 0.0 {
@@ -126,7 +127,7 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     ///
     /// let amount = AmountInput::from_millisats(1500);
     /// assert_eq!(amount.as_millisats(), 1500);
@@ -140,7 +141,7 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     ///
     /// let amount = AmountInput::from_sats(100000000);
     /// assert_eq!(amount.as_sat(), 100000000);
@@ -156,7 +157,7 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     ///
     /// let amount = AmountInput::from_sats(100000000);
     /// assert_eq!(amount.as_btc(), 1.0);
@@ -169,11 +170,11 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     ///
     /// let amount = AmountInput::from_fractional_sats(1.5)?;
     /// assert_eq!(amount.as_millisats(), 1500);
-    /// # Ok::<(), cyberkrill::bitcoin_rpc::AmountInputError>(())
+    /// # Ok::<(), cyberkrill_core::bitcoin_rpc::AmountInputError>(())
     /// ```
     pub fn as_millisats(&self) -> u64 {
         self.millisats
@@ -183,7 +184,7 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     ///
     /// let amount = AmountInput::from_millisats(1500);
     /// assert_eq!(amount.as_fractional_sats(), 1.5);
@@ -200,7 +201,7 @@ impl AmountInput {
     ///
     /// # Examples
     /// ```
-    /// use cyberkrill::bitcoin_rpc::AmountInput;
+    /// use cyberkrill_core::bitcoin_rpc::AmountInput;
     /// use bitcoin::Amount;
     ///
     /// let amount_input = AmountInput::from_sats(100000000);
@@ -595,6 +596,58 @@ impl BitcoinRpcClient {
             total_amount_sats,
             total_count,
         })
+    }
+
+    /// List UTXOs from a frozenkrill wallet export file
+    #[cfg(feature = "frozenkrill")]
+    pub async fn list_utxos_from_wallet_file(
+        &self,
+        wallet_path: &Path,
+    ) -> Result<UtxoListResponse> {
+        use crate::frozenkrill::FrozenkrillWallet;
+
+        let wallet = FrozenkrillWallet::from_file(wallet_path)
+            .with_context(|| format!("Failed to load wallet from {}", wallet_path.display()))?;
+
+        // List UTXOs for both receiving and change descriptors
+        let receiving_utxos = self
+            .list_unspent_for_descriptor(wallet.receiving_descriptor())
+            .await?;
+        let change_utxos = self
+            .list_unspent_for_descriptor(wallet.change_descriptor())
+            .await?;
+
+        // Combine all UTXOs
+        let mut all_utxos = receiving_utxos;
+        all_utxos.extend(change_utxos);
+
+        // Calculate totals
+        let total_amount_sats: u64 = all_utxos
+            .iter()
+            .map(|u| Amount::from_btc(u.amount).unwrap_or(Amount::ZERO).to_sat())
+            .sum();
+        let total_count = all_utxos.len();
+        let utxo_outputs: Vec<UtxoOutput> = all_utxos.into_iter().map(Into::into).collect();
+
+        Ok(UtxoListResponse {
+            utxos: utxo_outputs,
+            total_amount_sats,
+            total_count,
+        })
+    }
+
+    /// Get descriptors from a frozenkrill wallet export file
+    #[cfg(feature = "frozenkrill")]
+    pub fn get_descriptors_from_wallet_file(wallet_path: &Path) -> Result<(String, String)> {
+        use crate::frozenkrill::FrozenkrillWallet;
+
+        let wallet = FrozenkrillWallet::from_file(wallet_path)
+            .with_context(|| format!("Failed to load wallet from {}", wallet_path.display()))?;
+
+        Ok((
+            wallet.receiving_descriptor().to_string(),
+            wallet.change_descriptor().to_string(),
+        ))
     }
 
     async fn get_current_block_height(&self) -> Result<u64> {
