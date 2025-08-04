@@ -208,6 +208,13 @@ cyberkrill create-psbt \
   --outputs "bc1qaddr:0.001btc" \
   --fee-rate 15sats
 
+# Using frozenkrill wallet file
+cyberkrill create-psbt \
+  --wallet-file mywallet_pub.json \
+  --inputs "txid1:0" --inputs "txid2:1" \
+  --outputs "bc1qaddr:0.001btc" \
+  --fee-rate 15sats
+
 # Mix specific UTXOs and descriptors
 cyberkrill create-psbt \
   --inputs "txid1:0" \
@@ -264,6 +271,12 @@ cyberkrill create-funded-psbt \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --outputs "bc1qaddr:0.001" \
   --fee-rate 20sats
+
+# Using frozenkrill wallet file for automatic input selection
+cyberkrill create-funded-psbt \
+  --wallet-file mywallet_pub.json \
+  --outputs "bc1qaddr:0.01btc" \
+  --fee-rate 10sats
 ```
 
 #### Consolidate UTXOs (Move UTXOs)
@@ -296,6 +309,13 @@ cyberkrill move-utxos \
   --inputs "wpkh([fingerprint/84'/0'/0']xpub...)" \
   --destination "bc1qconsolidated_address" \
   --fee-rate 20sats
+
+# Consolidate all UTXOs from a frozenkrill wallet
+cyberkrill move-utxos \
+  --wallet-file mywallet_pub.json \
+  --inputs "all" \
+  --destination "bc1qconsolidated_address" \
+  --fee-rate 15sats
 
 # Mix specific UTXOs and descriptors
 cyberkrill move-utxos \
@@ -411,11 +431,14 @@ CyberKrill supports frozenkrill wallet export files as an alternative to raw des
 # List UTXOs from a frozenkrill wallet export
 cyberkrill list-utxos --wallet-file mywallet_pub.json
 
-# Create PSBT with wallet file (future enhancement)
-cyberkrill create-psbt --wallet-file mywallet_pub.json --outputs "bc1qaddr:0.001btc"
+# Create PSBT with wallet file
+cyberkrill create-psbt --wallet-file mywallet_pub.json --outputs "bc1qaddr:0.001btc" --fee-rate 10sats
 
-# Move UTXOs using wallet file (future enhancement)
-cyberkrill move-utxos --wallet-file mywallet_pub.json --destination "bc1qconsolidated"
+# Create funded PSBT with wallet file
+cyberkrill create-funded-psbt --wallet-file mywallet_pub.json --outputs "bc1qaddr:0.001btc" --fee-rate 15sats
+
+# Move UTXOs using wallet file
+cyberkrill move-utxos --wallet-file mywallet_pub.json --destination "bc1qconsolidated" --fee-rate 20sats
 ```
 
 **Supported wallet types:**

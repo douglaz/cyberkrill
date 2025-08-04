@@ -215,8 +215,13 @@ struct ListUtxosArgs {
 
 #[derive(clap::Args, Debug)]
 struct CreatePsbtArgs {
+    /// frozenkrill wallet export file to use for address derivation
+    #[cfg(feature = "frozenkrill")]
+    #[clap(long, conflicts_with = "descriptor")]
+    wallet_file: Option<std::path::PathBuf>,
     /// Output descriptor (required when using BDK backends)
-    #[clap(long)]
+    #[cfg_attr(feature = "frozenkrill", clap(long, conflicts_with = "wallet_file"))]
+    #[cfg_attr(not(feature = "frozenkrill"), clap(long))]
     descriptor: Option<String>,
 
     // Backend selection options (mutually exclusive)
@@ -264,8 +269,13 @@ struct CreatePsbtArgs {
 
 #[derive(clap::Args, Debug)]
 struct CreateFundedPsbtArgs {
+    /// frozenkrill wallet export file to use for address derivation
+    #[cfg(feature = "frozenkrill")]
+    #[clap(long, conflicts_with = "descriptor")]
+    wallet_file: Option<std::path::PathBuf>,
     /// Output descriptor (required when using BDK backends)
-    #[clap(long)]
+    #[cfg_attr(feature = "frozenkrill", clap(long, conflicts_with = "wallet_file"))]
+    #[cfg_attr(not(feature = "frozenkrill"), clap(long))]
     descriptor: Option<String>,
 
     // Backend selection options (mutually exclusive)
@@ -320,8 +330,13 @@ struct CreateFundedPsbtArgs {
 
 #[derive(clap::Args, Debug)]
 struct MoveUtxosArgs {
+    /// frozenkrill wallet export file to use for UTXO discovery
+    #[cfg(feature = "frozenkrill")]
+    #[clap(long, conflicts_with = "descriptor")]
+    wallet_file: Option<std::path::PathBuf>,
     /// Output descriptor (required when using BDK backends)
-    #[clap(long)]
+    #[cfg_attr(feature = "frozenkrill", clap(long, conflicts_with = "wallet_file"))]
+    #[cfg_attr(not(feature = "frozenkrill"), clap(long))]
     descriptor: Option<String>,
 
     // Backend selection options (mutually exclusive)
@@ -656,15 +671,27 @@ async fn bitcoin_create_psbt(args: CreatePsbtArgs) -> anyhow::Result<()> {
         ),
     };
 
+    // Get descriptor from wallet file or direct input
+    #[cfg(feature = "frozenkrill")]
+    let descriptor = if let Some(wallet_file) = &args.wallet_file {
+        let (receiving_desc, _change_desc) =
+            cyberkrill_core::BitcoinRpcClient::get_descriptors_from_wallet_file(wallet_file)?;
+        Some(receiving_desc)
+    } else {
+        args.descriptor.clone()
+    };
+    #[cfg(not(feature = "frozenkrill"))]
+    let descriptor = args.descriptor.clone();
+
     // Check if we're using BDK backends
     if args.electrum.is_some()
         || args.esplora.is_some()
-        || (args.descriptor.is_some() && args.bitcoin_dir.is_some())
+        || (descriptor.is_some() && args.bitcoin_dir.is_some())
     {
         // BDK path: require descriptor
-        let descriptor = args
-            .descriptor
-            .ok_or_else(|| anyhow::anyhow!("--descriptor is required when using BDK backends"))?;
+        let descriptor = descriptor.ok_or_else(|| {
+            anyhow::anyhow!("--descriptor or --wallet-file is required when using BDK backends")
+        })?;
 
         // Parse outputs
         let outputs = parse_outputs(&args.outputs)?;
@@ -745,15 +772,27 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
         ),
     };
 
+    // Get descriptor from wallet file or direct input
+    #[cfg(feature = "frozenkrill")]
+    let descriptor = if let Some(wallet_file) = &args.wallet_file {
+        let (receiving_desc, _change_desc) =
+            cyberkrill_core::BitcoinRpcClient::get_descriptors_from_wallet_file(wallet_file)?;
+        Some(receiving_desc)
+    } else {
+        args.descriptor.clone()
+    };
+    #[cfg(not(feature = "frozenkrill"))]
+    let descriptor = args.descriptor.clone();
+
     // Check if we're using BDK backends
     if args.electrum.is_some()
         || args.esplora.is_some()
-        || (args.descriptor.is_some() && args.bitcoin_dir.is_some())
+        || (descriptor.is_some() && args.bitcoin_dir.is_some())
     {
         // BDK path: require descriptor
-        let descriptor = args
-            .descriptor
-            .ok_or_else(|| anyhow::anyhow!("--descriptor is required when using BDK backends"))?;
+        let descriptor = descriptor.ok_or_else(|| {
+            anyhow::anyhow!("--descriptor or --wallet-file is required when using BDK backends")
+        })?;
 
         // Parse outputs
         let outputs = parse_outputs(&args.outputs)?;
@@ -859,15 +898,27 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
         ),
     };
 
+    // Get descriptor from wallet file or direct input
+    #[cfg(feature = "frozenkrill")]
+    let descriptor = if let Some(wallet_file) = &args.wallet_file {
+        let (receiving_desc, _change_desc) =
+            cyberkrill_core::BitcoinRpcClient::get_descriptors_from_wallet_file(wallet_file)?;
+        Some(receiving_desc)
+    } else {
+        args.descriptor.clone()
+    };
+    #[cfg(not(feature = "frozenkrill"))]
+    let descriptor = args.descriptor.clone();
+
     // Check if we're using BDK backends
     if args.electrum.is_some()
         || args.esplora.is_some()
-        || (args.descriptor.is_some() && args.bitcoin_dir.is_some())
+        || (descriptor.is_some() && args.bitcoin_dir.is_some())
     {
         // BDK path: require descriptor
-        let descriptor = args
-            .descriptor
-            .ok_or_else(|| anyhow::anyhow!("--descriptor is required when using BDK backends"))?;
+        let descriptor = descriptor.ok_or_else(|| {
+            anyhow::anyhow!("--descriptor or --wallet-file is required when using BDK backends")
+        })?;
 
         // Convert fee rate if provided
         let fee_rate_sat_vb = args.fee_rate.map(|rate| {

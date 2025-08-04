@@ -636,6 +636,20 @@ impl BitcoinRpcClient {
         })
     }
 
+    /// Get descriptors from a frozenkrill wallet export file
+    #[cfg(feature = "frozenkrill")]
+    pub fn get_descriptors_from_wallet_file(wallet_path: &Path) -> Result<(String, String)> {
+        use crate::frozenkrill::FrozenkrillWallet;
+
+        let wallet = FrozenkrillWallet::from_file(wallet_path)
+            .with_context(|| format!("Failed to load wallet from {}", wallet_path.display()))?;
+
+        Ok((
+            wallet.receiving_descriptor().to_string(),
+            wallet.change_descriptor().to_string(),
+        ))
+    }
+
     async fn get_current_block_height(&self) -> Result<u64> {
         let result = self
             .rpc_call("getblockchaininfo", serde_json::json!([]))
