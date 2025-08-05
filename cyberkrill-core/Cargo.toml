@@ -12,10 +12,12 @@ categories = ["cryptography::cryptocurrencies"]
 default = ["smartcards", "frozenkrill"]
 smartcards = ["cktap-direct", "rusb"]
 frozenkrill = ["frozenkrill-core"]
+coldcard = ["dep:coldcard", "tokio-serial"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
 thiserror = "1.0"
+async-trait = "0.1"
 hex = { version = "0.4.3", features = ["serde"] }
 lightning-invoice = { version = "0.33.1", features = ["serde"] }
 serde = { version = "1.0.217", features = ["derive"] }
@@ -25,6 +27,7 @@ base64 = "0.22"
 url = "2.5.0"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1.0", features = ["full"] }
+tokio-serial = { version = "5.4", optional = true }
 fedimint-lite = { path = "../fedimint-lite" }
 # Tapsigner/Satscard support via USB (optional feature)
 cktap-direct = { git = "https://github.com/douglaz/cktap-direct", optional = true }
@@ -39,6 +42,8 @@ bdk_electrum = { version = "0.23.0", default-features = false, features = ["use-
 bdk_esplora = { version = "0.22.0", default-features = false, features = ["blocking", "blocking-https-rustls"] }
 # frozenkrill support
 frozenkrill-core = { git = "https://github.com/planktonlabs/frozenkrill", optional = true }
+# Coldcard hardware wallet support
+coldcard = { git = "https://github.com/douglaz/rust-coldcard", branch = "hidraw", optional = true, default-features = false, features = ["hidraw-backend"] }
 
 [dev-dependencies]
 tempfile = "3.0"

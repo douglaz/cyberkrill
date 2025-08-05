@@ -8,6 +8,13 @@ pub mod satscard;
 #[cfg(feature = "smartcards")]
 pub mod tapsigner;
 
+// Hardware wallet common trait
+#[cfg(feature = "coldcard")]
+pub mod coldcard;
+#[cfg(feature = "coldcard")]
+pub mod coldcard_serial;
+pub mod hardware_wallet;
+
 // Re-export main functionality for easier access
 pub use decoder::{
     decode_invoice, decode_lnurl, generate_invoice_from_address, InvoiceOutput, LnurlOutput,
@@ -38,3 +45,16 @@ pub use fedimint_lite;
 // Re-export frozenkrill functionality
 #[cfg(feature = "frozenkrill")]
 pub use frozenkrill::FrozenkrillWallet;
+
+// Re-export coldcard functionality
+#[cfg(feature = "coldcard")]
+pub use coldcard::{
+    export_psbt_to_coldcard, generate_coldcard_address, sign_psbt_with_coldcard,
+    ColdcardAddressOutput, ColdcardSignOutput, ColdcardWallet,
+};
+
+// Re-export coldcard serial functionality
+#[cfg(feature = "coldcard")]
+pub use coldcard_serial::{
+    generate_coldcard_serial_address, ColdcardSerial, ColdcardSerialAddressInfo,
+};

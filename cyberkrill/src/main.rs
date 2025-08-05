@@ -43,6 +43,20 @@ enum Commands {
     #[command(about = "Generate Bitcoin address from Satscard")]
     SatscardAddress(SatscardAddressArgs),
 
+    // Coldcard Hardware Wallet Operations
+    #[cfg(feature = "coldcard")]
+    #[command(about = "Generate Bitcoin address from Coldcard")]
+    ColdcardAddress(ColdcardAddressArgs),
+    #[cfg(feature = "coldcard")]
+    #[command(about = "Generate Bitcoin address from Coldcard using serial/UART interface")]
+    ColdcardAddressSerial(ColdcardAddressSerialArgs),
+    #[cfg(feature = "coldcard")]
+    #[command(about = "Sign PSBT with Coldcard")]
+    ColdcardSignPsbt(ColdcardSignPsbtArgs),
+    #[cfg(feature = "coldcard")]
+    #[command(about = "Export PSBT to Coldcard SD card")]
+    ColdcardExportPsbt(ColdcardExportPsbtArgs),
+
     // Bitcoin RPC Operations
     #[command(about = "List UTXOs for addresses or descriptors")]
     ListUtxos(ListUtxosArgs),
@@ -157,6 +171,56 @@ struct SatscardAddressArgs {
     /// Output file path
     #[clap(short, long)]
     output: Option<String>,
+}
+
+// Coldcard Args
+
+#[cfg(feature = "coldcard")]
+#[derive(clap::Args, Debug)]
+struct ColdcardAddressArgs {
+    /// Derivation path (e.g., m/84'/0'/0'/0/0)
+    #[clap(short, long, default_value = "m/84'/0'/0'/0/0")]
+    path: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+#[cfg(feature = "coldcard")]
+#[derive(clap::Args, Debug)]
+struct ColdcardAddressSerialArgs {
+    /// Derivation path (e.g., m/84'/0'/0'/0/0)
+    #[clap(short, long, default_value = "m/84'/0'/0'/0/0")]
+    path: String,
+    /// Serial port path (default: /dev/ttyACM0)
+    #[clap(long, default_value = "/dev/ttyACM0")]
+    port: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+#[cfg(feature = "coldcard")]
+#[derive(clap::Args, Debug)]
+struct ColdcardSignPsbtArgs {
+    /// PSBT file path or base64/hex string
+    input: String,
+    /// Output file path for signed PSBT
+    #[clap(short, long)]
+    output: Option<String>,
+    /// Also save raw PSBT binary to this file
+    #[clap(long)]
+    psbt_output: Option<String>,
+}
+
+#[cfg(feature = "coldcard")]
+#[derive(clap::Args, Debug)]
+struct ColdcardExportPsbtArgs {
+    /// PSBT file path or base64/hex string
+    input: String,
+    /// Filename on SD card (e.g., "tx-to-sign.psbt")
+    #[clap(short, long, default_value = "unsigned.psbt")]
+    filename: String,
 }
 
 #[derive(clap::Args, Debug)]
@@ -431,6 +495,16 @@ async fn main() -> anyhow::Result<()> {
         Commands::TapsignerInit(args) => tapsigner_init(args).await?,
         #[cfg(feature = "smartcards")]
         Commands::SatscardAddress(args) => satscard_address(args).await?,
+
+        // Coldcard Operations
+        #[cfg(feature = "coldcard")]
+        Commands::ColdcardAddress(args) => coldcard_address(args).await?,
+        #[cfg(feature = "coldcard")]
+        Commands::ColdcardAddressSerial(args) => coldcard_address_serial(args).await?,
+        #[cfg(feature = "coldcard")]
+        Commands::ColdcardSignPsbt(args) => coldcard_sign_psbt(args).await?,
+        #[cfg(feature = "coldcard")]
+        Commands::ColdcardExportPsbt(args) => coldcard_export_psbt(args).await?,
 
         // Bitcoin RPC Operations
         Commands::ListUtxos(args) => bitcoin_list_utxos(args).await?,
@@ -1200,6 +1274,106 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
     let mut writer = writer;
     serde_json::to_writer_pretty(&mut writer, &output)?;
     writeln!(&mut writer)?;
+
+    Ok(())
+}
+
+// Coldcard command implementations
+
+#[cfg(feature = "coldcard")]
+async fn coldcard_address(args: ColdcardAddressArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::generate_coldcard_address;
+
+    let result = generate_coldcard_address(&args.path).await?;
+
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let mut writer = writer;
+    serde_json::to_writer_pretty(&mut writer, &result)?;
+    writeln!(&mut writer)?;
+
+    Ok(())
+}
+
+#[cfg(feature = "coldcard")]
+async fn coldcard_address_serial(args: ColdcardAddressSerialArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::generate_coldcard_serial_address;
+
+    let result = generate_coldcard_serial_address(&args.path, Some(args.port)).await?;
+
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let mut writer = writer;
+    serde_json::to_writer_pretty(&mut writer, &result)?;
+    writeln!(&mut writer)?;
+
+    Ok(())
+}
+
+#[cfg(feature = "coldcard")]
+async fn coldcard_sign_psbt(args: ColdcardSignPsbtArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::sign_psbt_with_coldcard;
+
+    // Read PSBT data from file or parse as base64/hex
+    let psbt_data = if Path::new(&args.input).exists() {
+        std::fs::read(&args.input)
+            .with_context(|| format!("Failed to read PSBT file: {}", args.input))?
+    } else if args.input.starts_with("cHNidP") {
+        // Looks like base64
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &args.input)
+            .with_context(|| "Failed to decode PSBT from base64")?
+    } else {
+        // Try as hex
+        hex::decode(&args.input).with_context(|| "Failed to decode PSBT from hex")?
+    };
+
+    let result = sign_psbt_with_coldcard(&psbt_data).await?;
+
+    // Save JSON output
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let mut writer = writer;
+    serde_json::to_writer_pretty(&mut writer, &result)?;
+    writeln!(&mut writer)?;
+
+    // Optionally save raw PSBT
+    if let Some(psbt_path) = args.psbt_output {
+        let psbt_bytes = hex::decode(&result.psbt_hex)?;
+        std::fs::write(psbt_path, psbt_bytes)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "coldcard")]
+async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::export_psbt_to_coldcard;
+
+    // Read PSBT data from file or parse as base64/hex
+    let psbt_data = if Path::new(&args.input).exists() {
+        std::fs::read(&args.input)
+            .with_context(|| format!("Failed to read PSBT file: {}", args.input))?
+    } else if args.input.starts_with("cHNidP") {
+        // Looks like base64
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &args.input)
+            .with_context(|| "Failed to decode PSBT from base64")?
+    } else {
+        // Try as hex
+        hex::decode(&args.input).with_context(|| "Failed to decode PSBT from hex")?
+    };
+
+    let message = export_psbt_to_coldcard(&psbt_data, &args.filename).await?;
+
+    println!("{message}");
 
     Ok(())
 }

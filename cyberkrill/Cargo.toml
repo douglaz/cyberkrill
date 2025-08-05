@@ -10,6 +10,7 @@ repository = "https://github.com/douglaz/cyberkrill"
 default = ["smartcards", "frozenkrill"]
 smartcards = ["cyberkrill-core/smartcards"]
 frozenkrill = ["cyberkrill-core/frozenkrill"]
+coldcard = ["cyberkrill-core/coldcard"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
@@ -19,3 +20,5 @@ tokio = { version = "1.0", features = ["full"] }
 cyberkrill-core = { path = "../cyberkrill-core", default-features = false }
 fedimint-lite = { path = "../fedimint-lite" }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
+base64 = "0.22"
+hex = "0.4"
