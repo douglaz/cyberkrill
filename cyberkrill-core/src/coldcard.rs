@@ -26,7 +26,7 @@ fn convert_to_coldcard_path(path: &[u32]) -> Result<DerivationPath> {
 
     // Create Coldcard DerivationPath from string
     DerivationPath::new(&path_str)
-        .map_err(|e| anyhow!("Invalid derivation path for Coldcard: {error:?}", error = e))
+        .map_err(|e| anyhow!("Invalid derivation path for Coldcard: {e:?}"))
 }
 
 /// Coldcard hardware wallet implementation
