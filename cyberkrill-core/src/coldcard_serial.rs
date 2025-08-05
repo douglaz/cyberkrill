@@ -156,7 +156,10 @@ impl ColdcardSerial {
 
         // Check response code (first 4 bytes)
         if response.len() < 4 {
-            bail!("Response too short: {length} bytes", length = response.len());
+            bail!(
+                "Response too short: {length} bytes",
+                length = response.len()
+            );
         }
 
         Ok(response)

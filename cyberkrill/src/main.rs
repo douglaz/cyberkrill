@@ -1372,7 +1372,7 @@ async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()
     };
 
     let message = export_psbt_to_coldcard(&psbt_data, &args.filename).await?;
-    
+
     println!("{message}");
 
     Ok(())
