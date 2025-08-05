@@ -1,5 +1,4 @@
 use anyhow::{bail, Context, Result};
-use hex;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::time::Duration;
@@ -106,7 +105,7 @@ impl ColdcardSerial {
         let length = (framing & 0x3F) as usize;
 
         if length > 63 {
-            bail!("Invalid packet length: {}", length);
+            bail!("Invalid packet length: {length}");
         }
 
         let payload = buffer[1..=length].to_vec();
@@ -157,7 +156,7 @@ impl ColdcardSerial {
 
         // Check response code (first 4 bytes)
         if response.len() < 4 {
-            bail!("Response too short: {} bytes", response.len());
+            bail!("Response too short: {length} bytes", length = response.len());
         }
 
         Ok(response)
@@ -292,9 +291,9 @@ impl ColdcardSerial {
             }
         } else if resp_code == b"err_" {
             let error_msg = String::from_utf8_lossy(&response[4..]);
-            bail!("Signing error: {}", error_msg)
+            bail!("Signing error: {error_msg}")
         } else {
-            bail!("Unexpected response: {:?}", resp_code)
+            bail!("Unexpected response: {resp_code:?}")
         }
     }
 }

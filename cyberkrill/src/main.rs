@@ -1371,9 +1371,9 @@ async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()
         hex::decode(&args.input).with_context(|| "Failed to decode PSBT from hex")?
     };
 
-    export_psbt_to_coldcard(&psbt_data, &args.filename).await?;
-
-    println!("PSBT exported to Coldcard SD card as: {}", args.filename);
+    let message = export_psbt_to_coldcard(&psbt_data, &args.filename).await?;
+    
+    println!("{message}");
 
     Ok(())
 }

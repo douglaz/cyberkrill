@@ -240,7 +240,7 @@ pub async fn sign_psbt_with_coldcard(psbt_data: &[u8]) -> Result<ColdcardSignOut
 }
 
 /// Export a PSBT to Coldcard's SD card (air-gapped operation)
-pub async fn export_psbt_to_coldcard(psbt_data: &[u8], filename: &str) -> Result<()> {
+pub async fn export_psbt_to_coldcard(psbt_data: &[u8], filename: &str) -> Result<String> {
     use base64::Engine;
 
     let mut wallet = ColdcardWallet::connect().await?;
@@ -256,9 +256,7 @@ pub async fn export_psbt_to_coldcard(psbt_data: &[u8], filename: &str) -> Result
         .sign_psbt(psbt_data, SignMode::Finalize)
         .with_context(|| "Failed to prepare PSBT for Coldcard")?;
 
-    eprintln!("PSBT has been sent to Coldcard. Please save it to SD card as '{filename}' using the device menu.");
-
-    Ok(())
+    Ok(format!("PSBT has been sent to Coldcard. Please save it to SD card as '{filename}' using the device menu."))
 }
 
 #[cfg(test)]

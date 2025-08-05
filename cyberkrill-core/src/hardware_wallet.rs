@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use bitcoin::{bip32::Xpub, Network};
 use serde::{Deserialize, Serialize};
 
@@ -80,8 +80,6 @@ pub fn parse_derivation_path(path: &str) -> Result<Vec<u32>> {
 
     Ok(components)
 }
-
-use anyhow::Context;
 
 #[cfg(test)]
 mod tests {
