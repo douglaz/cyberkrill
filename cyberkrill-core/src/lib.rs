@@ -9,11 +9,11 @@ pub mod satscard;
 pub mod tapsigner;
 
 // Hardware wallet common trait
-pub mod hardware_wallet;
 #[cfg(feature = "coldcard")]
 pub mod coldcard;
 #[cfg(feature = "coldcard")]
 pub mod coldcard_serial;
+pub mod hardware_wallet;
 
 // Re-export main functionality for easier access
 pub use decoder::{
@@ -49,10 +49,12 @@ pub use frozenkrill::FrozenkrillWallet;
 // Re-export coldcard functionality
 #[cfg(feature = "coldcard")]
 pub use coldcard::{
-    generate_coldcard_address, sign_psbt_with_coldcard, export_psbt_to_coldcard,
+    export_psbt_to_coldcard, generate_coldcard_address, sign_psbt_with_coldcard,
     ColdcardAddressOutput, ColdcardSignOutput, ColdcardWallet,
 };
 
 // Re-export coldcard serial functionality
 #[cfg(feature = "coldcard")]
-pub use coldcard_serial::{generate_coldcard_serial_address, ColdcardSerialAddressInfo, ColdcardSerial};
+pub use coldcard_serial::{
+    generate_coldcard_serial_address, ColdcardSerial, ColdcardSerialAddressInfo,
+};

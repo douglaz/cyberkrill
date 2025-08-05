@@ -1,6 +1,9 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bitcoin::bip32::Xpub;
-use coldcard::{Api, Coldcard as ColdcardDevice, SignMode, protocol::{DerivationPath, AddressFormat}};
+use coldcard::{
+    protocol::{AddressFormat, DerivationPath},
+    Api, Coldcard as ColdcardDevice, SignMode,
+};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -15,15 +18,15 @@ fn convert_to_coldcard_path(path: &[u32]) -> Result<DerivationPath> {
         if component >= 0x80000000 {
             // Hardened path
             path_str.push_str(&(component - 0x80000000).to_string());
-            path_str.push('h');  // Coldcard uses 'h' for hardened
+            path_str.push('h'); // Coldcard uses 'h' for hardened
         } else {
             path_str.push_str(&component.to_string());
         }
     }
-    
+
     // Create Coldcard DerivationPath from string
     DerivationPath::new(&path_str)
-        .map_err(|e| anyhow::anyhow!("Invalid derivation path for Coldcard: {:?}", e))
+        .map_err(|e| anyhow!("Invalid derivation path for Coldcard: {error:?}", error = e))
 }
 
 /// Coldcard hardware wallet implementation
@@ -51,71 +54,77 @@ pub struct ColdcardSignOutput {
 impl ColdcardWallet {
     /// Connect to the first available Coldcard device
     pub async fn connect() -> Result<Self> {
-        let mut api = Api::new()
-            .with_context(|| "Failed to initialize Coldcard API")?;
-        
-        let serials = api.detect()
-            .with_context(|| "Failed to detect Coldcard devices. Make sure your Coldcard is connected via USB.")?;
-        
+        let mut api = Api::new().with_context(|| "Failed to initialize Coldcard API")?;
+
+        let serials = api.detect().with_context(|| {
+            "Failed to detect Coldcard devices. Make sure your Coldcard is connected via USB."
+        })?;
+
         if serials.is_empty() {
             bail!("No Coldcard devices found. Please connect your Coldcard via USB.");
         }
-        
+
         // Connect to the first detected device
-        let (device, xpub_info) = api.open(&serials[0], None)
+        let (device, xpub_info) = api
+            .open(&serials[0], None)
             .with_context(|| "Failed to open Coldcard device. Make sure it's unlocked.")?;
-        
+
         let master_fingerprint = xpub_info.map(|info| {
             // Convert [u8; 4] to hex string
-            hex::encode(&info.fingerprint)
+            hex::encode(info.fingerprint)
         });
-        
+
         Ok(Self {
             device,
             master_fingerprint,
         })
     }
-    
+
     /// Connect to a specific Coldcard by serial number
     pub async fn connect_serial(serial: &str) -> Result<Self> {
-        let api = Api::new()
-            .with_context(|| "Failed to initialize Coldcard API")?;
-        
-        let (device, xpub_info) = api.open(serial, None)
+        let api = Api::new().with_context(|| "Failed to initialize Coldcard API")?;
+
+        let (device, xpub_info) = api
+            .open(serial, None)
             .with_context(|| format!("Failed to open Coldcard with serial: {serial}"))?;
-        
+
         let master_fingerprint = xpub_info.map(|info| {
             // Convert [u8; 4] to hex string
-            hex::encode(&info.fingerprint)
+            hex::encode(info.fingerprint)
         });
-        
+
         Ok(Self {
             device,
             master_fingerprint,
         })
     }
-    
+
     /// List all connected Coldcard devices
     pub async fn list_devices() -> Result<Vec<String>> {
-        let mut api = Api::new()
-            .with_context(|| "Failed to initialize Coldcard API")?;
-        
-        let serials = api.detect()
+        let mut api = Api::new().with_context(|| "Failed to initialize Coldcard API")?;
+
+        let serials = api
+            .detect()
             .with_context(|| "Failed to detect Coldcard devices")?;
-        
+
         // SerialNumber doesn't implement Display, extract the inner string
-        Ok(serials.into_iter().map(|s| {
-            // Coldcard serial numbers are hex strings
-            format!("{:?}", s)  // Use Debug formatting as a workaround
-        }).collect())
+        Ok(serials
+            .into_iter()
+            .map(|s| {
+                // Coldcard serial numbers are hex strings
+                format!("{s:?}") // Use Debug formatting as a workaround
+            })
+            .collect())
     }
 }
 
 impl ColdcardWallet {
     pub fn get_device_info(&mut self) -> Result<DeviceInfo> {
-        let version = self.device.version()
+        let version = self
+            .device
+            .version()
             .with_context(|| "Failed to get Coldcard version")?;
-        
+
         Ok(DeviceInfo {
             device_type: "Coldcard".to_string(),
             version,
@@ -123,24 +132,26 @@ impl ColdcardWallet {
             fingerprint: self.master_fingerprint.clone(),
         })
     }
-    
+
     pub fn get_address(&mut self, path: &str) -> Result<AddressInfo> {
         // Parse the derivation path
         let derivation_path = crate::hardware_wallet::parse_derivation_path(path)?;
-        
+
         // Convert to Coldcard's DerivationPath type
         let coldcard_path = convert_to_coldcard_path(&derivation_path)?;
-        
+
         // Always use P2WPKH (native segwit) format
         let addr_fmt = AddressFormat::P2WPKH;
-        
+
         // Get the address from Coldcard
-        let address_str = self.device.address(coldcard_path, addr_fmt)
+        let address_str = self
+            .device
+            .address(coldcard_path, addr_fmt)
             .with_context(|| format!("Failed to get address at path: {path}"))?;
-        
+
         // Get the xpub at this path
         let xpub = self.get_xpub(path)?;
-        
+
         Ok(AddressInfo {
             address: address_str,
             derivation_path: path.to_string(),
@@ -148,54 +159,56 @@ impl ColdcardWallet {
             xpub: Some(xpub.to_string()),
         })
     }
-    
+
     pub fn get_xpub(&mut self, path: &str) -> Result<Xpub> {
         let derivation_path = crate::hardware_wallet::parse_derivation_path(path)?;
-        
+
         // Convert to Coldcard's DerivationPath type
         let coldcard_path = if derivation_path.is_empty() {
             None
         } else {
             Some(convert_to_coldcard_path(&derivation_path)?)
         };
-        
-        let xpub_str = self.device.xpub(coldcard_path)
+
+        let xpub_str = self
+            .device
+            .xpub(coldcard_path)
             .with_context(|| format!("Failed to get xpub at path: {path}"))?;
-        
-        Xpub::from_str(&xpub_str)
-            .with_context(|| "Failed to parse xpub from Coldcard")
+
+        Xpub::from_str(&xpub_str).with_context(|| "Failed to parse xpub from Coldcard")
     }
-    
+
     pub fn sign_psbt(&mut self, psbt: &[u8]) -> Result<SignedPsbt> {
         use base64::Engine;
-        
+
         // Sign the PSBT - note: sign_psbt doesn't return the signed PSBT directly
-        self.device.sign_psbt(psbt, SignMode::Finalize)
+        self.device
+            .sign_psbt(psbt, SignMode::Finalize)
             .with_context(|| "Failed to sign PSBT with Coldcard")?;
-        
+
         // Retrieve the signed transaction
-        let signed_psbt_opt = self.device.get_signed_tx()
+        let signed_psbt_opt = self
+            .device
+            .get_signed_tx()
             .with_context(|| "Failed to retrieve signed PSBT from Coldcard")?;
-        
+
         // Check if we got a signed PSBT
-        let signed_psbt = signed_psbt_opt
-            .ok_or_else(|| anyhow::anyhow!("No signed PSBT available from Coldcard"))?;
-        
+        let signed_psbt =
+            signed_psbt_opt.ok_or_else(|| anyhow!("No signed PSBT available from Coldcard"))?;
+
         // The signed PSBT is returned as bytes, encode to base64
         let psbt_base64 = base64::engine::general_purpose::STANDARD.encode(&signed_psbt);
-        
+
         Ok(SignedPsbt {
             psbt: signed_psbt,
             psbt_base64,
             is_complete: false, // Coldcard doesn't tell us if it's complete
         })
     }
-    
+
     pub fn ping(&mut self) -> Result<bool> {
         // Try to get version as a ping test
-        self.device.version()
-            .map(|_| true)
-            .or(Ok(false))
+        self.device.version().map(|_| true).or(Ok(false))
     }
 }
 
@@ -205,7 +218,7 @@ pub async fn generate_coldcard_address(path: &str) -> Result<ColdcardAddressOutp
     let mut wallet = ColdcardWallet::connect().await?;
     let info = wallet.get_device_info()?;
     let address_info = wallet.get_address(path)?;
-    
+
     Ok(ColdcardAddressOutput {
         address: address_info.address,
         derivation_path: address_info.derivation_path,
@@ -218,7 +231,7 @@ pub async fn generate_coldcard_address(path: &str) -> Result<ColdcardAddressOutp
 pub async fn sign_psbt_with_coldcard(psbt_data: &[u8]) -> Result<ColdcardSignOutput> {
     let mut wallet = ColdcardWallet::connect().await?;
     let signed = wallet.sign_psbt(psbt_data)?;
-    
+
     Ok(ColdcardSignOutput {
         psbt_base64: signed.psbt_base64,
         psbt_hex: hex::encode(&signed.psbt),
@@ -229,27 +242,29 @@ pub async fn sign_psbt_with_coldcard(psbt_data: &[u8]) -> Result<ColdcardSignOut
 /// Export a PSBT to Coldcard's SD card (air-gapped operation)
 pub async fn export_psbt_to_coldcard(psbt_data: &[u8], filename: &str) -> Result<()> {
     use base64::Engine;
-    
+
     let mut wallet = ColdcardWallet::connect().await?;
-    
+
     // Coldcard expects base64-encoded PSBT
     let _psbt_base64 = base64::engine::general_purpose::STANDARD.encode(psbt_data);
-    
+
     // Note: Coldcard doesn't have a direct method to save PSBT to SD card via API
     // The user needs to manually save it on the device
     // For now, we'll just prepare it for signing
-    wallet.device.sign_psbt(psbt_data, SignMode::Finalize)
+    wallet
+        .device
+        .sign_psbt(psbt_data, SignMode::Finalize)
         .with_context(|| "Failed to prepare PSBT for Coldcard")?;
-    
-    eprintln!("PSBT has been sent to Coldcard. Please save it to SD card as '{}' using the device menu.", filename);
-    
+
+    eprintln!("PSBT has been sent to Coldcard. Please save it to SD card as '{filename}' using the device menu.");
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_coldcard_address_output_serialization() -> Result<()> {
         let output = ColdcardAddressOutput {
@@ -258,14 +273,14 @@ mod tests {
             xpub: "xpub...".to_string(),
             device_fingerprint: "12345678".to_string(),
         };
-        
+
         let json = serde_json::to_string_pretty(&output)?;
         assert!(json.contains("\"address\": \"bc1qexample\""));
         assert!(json.contains("\"derivation_path\": \"m/84'/0'/0'/0/0\""));
-        
+
         Ok(())
     }
-    
+
     #[test]
     fn test_coldcard_sign_output_serialization() -> Result<()> {
         let output = ColdcardSignOutput {
@@ -273,11 +288,11 @@ mod tests {
             psbt_hex: "70736274ff01...".to_string(),
             is_complete: false,
         };
-        
+
         let json = serde_json::to_string_pretty(&output)?;
         assert!(json.contains("\"psbt_base64\": \"cHNidP8B...\""));
         assert!(json.contains("\"is_complete\": false"));
-        
+
         Ok(())
     }
 }

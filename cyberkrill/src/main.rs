@@ -42,7 +42,7 @@ enum Commands {
     #[cfg(feature = "smartcards")]
     #[command(about = "Generate Bitcoin address from Satscard")]
     SatscardAddress(SatscardAddressArgs),
-    
+
     // Coldcard Hardware Wallet Operations
     #[cfg(feature = "coldcard")]
     #[command(about = "Generate Bitcoin address from Coldcard")]
@@ -495,7 +495,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::TapsignerInit(args) => tapsigner_init(args).await?,
         #[cfg(feature = "smartcards")]
         Commands::SatscardAddress(args) => satscard_address(args).await?,
-        
+
         // Coldcard Operations
         #[cfg(feature = "coldcard")]
         Commands::ColdcardAddress(args) => coldcard_address(args).await?,
@@ -1283,43 +1283,43 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
 #[cfg(feature = "coldcard")]
 async fn coldcard_address(args: ColdcardAddressArgs) -> anyhow::Result<()> {
     use cyberkrill_core::generate_coldcard_address;
-    
+
     let result = generate_coldcard_address(&args.path).await?;
-    
+
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
-    
+
     let mut writer = writer;
     serde_json::to_writer_pretty(&mut writer, &result)?;
     writeln!(&mut writer)?;
-    
+
     Ok(())
 }
 
 #[cfg(feature = "coldcard")]
 async fn coldcard_address_serial(args: ColdcardAddressSerialArgs) -> anyhow::Result<()> {
     use cyberkrill_core::generate_coldcard_serial_address;
-    
+
     let result = generate_coldcard_serial_address(&args.path, Some(args.port)).await?;
-    
+
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
-    
+
     let mut writer = writer;
     serde_json::to_writer_pretty(&mut writer, &result)?;
     writeln!(&mut writer)?;
-    
+
     Ok(())
 }
 
 #[cfg(feature = "coldcard")]
 async fn coldcard_sign_psbt(args: ColdcardSignPsbtArgs) -> anyhow::Result<()> {
     use cyberkrill_core::sign_psbt_with_coldcard;
-    
+
     // Read PSBT data from file or parse as base64/hex
     let psbt_data = if Path::new(&args.input).exists() {
         std::fs::read(&args.input)
@@ -1330,35 +1330,34 @@ async fn coldcard_sign_psbt(args: ColdcardSignPsbtArgs) -> anyhow::Result<()> {
             .with_context(|| "Failed to decode PSBT from base64")?
     } else {
         // Try as hex
-        hex::decode(&args.input)
-            .with_context(|| "Failed to decode PSBT from hex")?
+        hex::decode(&args.input).with_context(|| "Failed to decode PSBT from hex")?
     };
-    
+
     let result = sign_psbt_with_coldcard(&psbt_data).await?;
-    
+
     // Save JSON output
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
-    
+
     let mut writer = writer;
     serde_json::to_writer_pretty(&mut writer, &result)?;
     writeln!(&mut writer)?;
-    
+
     // Optionally save raw PSBT
     if let Some(psbt_path) = args.psbt_output {
         let psbt_bytes = hex::decode(&result.psbt_hex)?;
         std::fs::write(psbt_path, psbt_bytes)?;
     }
-    
+
     Ok(())
 }
 
 #[cfg(feature = "coldcard")]
 async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()> {
     use cyberkrill_core::export_psbt_to_coldcard;
-    
+
     // Read PSBT data from file or parse as base64/hex
     let psbt_data = if Path::new(&args.input).exists() {
         std::fs::read(&args.input)
@@ -1369,13 +1368,12 @@ async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()
             .with_context(|| "Failed to decode PSBT from base64")?
     } else {
         // Try as hex
-        hex::decode(&args.input)
-            .with_context(|| "Failed to decode PSBT from hex")?
+        hex::decode(&args.input).with_context(|| "Failed to decode PSBT from hex")?
     };
-    
+
     export_psbt_to_coldcard(&psbt_data, &args.filename).await?;
-    
+
     println!("PSBT exported to Coldcard SD card as: {}", args.filename);
-    
+
     Ok(())
 }
