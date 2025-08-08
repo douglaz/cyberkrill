@@ -12,7 +12,7 @@ categories = ["cryptography::cryptocurrencies"]
 default = ["smartcards", "frozenkrill"]
 smartcards = ["cktap-direct", "rusb"]
 frozenkrill = ["frozenkrill-core"]
-coldcard = ["dep:coldcard", "tokio-serial"]
+coldcard = ["dep:coldcard"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
@@ -27,7 +27,6 @@ base64 = "0.22"
 url = "2.5.0"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1.0", features = ["full"] }
-tokio-serial = { version = "5.4", optional = true }
 fedimint-lite = { path = "../fedimint-lite" }
 # Tapsigner/Satscard support via USB (optional feature)
 cktap-direct = { git = "https://github.com/douglaz/cktap-direct", optional = true }
