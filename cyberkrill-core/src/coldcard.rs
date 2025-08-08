@@ -54,11 +54,11 @@ pub struct ColdcardSignOutput {
 impl ColdcardWallet {
     /// Connect to the first available Coldcard device
     pub async fn connect() -> Result<Self> {
-        let mut api = Api::new().with_context(|| "Failed to initialize Coldcard API")?;
+        let mut api = Api::new().context("Failed to initialize Coldcard API")?;
 
-        let serials = api.detect().with_context(|| {
-            "Failed to detect Coldcard devices. Make sure your Coldcard is connected via USB."
-        })?;
+        let serials = api.detect().context(
+            "Failed to detect Coldcard devices. Make sure your Coldcard is connected via USB.",
+        )?;
 
         if serials.is_empty() {
             bail!("No Coldcard devices found. Please connect your Coldcard via USB.");
@@ -67,7 +67,7 @@ impl ColdcardWallet {
         // Connect to the first detected device
         let (device, xpub_info) = api
             .open(&serials[0], None)
-            .with_context(|| "Failed to open Coldcard device. Make sure it's unlocked.")?;
+            .context("Failed to open Coldcard device. Make sure it's unlocked.")?;
 
         let master_fingerprint = xpub_info.map(|info| {
             // Convert [u8; 4] to hex string
@@ -82,7 +82,7 @@ impl ColdcardWallet {
 
     /// Connect to a specific Coldcard by serial number
     pub async fn connect_serial(serial: &str) -> Result<Self> {
-        let api = Api::new().with_context(|| "Failed to initialize Coldcard API")?;
+        let api = Api::new().context("Failed to initialize Coldcard API")?;
 
         let (device, xpub_info) = api
             .open(serial, None)
@@ -101,18 +101,16 @@ impl ColdcardWallet {
 
     /// List all connected Coldcard devices
     pub async fn list_devices() -> Result<Vec<String>> {
-        let mut api = Api::new().with_context(|| "Failed to initialize Coldcard API")?;
+        let mut api = Api::new().context("Failed to initialize Coldcard API")?;
 
-        let serials = api
-            .detect()
-            .with_context(|| "Failed to detect Coldcard devices")?;
+        let serials = api.detect().context("Failed to detect Coldcard devices")?;
 
-        // SerialNumber doesn't implement Display, extract the inner string
+        // SerialNumber doesn't implement Display, use Debug formatting
         Ok(serials
             .into_iter()
-            .map(|s| {
-                // Coldcard serial numbers are hex strings
-                format!("{s:?}") // Use Debug formatting as a workaround
+            .map(|serial| {
+                // Coldcard serial numbers are hex strings, Debug format works
+                format!("{serial:?}")
             })
             .collect())
     }
@@ -123,7 +121,7 @@ impl ColdcardWallet {
         let version = self
             .device
             .version()
-            .with_context(|| "Failed to get Coldcard version")?;
+            .context("Failed to get Coldcard version")?;
 
         Ok(DeviceInfo {
             device_type: "Coldcard".to_string(),
@@ -175,7 +173,7 @@ impl ColdcardWallet {
             .xpub(coldcard_path)
             .with_context(|| format!("Failed to get xpub at path: {path}"))?;
 
-        Xpub::from_str(&xpub_str).with_context(|| "Failed to parse xpub from Coldcard")
+        Xpub::from_str(&xpub_str).context("Failed to parse xpub from Coldcard")
     }
 
     pub fn sign_psbt(&mut self, psbt: &[u8]) -> Result<SignedPsbt> {
@@ -184,13 +182,13 @@ impl ColdcardWallet {
         // Sign the PSBT - note: sign_psbt doesn't return the signed PSBT directly
         self.device
             .sign_psbt(psbt, SignMode::Finalize)
-            .with_context(|| "Failed to sign PSBT with Coldcard")?;
+            .context("Failed to sign PSBT with Coldcard")?;
 
         // Retrieve the signed transaction
         let signed_psbt_opt = self
             .device
             .get_signed_tx()
-            .with_context(|| "Failed to retrieve signed PSBT from Coldcard")?;
+            .context("Failed to retrieve signed PSBT from Coldcard")?;
 
         // Check if we got a signed PSBT
         let signed_psbt =
@@ -254,7 +252,7 @@ pub async fn export_psbt_to_coldcard(psbt_data: &[u8], filename: &str) -> Result
     wallet
         .device
         .sign_psbt(psbt_data, SignMode::Finalize)
-        .with_context(|| "Failed to prepare PSBT for Coldcard")?;
+        .context("Failed to prepare PSBT for Coldcard")?;
 
     Ok(format!("PSBT has been sent to Coldcard. Please save it to SD card as '{filename}' using the device menu."))
 }

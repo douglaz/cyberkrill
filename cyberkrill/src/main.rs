@@ -48,9 +48,6 @@ enum Commands {
     #[command(about = "Generate Bitcoin address from Coldcard")]
     ColdcardAddress(ColdcardAddressArgs),
     #[cfg(feature = "coldcard")]
-    #[command(about = "Generate Bitcoin address from Coldcard using serial/UART interface")]
-    ColdcardAddressSerial(ColdcardAddressSerialArgs),
-    #[cfg(feature = "coldcard")]
     #[command(about = "Sign PSBT with Coldcard")]
     ColdcardSignPsbt(ColdcardSignPsbtArgs),
     #[cfg(feature = "coldcard")]
@@ -181,20 +178,6 @@ struct ColdcardAddressArgs {
     /// Derivation path (e.g., m/84'/0'/0'/0/0)
     #[clap(short, long, default_value = "m/84'/0'/0'/0/0")]
     path: String,
-    /// Output file path
-    #[clap(short, long)]
-    output: Option<String>,
-}
-
-#[cfg(feature = "coldcard")]
-#[derive(clap::Args, Debug)]
-struct ColdcardAddressSerialArgs {
-    /// Derivation path (e.g., m/84'/0'/0'/0/0)
-    #[clap(short, long, default_value = "m/84'/0'/0'/0/0")]
-    path: String,
-    /// Serial port path (default: /dev/ttyACM0)
-    #[clap(long, default_value = "/dev/ttyACM0")]
-    port: String,
     /// Output file path
     #[clap(short, long)]
     output: Option<String>,
@@ -499,8 +482,6 @@ async fn main() -> anyhow::Result<()> {
         // Coldcard Operations
         #[cfg(feature = "coldcard")]
         Commands::ColdcardAddress(args) => coldcard_address(args).await?,
-        #[cfg(feature = "coldcard")]
-        Commands::ColdcardAddressSerial(args) => coldcard_address_serial(args).await?,
         #[cfg(feature = "coldcard")]
         Commands::ColdcardSignPsbt(args) => coldcard_sign_psbt(args).await?,
         #[cfg(feature = "coldcard")]
@@ -1285,24 +1266,6 @@ async fn coldcard_address(args: ColdcardAddressArgs) -> anyhow::Result<()> {
     use cyberkrill_core::generate_coldcard_address;
 
     let result = generate_coldcard_address(&args.path).await?;
-
-    let writer: Box<dyn std::io::Write> = match args.output {
-        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
-        None => Box::new(BufWriter::new(std::io::stdout())),
-    };
-
-    let mut writer = writer;
-    serde_json::to_writer_pretty(&mut writer, &result)?;
-    writeln!(&mut writer)?;
-
-    Ok(())
-}
-
-#[cfg(feature = "coldcard")]
-async fn coldcard_address_serial(args: ColdcardAddressSerialArgs) -> anyhow::Result<()> {
-    use cyberkrill_core::generate_coldcard_serial_address;
-
-    let result = generate_coldcard_serial_address(&args.path, Some(args.port)).await?;
 
     let writer: Box<dyn std::io::Write> = match args.output {
         Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
