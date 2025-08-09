@@ -7,7 +7,8 @@ use trezor_client::client::common::handle_interaction;
 use trezor_client::{InputScriptType, Trezor as TrezorClient};
 
 use crate::hardware_wallet::{AddressInfo, DeviceInfo, SignedPsbt};
-use crate::slip132::parse_slip132_xpub;
+// SLIP-0132 support is available but trezor-client doesn't expose raw keys
+// use crate::slip132::parse_slip132_xpub;
 
 /// Trezor hardware wallet implementation
 pub struct TrezorWallet {

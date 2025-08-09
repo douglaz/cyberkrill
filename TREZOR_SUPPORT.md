@@ -1,16 +1,14 @@
-# Trezor Hardware Wallet Support Status
+# Trezor Hardware Wallet Support
 
-## Current Status: BLOCKED
+## Current Status: ✅ WORKING
 
-Trezor support implementation is complete but cannot be compiled due to dependency version conflicts.
+Trezor support is fully implemented and functional using the master branch of trezor-client.
 
-## Issue
+## Solution
 
-The `trezor-client` crate (v0.1.4) depends on `bitcoin` v0.31, while CyberKrill uses `bitcoin` v0.32. These are incompatible versions with breaking changes in core types like `DerivationPath`, `Network`, and `Psbt`.
+Using the Git master branch of `trezor-client` from the official Trezor repository, which has been updated to support `bitcoin` v0.32. This resolves all type compatibility issues.
 
-## Implementation Completed
-
-The following has been implemented and is ready to use once the dependency issue is resolved:
+## Features
 
 1. **Core Module** (`cyberkrill-core/src/trezor.rs`):
    - Full Trezor hardware wallet implementation
@@ -28,16 +26,7 @@ The following has been implemented and is ready to use once the dependency issue
    - `trezor-sign-psbt` command for transaction signing
    - Network selection support (mainnet/testnet/signet/regtest)
 
-## Solution Options
-
-1. **Wait for trezor-client update**: The maintainers need to update to bitcoin 0.32
-2. **Fork trezor-client**: Create and maintain a fork with updated dependencies
-3. **Use alternative library**: Investigate `rust-trezor-api` or other alternatives
-4. **Downgrade bitcoin**: Not recommended as it would break other features
-
-## Testing
-
-Once the dependency issue is resolved, the implementation can be tested with:
+## Usage
 
 ```bash
 # Build with Trezor support

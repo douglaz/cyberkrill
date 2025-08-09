@@ -53,13 +53,12 @@ enum Commands {
     #[cfg(feature = "coldcard")]
     #[command(about = "Export PSBT to Coldcard SD card")]
     ColdcardExportPsbt(ColdcardExportPsbtArgs),
-    // Trezor support temporarily disabled due to bitcoin version incompatibility
-    // #[cfg(feature = "trezor")]
-    // #[command(about = "Generate Bitcoin address from Trezor")]
-    // TrezorAddress(TrezorAddressArgs),
-    // #[cfg(feature = "trezor")]
-    // #[command(about = "Sign PSBT with Trezor")]
-    // TrezorSignPsbt(TrezorSignPsbtArgs),
+    #[cfg(feature = "trezor")]
+    #[command(about = "Generate Bitcoin address from Trezor")]
+    TrezorAddress(TrezorAddressArgs),
+    #[cfg(feature = "trezor")]
+    #[command(about = "Sign PSBT with Trezor")]
+    TrezorSignPsbt(TrezorSignPsbtArgs),
 
     // Bitcoin RPC Operations
     #[command(about = "List UTXOs for addresses or descriptors")]
