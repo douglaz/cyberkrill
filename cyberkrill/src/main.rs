@@ -1385,7 +1385,9 @@ async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()
 async fn trezor_address(args: TrezorAddressArgs) -> anyhow::Result<()> {
     use cyberkrill_core::{generate_trezor_address, Network};
 
-    let network = args.network.parse::<Network>()
+    let network = args
+        .network
+        .parse::<Network>()
         .with_context(|| format!("Invalid network: {}", args.network))?;
 
     let result = generate_trezor_address(&args.path, network).await?;
@@ -1406,7 +1408,9 @@ async fn trezor_address(args: TrezorAddressArgs) -> anyhow::Result<()> {
 async fn trezor_sign_psbt(args: TrezorSignPsbtArgs) -> anyhow::Result<()> {
     use cyberkrill_core::{sign_psbt_with_trezor, Network};
 
-    let network = args.network.parse::<Network>()
+    let network = args
+        .network
+        .parse::<Network>()
         .with_context(|| format!("Invalid network: {}", args.network))?;
 
     // Read PSBT data from file or parse as base64/hex

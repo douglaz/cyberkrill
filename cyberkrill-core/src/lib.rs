@@ -5,10 +5,10 @@ pub mod decoder;
 pub mod frozenkrill;
 #[cfg(feature = "smartcards")]
 pub mod satscard;
-#[cfg(feature = "smartcards")]
-pub mod tapsigner;
 #[cfg(feature = "trezor")]
 pub mod slip132;
+#[cfg(feature = "smartcards")]
+pub mod tapsigner;
 #[cfg(feature = "trezor")]
 pub mod trezor;
 

@@ -33,7 +33,7 @@ impl FromSlip132 for Xpub {
 
         let mut prefix = [0u8; 4];
         prefix.copy_from_slice(&data[0..4]);
-        
+
         // Convert SLIP-0132 format to standard xpub/tpub
         let slice = match prefix {
             // Mainnet variants -> xpub
@@ -42,10 +42,10 @@ impl FromSlip132 for Xpub {
             VERSION_MAGIC_TPUB | VERSION_MAGIC_UPUB | VERSION_MAGIC_VPUB => VERSION_MAGIC_TPUB,
             _ => bail!("Unknown SLIP-0132 prefix: {:?}", prefix),
         };
-        
+
         data[0..4].copy_from_slice(&slice);
         let xpub = Xpub::decode(&data)?;
-        
+
         Ok(xpub)
     }
 }
@@ -56,7 +56,7 @@ pub fn parse_slip132_xpub(xpub_str: &str) -> Result<Xpub> {
     if let Ok(xpub) = xpub_str.parse::<Xpub>() {
         return Ok(xpub);
     }
-    
+
     // Fall back to SLIP-0132 parsing
     Xpub::from_slip132_str(xpub_str)
 }

@@ -90,7 +90,10 @@ impl TrezorWallet {
 
         // Try to get the xpub using our improved method
         let (xpub_str, pubkey_hex) = match self.get_xpub(path, network) {
-            Ok(xpub) => (Some(xpub.to_string()), hex::encode(xpub.public_key.serialize())),
+            Ok(xpub) => (
+                Some(xpub.to_string()),
+                hex::encode(xpub.public_key.serialize()),
+            ),
             Err(e) => {
                 // Log the error for debugging but don't fail
                 eprintln!("Warning: Could not extract xpub: {}", e);
@@ -114,40 +117,35 @@ impl TrezorWallet {
         network: Network,
     ) -> Result<protos::PublicKey> {
         use trezor_client::utils;
-        
+
         let mut req = protos::GetPublicKey::new();
         req.address_n = utils::convert_path(path);
         req.set_show_display(false);
         req.set_coin_name(utils::coin_name(network)?);
         req.set_script_type(script_type);
-        
+
         // Call with a custom handler that just returns the raw message
-        let response = self.client.call(
-            req,
-            Box::new(|_, m: protos::PublicKey| Ok(m)),
-        )?;
-        
+        let response = self
+            .client
+            .call(req, Box::new(|_, m: protos::PublicKey| Ok(m)))?;
+
         handle_interaction(response).context("Failed to get public key from Trezor")
     }
 
     /// Build an Xpub from HDNodeType components
-    fn build_xpub_from_node(
-        &self,
-        node: &protos::HDNodeType,
-        network: Network,
-    ) -> Result<Xpub> {
+    fn build_xpub_from_node(&self, node: &protos::HDNodeType, network: Network) -> Result<Xpub> {
         use bitcoin::bip32::{ChainCode, Fingerprint};
         use bitcoin::secp256k1;
-        
+
         // Extract components from HDNodeType
         let depth = node.depth() as u8;
-        
+
         // Convert fingerprint (4 bytes)
         let fingerprint_bytes = node.fingerprint().to_be_bytes();
         let parent_fingerprint = Fingerprint::from(fingerprint_bytes);
-        
+
         let child_number = ChildNumber::from(node.child_num());
-        
+
         // Get chain code (32 bytes)
         let chain_code_bytes = node.chain_code();
         if chain_code_bytes.len() != 32 {
@@ -156,14 +154,14 @@ impl TrezorWallet {
         let mut chain_code_array = [0u8; 32];
         chain_code_array.copy_from_slice(chain_code_bytes);
         let chain_code = ChainCode::from(chain_code_array);
-        
+
         // Get public key (33 bytes compressed)
         let pubkey_bytes = node.public_key();
         if pubkey_bytes.len() != 33 {
             bail!("Invalid public key length: {}", pubkey_bytes.len());
         }
         let public_key = secp256k1::PublicKey::from_slice(pubkey_bytes)?;
-        
+
         // Build the Xpub
         Ok(Xpub {
             network: network.into(),
@@ -184,7 +182,7 @@ impl TrezorWallet {
 
         // Get the raw public key response
         let pubkey_msg = self.get_public_key_raw(&derivation_path, script_type, network)?;
-        
+
         // First try to parse the xpub string (handles BIP44 and SLIP-0132 formats)
         if pubkey_msg.has_xpub() {
             let xpub_str = pubkey_msg.xpub();
@@ -195,7 +193,7 @@ impl TrezorWallet {
                 }
             }
         }
-        
+
         // If that didn't work, build from the HDNodeType
         // The node field is always present in the response
         self.build_xpub_from_node(&pubkey_msg.node, network)
@@ -207,8 +205,7 @@ impl TrezorWallet {
         use bitcoin::psbt::Psbt;
 
         // Parse PSBT from bytes
-        let mut psbt = Psbt::deserialize(psbt_bytes)
-            .context("Failed to deserialize PSBT")?;
+        let mut psbt = Psbt::deserialize(psbt_bytes).context("Failed to deserialize PSBT")?;
 
         // Start the signing process
         let progress = handle_interaction(
@@ -241,7 +238,7 @@ impl TrezorWallet {
         network: Network,
     ) -> Result<bool> {
         use std::io::Write;
-        
+
         // Collect any serialized transaction parts
         if let Some(part) = progress.get_serialized_tx_part() {
             raw_tx.write_all(part)?;
@@ -250,7 +247,8 @@ impl TrezorWallet {
         // Continue the signing process if not finished
         if !progress.finished() {
             let next_progress = handle_interaction(
-                progress.ack_psbt(psbt, network)
+                progress
+                    .ack_psbt(psbt, network)
                     .context("Failed to acknowledge PSBT to Trezor")?,
             )
             .context("User cancelled or interaction failed")?;
@@ -271,15 +269,15 @@ impl TrezorWallet {
 /// Determine the appropriate script type based on the derivation path
 fn determine_script_type(path: &DerivationPath) -> InputScriptType {
     use bitcoin::bip32::ChildNumber;
-    
+
     // Check the purpose field (first hardened derivation)
     if let Some(purpose) = path.into_iter().next() {
         match purpose {
             ChildNumber::Hardened { index: 49 } => InputScriptType::SPENDP2SHWITNESS, // 49' - P2WPKH-nested-in-P2SH
-            ChildNumber::Hardened { index: 84 } => InputScriptType::SPENDWITNESS,     // 84' - P2WPKH
-            ChildNumber::Hardened { index: 86 } => InputScriptType::SPENDTAPROOT,      // 86' - P2TR
-            ChildNumber::Hardened { index: 44 } => InputScriptType::SPENDADDRESS,      // 44' - P2PKH
-            _ => InputScriptType::SPENDADDRESS,                                        // Default to P2PKH
+            ChildNumber::Hardened { index: 84 } => InputScriptType::SPENDWITNESS, // 84' - P2WPKH
+            ChildNumber::Hardened { index: 86 } => InputScriptType::SPENDTAPROOT, // 86' - P2TR
+            ChildNumber::Hardened { index: 44 } => InputScriptType::SPENDADDRESS, // 44' - P2PKH
+            _ => InputScriptType::SPENDADDRESS, // Default to P2PKH
         }
     } else {
         InputScriptType::SPENDADDRESS // Default to P2PKH
@@ -290,7 +288,7 @@ fn determine_script_type(path: &DerivationPath) -> InputScriptType {
 pub async fn generate_trezor_address(path: &str, network: Network) -> Result<TrezorAddressOutput> {
     let mut wallet = TrezorWallet::connect().await?;
     wallet.init_device()?;
-    
+
     let address_info = wallet.get_address(path, network)?;
 
     Ok(TrezorAddressOutput {
@@ -302,13 +300,10 @@ pub async fn generate_trezor_address(path: &str, network: Network) -> Result<Tre
 }
 
 /// Sign a PSBT with Trezor
-pub async fn sign_psbt_with_trezor(
-    psbt_data: &[u8],
-    network: Network,
-) -> Result<TrezorSignOutput> {
+pub async fn sign_psbt_with_trezor(psbt_data: &[u8], network: Network) -> Result<TrezorSignOutput> {
     let mut wallet = TrezorWallet::connect().await?;
     wallet.init_device()?;
-    
+
     let signed = wallet.sign_psbt(psbt_data, network)?;
 
     Ok(TrezorSignOutput {
@@ -342,7 +337,7 @@ mod tests {
     fn test_determine_script_type() -> Result<()> {
         use bitcoin::bip32::DerivationPath;
         use std::str::FromStr;
-        
+
         // Test BIP84 (native segwit)
         let path = DerivationPath::from_str("m/84'/0'/0'/0/0")?;
         assert_eq!(determine_script_type(&path), InputScriptType::SPENDWITNESS);
