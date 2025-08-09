@@ -8,7 +8,7 @@ DESCRIPTOR="wsh(sortedmulti(4,[f6f490c1/48h/0h/0h/2h]xpub6EdyZVuEz23YwW9mj2iuy3Q
 # Simple single-sig descriptor for testing
 SIMPLE_DESCRIPTOR="wpkh([fingerprint/84'/0'/0']xpub...)"
 
-echo "=== CyberKrill Backend Test Suite ==="
+echo "=== cyberkrill Backend Test Suite ==="
 echo "Testing unified BDK backend support"
 echo
 

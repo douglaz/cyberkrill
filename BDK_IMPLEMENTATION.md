@@ -2,7 +2,7 @@
 
 ## Overview
 
-I've successfully implemented a BDK-based `bdk-list-utxos` command for the CyberKrill CLI toolkit. This command allows listing UTXOs from Bitcoin descriptors using the BDK (Bitcoin Development Kit) library.
+I've successfully implemented a BDK-based `bdk-list-utxos` command for the cyberkrill CLI toolkit. This command allows listing UTXOs from Bitcoin descriptors using the BDK (Bitcoin Development Kit) library.
 
 ## Features Implemented
 

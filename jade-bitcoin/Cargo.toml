@@ -2,7 +2,7 @@
 name = "jade-bitcoin"
 version = "0.1.0"
 edition = "2021"
-authors = ["CyberKrill Contributors"]
+authors = ["cyberkrill Contributors"]
 description = "Bitcoin-focused Rust client for Blockstream Jade hardware wallet"
 repository = "https://github.com/douglaz/cyberkrill"
 license = "MIT OR Apache-2.0"

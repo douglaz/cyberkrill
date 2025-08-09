@@ -1,14 +1,17 @@
-# CyberKrill
+# cyberkrill
 
 <img src="https://github.com/user-attachments/assets/246dc789-4a2d-4040-afeb-3ac9045dddfb" width="200" />
 
-A comprehensive CLI toolkit for Bitcoin and Lightning Network operations, written in Rust. CyberKrill consists of a command-line application and a reusable core library.
+A comprehensive CLI toolkit for Bitcoin and Lightning Network operations, written in Rust. cyberkrill consists of a command-line application and a reusable core library.
 
 ## Features
 
 - **Lightning Network**: BOLT11 invoice decoding, LNURL processing, and invoice generation from Lightning addresses
 - **Hardware Wallets** (optional): Full integration with Coinkite Tapsigner and Satscard devices (requires `smartcards` feature)
-- **Bitcoin Core RPC**: Advanced UTXO management, PSBT creation with automatic change address derivation, and transaction building
+- **Bitcoin Operations**: Advanced UTXO management and PSBT creation powered by BDK (Bitcoin Development Kit) with support for multiple backends:
+  - Bitcoin Core RPC: Direct node integration with automatic change address derivation
+  - Electrum: Fast SPV wallet operations without full node requirements
+  - Esplora: RESTful blockchain queries for lightweight setups
 - **Sub-satoshi Precision**: Support for fractional satoshi fee rates (e.g., "0.1sats/vB") using millisatoshi precision
 - **Smart Coin Selection**: Automatic coin selection with max-amount limits and descriptor-based input selection
 - **Output Descriptor Support**: Use descriptors as inputs with automatic UTXO discovery and change address derivation
@@ -124,12 +127,14 @@ cyberkrill satscard-address -o satscard_address.json
 
 ### Bitcoin Operations
 
-CyberKrill provides a unified interface for Bitcoin operations with support for multiple backends:
+cyberkrill provides a unified interface for Bitcoin operations powered by BDK (Bitcoin Development Kit), with support for multiple blockchain backends:
 
 **Backend Options:**
-- **Bitcoin Core RPC** (default): Direct connection to your Bitcoin node
-- **Electrum**: Fast and lightweight blockchain queries via Electrum protocol
+- **Bitcoin Core RPC** (default): Direct connection to your Bitcoin node for maximum privacy and control
+- **Electrum**: Fast and lightweight blockchain queries via Electrum protocol (SPV)
 - **Esplora**: RESTful API for blockchain data (no authentication required)
+
+All backends are transparently integrated through BDK, providing consistent functionality regardless of your infrastructure choice
 
 All Bitcoin commands support these backends through backend selection flags:
 - `--bitcoin-dir` - Use Bitcoin Core RPC with cookie authentication (default)
@@ -424,7 +429,7 @@ cyberkrill list-utxos --rpc-user myuser --rpc-password mypassword --descriptor "
 
 ### frozenkrill Wallet Integration
 
-CyberKrill supports frozenkrill wallet export files as an alternative to raw descriptors. This provides a more user-friendly way to work with wallets that have pre-generated addresses and metadata.
+cyberkrill supports frozenkrill wallet export files as an alternative to raw descriptors. This provides a more user-friendly way to work with wallets that have pre-generated addresses and metadata.
 
 **Using frozenkrill wallet files:**
 ```bash
@@ -453,7 +458,7 @@ cyberkrill move-utxos --wallet-file mywallet_pub.json --destination "bc1qconsoli
 
 ## Amount Input Formats
 
-CyberKrill supports flexible amount input formats across all Bitcoin commands:
+cyberkrill supports flexible amount input formats across all Bitcoin commands:
 
 ### Fee Rates
 - **Plain numbers**: `15` (interpreted as sats/vB)
@@ -647,7 +652,7 @@ cargo test && cargo clippy && cargo fmt --check
 
 ## Architecture
 
-CyberKrill is structured as a Rust workspace with multiple crates:
+cyberkrill is structured as a Rust workspace with multiple crates:
 
 ### cyberkrill (CLI Application)
 - **`cyberkrill/src/main.rs`** - CLI interface with argument parsing and command dispatching
