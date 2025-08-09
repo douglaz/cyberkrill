@@ -21,40 +21,67 @@ enum Commands {
     LnDecodeInvoice(DecodeInvoiceArgs),
     #[command(name = "ln-decode-lnurl", about = "Decode LNURL string")]
     LnDecodeLnurl(DecodeLnurlArgs),
-    #[command(name = "ln-generate-invoice", about = "Generate invoice from Lightning address")]
+    #[command(
+        name = "ln-generate-invoice",
+        about = "Generate invoice from Lightning address"
+    )]
     LnGenerateInvoice(GenerateInvoiceArgs),
 
     // Fedimint Operations (fm-*)
     #[command(name = "fm-decode-invite", about = "Decode Fedimint invite code")]
     FmDecodeInvite(DecodeFedimintInviteArgs),
-    #[command(name = "fm-encode-invite", about = "Encode Fedimint invite code from JSON")]
+    #[command(
+        name = "fm-encode-invite",
+        about = "Encode Fedimint invite code from JSON"
+    )]
     FmEncodeInvite(EncodeFedimintInviteArgs),
-    #[command(name = "fm-fetch-config", about = "Fetch Fedimint federation configuration")]
+    #[command(
+        name = "fm-fetch-config",
+        about = "Fetch Fedimint federation configuration"
+    )]
     FmFetchConfig(FedimintConfigArgs),
 
     // Hardware Wallet Operations (hw-*)
     #[cfg(feature = "smartcards")]
-    #[command(name = "hw-tapsigner-address", about = "Generate Bitcoin address from Tapsigner")]
+    #[command(
+        name = "hw-tapsigner-address",
+        about = "Generate Bitcoin address from Tapsigner"
+    )]
     HwTapsignerAddress(TapsignerAddressArgs),
     #[cfg(feature = "smartcards")]
-    #[command(name = "hw-tapsigner-init", about = "Initialize Tapsigner (one-time setup)")]
+    #[command(
+        name = "hw-tapsigner-init",
+        about = "Initialize Tapsigner (one-time setup)"
+    )]
     HwTapsignerInit(TapsignerInitArgs),
     #[cfg(feature = "smartcards")]
-    #[command(name = "hw-satscard-address", about = "Generate Bitcoin address from Satscard")]
+    #[command(
+        name = "hw-satscard-address",
+        about = "Generate Bitcoin address from Satscard"
+    )]
     HwSatscardAddress(SatscardAddressArgs),
 
     // Coldcard Hardware Wallet Operations
     #[cfg(feature = "coldcard")]
-    #[command(name = "hw-coldcard-address", about = "Generate Bitcoin address from Coldcard")]
+    #[command(
+        name = "hw-coldcard-address",
+        about = "Generate Bitcoin address from Coldcard"
+    )]
     HwColdcardAddress(ColdcardAddressArgs),
     #[cfg(feature = "coldcard")]
     #[command(name = "hw-coldcard-sign-psbt", about = "Sign PSBT with Coldcard")]
     HwColdcardSignPsbt(ColdcardSignPsbtArgs),
     #[cfg(feature = "coldcard")]
-    #[command(name = "hw-coldcard-export-psbt", about = "Export PSBT to Coldcard SD card")]
+    #[command(
+        name = "hw-coldcard-export-psbt",
+        about = "Export PSBT to Coldcard SD card"
+    )]
     HwColdcardExportPsbt(ColdcardExportPsbtArgs),
     #[cfg(feature = "trezor")]
-    #[command(name = "hw-trezor-address", about = "Generate Bitcoin address from Trezor")]
+    #[command(
+        name = "hw-trezor-address",
+        about = "Generate Bitcoin address from Trezor"
+    )]
     HwTrezorAddress(TrezorAddressArgs),
     #[cfg(feature = "trezor")]
     #[command(name = "hw-trezor-sign-psbt", about = "Sign PSBT with Trezor")]
@@ -72,7 +99,10 @@ enum Commands {
     HwJadeSignPsbt(JadeSignPsbtArgs),
 
     // Bitcoin Onchain Operations (onchain-*)
-    #[command(name = "onchain-list-utxos", about = "List UTXOs for addresses or descriptors")]
+    #[command(
+        name = "onchain-list-utxos",
+        about = "List UTXOs for addresses or descriptors"
+    )]
     OnchainListUtxos(ListUtxosArgs),
     #[command(
         name = "onchain-create-psbt",
@@ -89,7 +119,10 @@ enum Commands {
         about = "Consolidate/move UTXOs to a single destination address (output = total inputs - fee)"
     )]
     OnchainMoveUtxos(MoveUtxosArgs),
-    #[command(name = "onchain-decode-psbt", about = "Decode a PSBT (Partially Signed Bitcoin Transaction)")]
+    #[command(
+        name = "onchain-decode-psbt",
+        about = "Decode a PSBT (Partially Signed Bitcoin Transaction)"
+    )]
     OnchainDecodePsbt(DecodePsbtArgs),
 }
 
