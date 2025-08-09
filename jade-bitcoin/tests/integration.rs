@@ -14,9 +14,9 @@ mod integration_tests {
         // Don't assert on device count as it varies
     }
 
-    #[test]
-    fn test_connect_and_version() {
-        let mut jade = match JadeClient::connect() {
+    #[tokio::test]
+    async fn test_connect_and_version() {
+        let mut jade = match JadeClient::connect().await {
             Ok(j) => j,
             Err(e) => {
                 eprintln!("Skipping test - no Jade device found: {}", e);
@@ -29,9 +29,9 @@ mod integration_tests {
         println!("Jade version: {}", version.jade_version);
     }
 
-    #[test]
-    fn test_unlock_and_get_address() {
-        let mut jade = match JadeClient::connect() {
+    #[tokio::test]
+    async fn test_unlock_and_get_address() {
+        let mut jade = match JadeClient::connect().await {
             Ok(j) => j,
             Err(e) => {
                 eprintln!("Skipping test - no Jade device found: {}", e);
@@ -54,9 +54,9 @@ mod integration_tests {
         jade.logout().expect("Failed to logout");
     }
 
-    #[test]
-    fn test_get_xpub() {
-        let mut jade = match JadeClient::connect() {
+    #[tokio::test]
+    async fn test_get_xpub() {
+        let mut jade = match JadeClient::connect().await {
             Ok(j) => j,
             Err(e) => {
                 eprintln!("Skipping test - no Jade device found: {}", e);

@@ -9,7 +9,7 @@ keywords = ["bitcoin", "lightning", "lnurl", "fedimint", "tapsigner"]
 categories = ["cryptography::cryptocurrencies"]
 
 [features]
-default = ["smartcards", "frozenkrill"]
+default = ["smartcards", "frozenkrill", "coldcard", "trezor", "jade"]
 smartcards = ["cktap-direct", "rusb"]
 frozenkrill = ["frozenkrill-core"]
 coldcard = ["dep:coldcard"]

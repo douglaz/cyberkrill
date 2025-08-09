@@ -96,7 +96,7 @@ impl TrezorWallet {
             ),
             Err(e) => {
                 // Log the error for debugging but don't fail
-                eprintln!("Warning: Could not extract xpub: {}", e);
+                eprintln!("Warning: Could not extract xpub: {e}");
                 (None, String::new())
             }
         };

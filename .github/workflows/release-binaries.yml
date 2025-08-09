@@ -40,33 +40,19 @@ jobs:
         restore-keys: |
           cargo-registry-${{ runner.os }}-
     
-    - name: Build x86_64 Linux (musl static - with smartcards)
+    - name: Build x86_64 Linux (full features)
       run: |
         nix develop -c cargo build --release
-        mkdir -p artifacts/linux-x86_64-musl
-        cp target/x86_64-unknown-linux-musl/release/cyberkrill artifacts/linux-x86_64-musl/cyberkrill
-        chmod +x artifacts/linux-x86_64-musl/cyberkrill
+        mkdir -p artifacts/linux-x86_64
+        cp target/x86_64-unknown-linux-musl/release/cyberkrill artifacts/linux-x86_64/cyberkrill
+        chmod +x artifacts/linux-x86_64/cyberkrill
         
-    - name: Build x86_64 Linux (musl static - no smartcards)
+    - name: Build x86_64 Linux (minimal)
       run: |
         nix develop -c cargo build --release --no-default-features
-        mkdir -p artifacts/linux-x86_64-musl-minimal
-        cp target/x86_64-unknown-linux-musl/release/cyberkrill artifacts/linux-x86_64-musl-minimal/cyberkrill
-        chmod +x artifacts/linux-x86_64-musl-minimal/cyberkrill
-    
-    - name: Build x86_64 Linux (glibc - full features)
-      run: |
-        nix develop -c cargo build --release --target x86_64-unknown-linux-gnu --features smartcards,coldcard,trezor,jade
-        mkdir -p artifacts/linux-x86_64-gnu
-        cp target/x86_64-unknown-linux-gnu/release/cyberkrill artifacts/linux-x86_64-gnu/cyberkrill
-        chmod +x artifacts/linux-x86_64-gnu/cyberkrill
-    
-    - name: Build using Nix flake (static binary)
-      run: |
-        nix build
-        mkdir -p artifacts/linux-x86_64-nix-static
-        cp result/bin/cyberkrill artifacts/linux-x86_64-nix-static/cyberkrill
-        chmod +x artifacts/linux-x86_64-nix-static/cyberkrill
+        mkdir -p artifacts/linux-x86_64-minimal
+        cp target/x86_64-unknown-linux-musl/release/cyberkrill artifacts/linux-x86_64-minimal/cyberkrill
+        chmod +x artifacts/linux-x86_64-minimal/cyberkrill
     
     - name: Create checksums
       run: |
@@ -245,10 +231,8 @@ jobs:
         ### Available Binaries
         
         #### Linux
-        - \`cyberkrill-linux-x86_64-musl.tar.gz\` - Static binary with smartcard support (works on all Linux distros)
-        - \`cyberkrill-linux-x86_64-musl-minimal.tar.gz\` - Static binary without smartcard support (smaller size)
-        - \`cyberkrill-linux-x86_64-gnu.tar.gz\` - Full features including all hardware wallets (requires glibc)
-        - \`cyberkrill-linux-x86_64-nix-static.tar.gz\` - Nix-built static binary
+        - \`cyberkrill-linux-x86_64.tar.gz\` - Static binary with all hardware wallet support (works on all Linux distros)
+        - \`cyberkrill-linux-x86_64-minimal.tar.gz\` - Static binary with core features only (smaller size)
         
         #### macOS
         - \`cyberkrill-macos-x86_64.tar.gz\` - Intel Mac binary
@@ -278,8 +262,8 @@ jobs:
         
         ### Features by Platform
         
-        - **Linux musl**: Smartcard support (Tapsigner/Satscard) when built with features
-        - **Linux GNU**: Full hardware wallet support (Coldcard, Trezor, Jade) 
+        - **Linux (full)**: All hardware wallets (Tapsigner, Satscard, Coldcard, Trezor, Jade)
+        - **Linux (minimal)**: Core functionality only
         - **macOS/Windows**: Core functionality (Lightning, Bitcoin, Fedimint operations)
         
         ---

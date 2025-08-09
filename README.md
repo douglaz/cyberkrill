@@ -71,23 +71,24 @@ Download the latest pre-built binaries from the [releases page](https://github.c
 
 | Platform | Variant | Features | Notes |
 |----------|---------|----------|-------|
-| Linux x86_64 | `musl` | Smartcards | Static binary, works on all distros |
-| Linux x86_64 | `musl-minimal` | Core only | Smaller static binary |
-| Linux x86_64 | `gnu` | All hardware wallets | Requires glibc, full features |
-| Linux x86_64 | `nix-static` | Core | Nix-built static binary |
-| macOS x86_64 | Standard | Core | Intel Macs |
-| macOS ARM64 | Standard | Core | Apple Silicon (M1/M2/M3) |
-| Windows x86_64 | Standard | Core | 64-bit Windows |
+| Linux x86_64 | Standard | All hardware wallets | Static binary, works on all distros |
+| Linux x86_64 | Minimal | Core only | Smaller static binary |
+| macOS x86_64 | Minimal | Core | Intel Macs |
+| macOS ARM64 | Minimal | Core | Apple Silicon (M1/M2/M3) |
+| Windows x86_64 | Minimal | Core | 64-bit Windows |
 
 #### Linux
 ```bash
-# Download the appropriate binary (example for x86_64 with smartcard support)
-wget https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-linux-x86_64-musl.tar.gz
+# Download the full-featured binary (all hardware wallets)
+wget https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-linux-x86_64.tar.gz
+
+# Or download the minimal binary (core features only)
+wget https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-linux-x86_64-minimal.tar.gz
 
 # Extract and install
-tar xzf cyberkrill-linux-x86_64-musl.tar.gz
-chmod +x cyberkrill-linux-x86_64-musl/cyberkrill
-sudo mv cyberkrill-linux-x86_64-musl/cyberkrill /usr/local/bin/
+tar xzf cyberkrill-linux-x86_64.tar.gz
+chmod +x cyberkrill-linux-x86_64/cyberkrill
+sudo mv cyberkrill-linux-x86_64/cyberkrill /usr/local/bin/
 
 # Verify installation
 cyberkrill --help
@@ -127,8 +128,11 @@ nix run .
 git clone https://github.com/douglaz/cyberkrill.git
 cd cyberkrill
 
-# Build with all features (recommended)
+# Build with all features (default)
 cargo build --release
+
+# Or build minimal version (core features only)
+cargo build --release --no-default-features
 
 # The binary will be at ./target/release/cyberkrill
 ./target/release/cyberkrill --help
