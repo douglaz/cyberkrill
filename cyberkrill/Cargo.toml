@@ -12,6 +12,7 @@ smartcards = ["cyberkrill-core/smartcards"]
 frozenkrill = ["cyberkrill-core/frozenkrill"]
 coldcard = ["cyberkrill-core/coldcard"]
 trezor = ["cyberkrill-core/trezor"]
+jade = ["cyberkrill-core/jade"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }

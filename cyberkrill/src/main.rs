@@ -60,6 +60,17 @@ enum Commands {
     #[command(about = "Sign PSBT with Trezor")]
     TrezorSignPsbt(TrezorSignPsbtArgs),
 
+    // Jade Hardware Wallet Operations
+    #[cfg(feature = "jade")]
+    #[command(about = "Generate Bitcoin address from Jade")]
+    JadeAddress(JadeAddressArgs),
+    #[cfg(feature = "jade")]
+    #[command(about = "Get extended public key from Jade")]
+    JadeXpub(JadeXpubArgs),
+    #[cfg(feature = "jade")]
+    #[command(about = "Sign PSBT with Jade")]
+    JadeSignPsbt(JadeSignPsbtArgs),
+
     // Bitcoin RPC Operations
     #[command(about = "List UTXOs for addresses or descriptors")]
     ListUtxos(ListUtxosArgs),
@@ -229,6 +240,52 @@ struct TrezorAddressArgs {
 #[cfg(feature = "trezor")]
 #[derive(clap::Args, Debug)]
 struct TrezorSignPsbtArgs {
+    /// PSBT file path or base64/hex string
+    input: String,
+    /// Network (bitcoin, testnet, signet, regtest)
+    #[clap(short = 'n', long, default_value = "bitcoin")]
+    network: String,
+    /// Output file path for signed PSBT
+    #[clap(short, long)]
+    output: Option<String>,
+    /// Also save raw PSBT binary to this file
+    #[clap(long)]
+    psbt_output: Option<String>,
+}
+
+// Jade Hardware Wallet Args
+
+#[cfg(feature = "jade")]
+#[derive(clap::Args, Debug)]
+struct JadeAddressArgs {
+    /// Derivation path (e.g., m/84'/0'/0'/0/0)
+    #[clap(short, long, default_value = "m/84'/0'/0'/0/0")]
+    path: String,
+    /// Network (bitcoin, testnet, signet, regtest)
+    #[clap(short = 'n', long, default_value = "bitcoin")]
+    network: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+#[cfg(feature = "jade")]
+#[derive(clap::Args, Debug)]
+struct JadeXpubArgs {
+    /// Derivation path (e.g., m/84'/0'/0')
+    #[clap(short, long, default_value = "m/84'/0'/0'")]
+    path: String,
+    /// Network (bitcoin, testnet, signet, regtest)
+    #[clap(short = 'n', long, default_value = "bitcoin")]
+    network: String,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+#[cfg(feature = "jade")]
+#[derive(clap::Args, Debug)]
+struct JadeSignPsbtArgs {
     /// PSBT file path or base64/hex string
     input: String,
     /// Network (bitcoin, testnet, signet, regtest)
@@ -526,6 +583,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::TrezorAddress(args) => trezor_address(args).await?,
         #[cfg(feature = "trezor")]
         Commands::TrezorSignPsbt(args) => trezor_sign_psbt(args).await?,
+
+        // Jade Hardware Wallet Operations
+        #[cfg(feature = "jade")]
+        Commands::JadeAddress(args) => jade_address(args).await?,
+        #[cfg(feature = "jade")]
+        Commands::JadeXpub(args) => jade_xpub(args).await?,
+        #[cfg(feature = "jade")]
+        Commands::JadeSignPsbt(args) => jade_sign_psbt(args).await?,
 
         // Bitcoin RPC Operations
         Commands::ListUtxos(args) => bitcoin_list_utxos(args).await?,
@@ -1159,6 +1224,78 @@ fn parse_outputs(
         outputs.push((address, amount));
     }
     Ok(outputs)
+}
+
+// Jade Hardware Wallet Functions
+
+#[cfg(feature = "jade")]
+async fn jade_address(args: JadeAddressArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::generate_jade_address;
+
+    let result = generate_jade_address(&args.path, &args.network).await?;
+
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let mut writer = writer;
+    serde_json::to_writer_pretty(&mut writer, &result)?;
+    writeln!(&mut writer)?;
+
+    Ok(())
+}
+
+#[cfg(feature = "jade")]
+async fn jade_xpub(args: JadeXpubArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::generate_jade_xpub;
+
+    let result = generate_jade_xpub(&args.path, &args.network).await?;
+
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let mut writer = writer;
+    serde_json::to_writer_pretty(&mut writer, &result)?;
+    writeln!(&mut writer)?;
+
+    Ok(())
+}
+
+#[cfg(feature = "jade")]
+async fn jade_sign_psbt(args: JadeSignPsbtArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::sign_psbt_with_jade;
+    use std::path::Path;
+
+    // Read PSBT data from file or parse as base64/hex
+    let psbt_input = if Path::new(&args.input).exists() {
+        std::fs::read_to_string(&args.input)
+            .with_context(|| format!("Failed to read PSBT file: {}", args.input))?
+    } else {
+        args.input.clone()
+    };
+
+    let result = sign_psbt_with_jade(&psbt_input, &args.network).await?;
+
+    // Save JSON output
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let mut writer = writer;
+    serde_json::to_writer_pretty(&mut writer, &result)?;
+    writeln!(&mut writer)?;
+
+    // Optionally save raw PSBT
+    if let Some(psbt_path) = args.psbt_output {
+        let psbt_bytes = hex::decode(&result.psbt_hex)?;
+        std::fs::write(psbt_path, psbt_bytes)?;
+    }
+
+    Ok(())
 }
 
 fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {

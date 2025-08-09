@@ -16,6 +16,8 @@ pub mod trezor;
 #[cfg(feature = "coldcard")]
 pub mod coldcard;
 pub mod hardware_wallet;
+#[cfg(feature = "jade")]
+pub mod jade;
 
 // Re-export main functionality for easier access
 pub use decoder::{
@@ -60,4 +62,11 @@ pub use coldcard::{
 pub use trezor::{
     generate_trezor_address, sign_psbt_with_trezor, TrezorAddressOutput, TrezorSignOutput,
     TrezorWallet,
+};
+
+// Re-export jade functionality
+#[cfg(feature = "jade")]
+pub use jade::{
+    generate_jade_address, generate_jade_xpub, sign_psbt_with_jade, JadeAddressResult,
+    JadeSignedPsbtResult, JadeXpubResult,
 };
