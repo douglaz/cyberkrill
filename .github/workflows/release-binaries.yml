@@ -287,12 +287,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Get the release ID if it exists
-        RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/latest-master --jq '.id' 2>/dev/null || echo "")
-        if [ -n "$RELEASE_ID" ]; then
-          echo "Deleting existing latest-master release..."
-          gh api -X DELETE repos/${{ github.repository }}/releases/$RELEASE_ID
-        fi
+        # Delete the release if it exists
+        gh release delete latest-master --yes 2>/dev/null || true
         
         # Delete the tag if it exists
         git push --delete origin latest-master 2>/dev/null || true
