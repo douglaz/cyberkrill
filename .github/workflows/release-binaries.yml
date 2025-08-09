@@ -1,0 +1,308 @@
+name: Release Binaries
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    name: Build Linux Binaries
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Nix
+      uses: cachix/install-nix-action@v24
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+    
+    - name: Setup Magic Nix Cache
+      uses: DeterminateSystems/magic-nix-cache-action@main
+    
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          cargo-registry-${{ runner.os }}-
+    
+    - name: Build x86_64 Linux (musl static - with smartcards)
+      run: |
+        nix develop -c cargo build --release
+        mkdir -p artifacts/linux-x86_64-musl
+        cp target/x86_64-unknown-linux-musl/release/cyberkrill artifacts/linux-x86_64-musl/cyberkrill
+        chmod +x artifacts/linux-x86_64-musl/cyberkrill
+        
+    - name: Build x86_64 Linux (musl static - no smartcards)
+      run: |
+        nix develop -c cargo build --release --no-default-features
+        mkdir -p artifacts/linux-x86_64-musl-minimal
+        cp target/x86_64-unknown-linux-musl/release/cyberkrill artifacts/linux-x86_64-musl-minimal/cyberkrill
+        chmod +x artifacts/linux-x86_64-musl-minimal/cyberkrill
+    
+    - name: Build x86_64 Linux (glibc - full features)
+      run: |
+        nix develop -c cargo build --release --target x86_64-unknown-linux-gnu --features smartcards,coldcard,trezor,jade
+        mkdir -p artifacts/linux-x86_64-gnu
+        cp target/x86_64-unknown-linux-gnu/release/cyberkrill artifacts/linux-x86_64-gnu/cyberkrill
+        chmod +x artifacts/linux-x86_64-gnu/cyberkrill
+    
+    - name: Build using Nix flake (static binary)
+      run: |
+        nix build
+        mkdir -p artifacts/linux-x86_64-nix-static
+        cp result/bin/cyberkrill artifacts/linux-x86_64-nix-static/cyberkrill
+        chmod +x artifacts/linux-x86_64-nix-static/cyberkrill
+    
+    - name: Create checksums
+      run: |
+        cd artifacts
+        for dir in */; do
+          (cd "$dir" && sha256sum cyberkrill > cyberkrill.sha256)
+        done
+    
+    - name: Create tarball archives
+      run: |
+        cd artifacts
+        for dir in */; do
+          dirname="${dir%/}"
+          tar czf "cyberkrill-${dirname}.tar.gz" "$dirname"
+        done
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cyberkrill-linux-binaries
+        path: artifacts/*.tar.gz
+        retention-days: 90
+
+  build-macos:
+    name: Build macOS Binaries
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: x86_64-apple-darwin,aarch64-apple-darwin
+    
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          cargo-registry-${{ runner.os }}-
+    
+    - name: Build x86_64 macOS
+      run: |
+        cargo build --release --target x86_64-apple-darwin --no-default-features
+        mkdir -p artifacts/macos-x86_64
+        cp target/x86_64-apple-darwin/release/cyberkrill artifacts/macos-x86_64/cyberkrill
+        chmod +x artifacts/macos-x86_64/cyberkrill
+    
+    - name: Build ARM64 macOS (Apple Silicon)
+      run: |
+        cargo build --release --target aarch64-apple-darwin --no-default-features
+        mkdir -p artifacts/macos-aarch64
+        cp target/aarch64-apple-darwin/release/cyberkrill artifacts/macos-aarch64/cyberkrill
+        chmod +x artifacts/macos-aarch64/cyberkrill
+    
+    - name: Create checksums
+      run: |
+        cd artifacts
+        for dir in */; do
+          (cd "$dir" && shasum -a 256 cyberkrill > cyberkrill.sha256)
+        done
+    
+    - name: Create tarball archives
+      run: |
+        cd artifacts
+        for dir in */; do
+          dirname="${dir%/}"
+          tar czf "cyberkrill-${dirname}.tar.gz" "$dirname"
+        done
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cyberkrill-macos-binaries
+        path: artifacts/*.tar.gz
+        retention-days: 90
+
+  build-windows:
+    name: Build Windows Binaries
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: x86_64-pc-windows-msvc
+    
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          cargo-registry-${{ runner.os }}-
+    
+    - name: Build x86_64 Windows
+      run: |
+        cargo build --release --target x86_64-pc-windows-msvc --no-default-features
+        New-Item -ItemType Directory -Force -Path artifacts/windows-x86_64
+        Copy-Item target/x86_64-pc-windows-msvc/release/cyberkrill.exe artifacts/windows-x86_64/cyberkrill.exe
+    
+    - name: Create checksums
+      shell: powershell
+      run: |
+        cd artifacts
+        Get-ChildItem -Directory | ForEach-Object {
+          cd $_.Name
+          $hash = Get-FileHash -Algorithm SHA256 cyberkrill.exe
+          "$($hash.Hash.ToLower())  cyberkrill.exe" | Out-File -Encoding ASCII cyberkrill.sha256
+          cd ..
+        }
+    
+    - name: Create ZIP archives
+      shell: powershell
+      run: |
+        cd artifacts
+        Get-ChildItem -Directory | ForEach-Object {
+          Compress-Archive -Path $_.FullName -DestinationPath "cyberkrill-$($_.Name).zip"
+        }
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cyberkrill-windows-binaries
+        path: artifacts/*.zip
+        retention-days: 90
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release-artifacts
+    
+    - name: Get short SHA
+      id: sha
+      run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+    
+    - name: Get date
+      id: date
+      run: echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+    
+    - name: Prepare release files
+      run: |
+        mkdir -p release-files
+        mv release-artifacts/cyberkrill-linux-binaries/* release-files/
+        mv release-artifacts/cyberkrill-macos-binaries/* release-files/
+        mv release-artifacts/cyberkrill-windows-binaries/* release-files/
+        ls -la release-files/
+    
+    - name: Create release notes
+      run: |
+        cat > release-notes.md << EOF
+        ## cyberkrill Latest Build (master branch)
+        
+        **Build Date:** $(date +'%Y-%m-%d %H:%M:%S UTC')
+        **Commit:** ${{ steps.sha.outputs.sha_short }}
+        
+        ### Available Binaries
+        
+        #### Linux
+        - \`cyberkrill-linux-x86_64-musl.tar.gz\` - Static binary with smartcard support (works on all Linux distros)
+        - \`cyberkrill-linux-x86_64-musl-minimal.tar.gz\` - Static binary without smartcard support (smaller size)
+        - \`cyberkrill-linux-x86_64-gnu.tar.gz\` - Full features including all hardware wallets (requires glibc)
+        - \`cyberkrill-linux-x86_64-nix-static.tar.gz\` - Nix-built static binary
+        
+        #### macOS
+        - \`cyberkrill-macos-x86_64.tar.gz\` - Intel Mac binary
+        - \`cyberkrill-macos-aarch64.tar.gz\` - Apple Silicon (M1/M2/M3) binary
+        
+        #### Windows
+        - \`cyberkrill-windows-x86_64.zip\` - Windows 64-bit executable
+        
+        ### Installation
+        
+        1. Download the appropriate binary for your platform
+        2. Extract the archive
+        3. Make the binary executable (Linux/macOS): \`chmod +x cyberkrill\`
+        4. Optionally move to your PATH: \`sudo mv cyberkrill /usr/local/bin/\`
+        
+        ### Verify Checksums
+        
+        Each archive contains a \`.sha256\` file with the binary's checksum.
+        
+        \`\`\`bash
+        # Linux/macOS
+        sha256sum -c cyberkrill.sha256
+        
+        # Windows (PowerShell)
+        Get-FileHash cyberkrill.exe -Algorithm SHA256
+        \`\`\`
+        
+        ### Features by Platform
+        
+        - **Linux musl**: Smartcard support (Tapsigner/Satscard) when built with features
+        - **Linux GNU**: Full hardware wallet support (Coldcard, Trezor, Jade) 
+        - **macOS/Windows**: Core functionality (Lightning, Bitcoin, Fedimint operations)
+        
+        ---
+        *This is an automated build from the master branch. For stable releases, see the Releases page.*
+        EOF
+    
+    - name: Delete existing latest release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Get the release ID if it exists
+        RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/latest-master --jq '.id' 2>/dev/null || echo "")
+        if [ -n "$RELEASE_ID" ]; then
+          echo "Deleting existing latest-master release..."
+          gh api -X DELETE repos/${{ github.repository }}/releases/$RELEASE_ID
+        fi
+        
+        # Delete the tag if it exists
+        git push --delete origin latest-master 2>/dev/null || true
+    
+    - name: Create new release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release create latest-master \
+          --title "Latest Build (master)" \
+          --notes-file release-notes.md \
+          --prerelease \
+          release-files/*
