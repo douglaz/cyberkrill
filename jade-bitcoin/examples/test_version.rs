@@ -2,7 +2,8 @@
 
 use jade_bitcoin::JadeClient;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .init();
@@ -19,12 +20,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Connect to Jade
-    let mut jade = JadeClient::connect()?;
+    let mut jade = JadeClient::connect().await?;
     println!("Connected to Jade");
 
     // Just try to get version info - this should work without unlock
     println!("\nGetting version info...");
-    match jade.get_version_info() {
+    match jade.get_version_info().await {
         Ok(version) => {
             println!("Success! Jade version: {}", version.jade_version);
             println!("Board type: {}", version.board_type);

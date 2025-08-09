@@ -3,7 +3,8 @@
 use jade_bitcoin::{JadeClient, Network};
 use std::env;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Parse command line arguments
@@ -13,22 +14,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connecting to Jade...");
 
     // Connect to Jade
-    let mut jade = JadeClient::connect()?;
+    let mut jade = JadeClient::connect().await?;
     println!("Connected to Jade");
 
     // Get version info
-    let version = jade.get_version_info()?;
+    let version = jade.get_version_info().await?;
     println!("Jade version: {}", version.jade_version);
 
     // Unlock the device (xpub works with any network)
     println!("\nUnlocking Jade...");
     println!("Please check your Jade device and confirm the operation");
-    jade.unlock(Network::Bitcoin)?;
+    jade.unlock(Network::Bitcoin).await?;
     println!("Jade unlocked");
 
     // Get extended public key
     println!("\nGetting xpub for path: {}", path);
-    let xpub = jade.get_xpub(path)?;
+    let xpub = jade.get_xpub(path).await?;
 
     println!("\n=== Extended Public Key ===");
     println!("Path: {}", path);
@@ -45,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (86, "Taproot (P2TR)"),
     ] {
         let account_path = format!("m/{}'/{}'/{}'", purpose, 0, 0);
-        match jade.get_xpub(&account_path) {
+        match jade.get_xpub(&account_path).await {
             Ok(xpub) => {
                 println!("\n{} - {}", name, account_path);
                 println!("{}", xpub);
@@ -57,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Logout
-    jade.logout()?;
+    jade.logout().await?;
     println!("\nLogged out from Jade");
 
     Ok(())

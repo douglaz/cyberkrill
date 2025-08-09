@@ -3,7 +3,8 @@
 use jade_bitcoin::{JadeClient, Network};
 use std::env;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Parse command line arguments
@@ -33,23 +34,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Found {} Jade device(s): {:?}", devices.len(), devices);
 
     // Connect to Jade
-    let mut jade = JadeClient::connect()?;
+    let mut jade = JadeClient::connect().await?;
     println!("Connected to Jade");
 
     // Get version info
-    let version = jade.get_version_info()?;
+    let version = jade.get_version_info().await?;
     println!("Jade version: {}", version.jade_version);
     println!("Board type: {}", version.board_type);
 
     // Unlock the device
     println!("\nUnlocking Jade for {:?}...", network);
     println!("Please check your Jade device and confirm the operation");
-    jade.unlock(network)?;
+    jade.unlock(network).await?;
     println!("Jade unlocked");
 
     // Generate address
     println!("\nGenerating address for path: {}", path);
-    let address = jade.get_address(path, network)?;
+    let address = jade.get_address(path, network).await?;
 
     println!("\n=== Bitcoin Address ===");
     println!("Path:    {}", path);
@@ -57,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Address: {}", address);
 
     // Logout
-    jade.logout()?;
+    jade.logout().await?;
     println!("\nLogged out from Jade");
 
     Ok(())

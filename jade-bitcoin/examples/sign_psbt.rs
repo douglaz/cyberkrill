@@ -4,7 +4,8 @@ use jade_bitcoin::{JadeClient, Network};
 use std::env;
 use std::fs;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Parse command line arguments
@@ -36,24 +37,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nConnecting to Jade...");
 
     // Connect to Jade
-    let mut jade = JadeClient::connect()?;
+    let mut jade = JadeClient::connect().await?;
     println!("Connected to Jade");
 
     // Get version info
-    let version = jade.get_version_info()?;
+    let version = jade.get_version_info().await?;
     println!("Jade version: {}", version.jade_version);
 
     // Unlock the device
     println!("\nUnlocking Jade for {:?}...", network);
     println!("Please check your Jade device and confirm the operation");
-    jade.unlock(network)?;
+    jade.unlock(network).await?;
     println!("Jade unlocked");
 
     // Sign the PSBT
     println!("\nSigning PSBT...");
     println!("Please review and confirm the transaction on your Jade device");
 
-    let signed_psbt = jade.sign_psbt(&psbt_bytes, network)?;
+    let signed_psbt = jade.sign_psbt(&psbt_bytes, network).await?;
 
     println!("PSBT signed successfully!");
     println!("Signed PSBT size: {} bytes", signed_psbt.len());
@@ -64,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Signed PSBT saved to: {}", output_file);
 
     // Logout
-    jade.logout()?;
+    jade.logout().await?;
     println!("\nLogged out from Jade");
 
     Ok(())

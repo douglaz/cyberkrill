@@ -3,7 +3,8 @@
 use jade_bitcoin::{JadeClient, Network};
 use std::env;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Parse command line arguments
@@ -28,17 +29,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connecting to Jade...");
 
     // Connect to Jade
-    let mut jade = JadeClient::connect()?;
+    let mut jade = JadeClient::connect().await?;
     println!("Connected to Jade");
 
     // Try to unlock for the specified network
     println!("Unlocking device for {:?}...", network);
-    jade.unlock(network)?;
+    jade.unlock(network).await?;
     println!("Device unlocked");
 
     // Get extended public key
     println!("\nGetting xpub for path: {}", path);
-    let xpub = jade.get_xpub(path)?;
+    let xpub = jade.get_xpub(path).await?;
 
     println!("\n=== Extended Public Key ===");
     println!("Network: {:?}", network);
