@@ -14,6 +14,7 @@ smartcards = ["cktap-direct", "rusb"]
 frozenkrill = ["frozenkrill-core"]
 coldcard = ["dep:coldcard"]
 trezor = ["dep:trezor-client", "rusb"]
+jade = ["dep:jade-bitcoin"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
@@ -46,6 +47,8 @@ frozenkrill-core = { git = "https://github.com/planktonlabs/frozenkrill", option
 coldcard = { git = "https://github.com/douglaz/rust-coldcard", branch = "hidraw", optional = true, default-features = false, features = ["hidraw-backend"] }
 # Trezor hardware wallet support (using master branch with bitcoin 0.32 support)
 trezor-client = { git = "https://github.com/trezor/trezor-firmware", package = "trezor-client", optional = true }
+# Jade hardware wallet support
+jade-bitcoin = { path = "../jade-bitcoin", optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"
