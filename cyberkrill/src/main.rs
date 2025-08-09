@@ -16,78 +16,114 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    // Lightning Network Operations
-    #[command(about = "Decode BOLT11 Lightning invoice")]
-    DecodeInvoice(DecodeInvoiceArgs),
-    #[command(about = "Decode LNURL string")]
-    DecodeLnurl(DecodeLnurlArgs),
-    #[command(about = "Generate invoice from Lightning address")]
-    GenerateInvoice(GenerateInvoiceArgs),
+    // Lightning Network Operations (ln-*)
+    #[command(name = "ln-decode-invoice", about = "Decode BOLT11 Lightning invoice")]
+    LnDecodeInvoice(DecodeInvoiceArgs),
+    #[command(name = "ln-decode-lnurl", about = "Decode LNURL string")]
+    LnDecodeLnurl(DecodeLnurlArgs),
+    #[command(
+        name = "ln-generate-invoice",
+        about = "Generate invoice from Lightning address"
+    )]
+    LnGenerateInvoice(GenerateInvoiceArgs),
 
-    // Fedimint Operations
-    #[command(about = "Decode Fedimint invite code")]
-    DecodeFedimintInvite(DecodeFedimintInviteArgs),
-    #[command(about = "Encode Fedimint invite code from JSON")]
-    EncodeFedimintInvite(EncodeFedimintInviteArgs),
-    #[command(about = "Fetch Fedimint federation configuration")]
-    FedimintConfig(FedimintConfigArgs),
+    // Fedimint Operations (fm-*)
+    #[command(name = "fm-decode-invite", about = "Decode Fedimint invite code")]
+    FmDecodeInvite(DecodeFedimintInviteArgs),
+    #[command(
+        name = "fm-encode-invite",
+        about = "Encode Fedimint invite code from JSON"
+    )]
+    FmEncodeInvite(EncodeFedimintInviteArgs),
+    #[command(
+        name = "fm-fetch-config",
+        about = "Fetch Fedimint federation configuration"
+    )]
+    FmFetchConfig(FedimintConfigArgs),
 
-    // Hardware Wallet Operations
+    // Hardware Wallet Operations (hw-*)
     #[cfg(feature = "smartcards")]
-    #[command(about = "Generate Bitcoin address from Tapsigner")]
-    TapsignerAddress(TapsignerAddressArgs),
+    #[command(
+        name = "hw-tapsigner-address",
+        about = "Generate Bitcoin address from Tapsigner"
+    )]
+    HwTapsignerAddress(TapsignerAddressArgs),
     #[cfg(feature = "smartcards")]
-    #[command(about = "Initialize Tapsigner (one-time setup)")]
-    TapsignerInit(TapsignerInitArgs),
+    #[command(
+        name = "hw-tapsigner-init",
+        about = "Initialize Tapsigner (one-time setup)"
+    )]
+    HwTapsignerInit(TapsignerInitArgs),
     #[cfg(feature = "smartcards")]
-    #[command(about = "Generate Bitcoin address from Satscard")]
-    SatscardAddress(SatscardAddressArgs),
+    #[command(
+        name = "hw-satscard-address",
+        about = "Generate Bitcoin address from Satscard"
+    )]
+    HwSatscardAddress(SatscardAddressArgs),
 
     // Coldcard Hardware Wallet Operations
     #[cfg(feature = "coldcard")]
-    #[command(about = "Generate Bitcoin address from Coldcard")]
-    ColdcardAddress(ColdcardAddressArgs),
+    #[command(
+        name = "hw-coldcard-address",
+        about = "Generate Bitcoin address from Coldcard"
+    )]
+    HwColdcardAddress(ColdcardAddressArgs),
     #[cfg(feature = "coldcard")]
-    #[command(about = "Sign PSBT with Coldcard")]
-    ColdcardSignPsbt(ColdcardSignPsbtArgs),
+    #[command(name = "hw-coldcard-sign-psbt", about = "Sign PSBT with Coldcard")]
+    HwColdcardSignPsbt(ColdcardSignPsbtArgs),
     #[cfg(feature = "coldcard")]
-    #[command(about = "Export PSBT to Coldcard SD card")]
-    ColdcardExportPsbt(ColdcardExportPsbtArgs),
+    #[command(
+        name = "hw-coldcard-export-psbt",
+        about = "Export PSBT to Coldcard SD card"
+    )]
+    HwColdcardExportPsbt(ColdcardExportPsbtArgs),
     #[cfg(feature = "trezor")]
-    #[command(about = "Generate Bitcoin address from Trezor")]
-    TrezorAddress(TrezorAddressArgs),
+    #[command(
+        name = "hw-trezor-address",
+        about = "Generate Bitcoin address from Trezor"
+    )]
+    HwTrezorAddress(TrezorAddressArgs),
     #[cfg(feature = "trezor")]
-    #[command(about = "Sign PSBT with Trezor")]
-    TrezorSignPsbt(TrezorSignPsbtArgs),
+    #[command(name = "hw-trezor-sign-psbt", about = "Sign PSBT with Trezor")]
+    HwTrezorSignPsbt(TrezorSignPsbtArgs),
 
     // Jade Hardware Wallet Operations
     #[cfg(feature = "jade")]
-    #[command(about = "Generate Bitcoin address from Jade")]
-    JadeAddress(JadeAddressArgs),
+    #[command(name = "hw-jade-address", about = "Generate Bitcoin address from Jade")]
+    HwJadeAddress(JadeAddressArgs),
     #[cfg(feature = "jade")]
-    #[command(about = "Get extended public key from Jade")]
-    JadeXpub(JadeXpubArgs),
+    #[command(name = "hw-jade-xpub", about = "Get extended public key from Jade")]
+    HwJadeXpub(JadeXpubArgs),
     #[cfg(feature = "jade")]
-    #[command(about = "Sign PSBT with Jade")]
-    JadeSignPsbt(JadeSignPsbtArgs),
+    #[command(name = "hw-jade-sign-psbt", about = "Sign PSBT with Jade")]
+    HwJadeSignPsbt(JadeSignPsbtArgs),
 
-    // Bitcoin RPC Operations
-    #[command(about = "List UTXOs for addresses or descriptors")]
-    ListUtxos(ListUtxosArgs),
+    // Bitcoin Onchain Operations (onchain-*)
     #[command(
+        name = "onchain-list-utxos",
+        about = "List UTXOs for addresses or descriptors"
+    )]
+    OnchainListUtxos(ListUtxosArgs),
+    #[command(
+        name = "onchain-create-psbt",
         about = "Create PSBT with manual input/output specification (you specify exact inputs, outputs, and change)"
     )]
-    CreatePsbt(CreatePsbtArgs),
+    OnchainCreatePsbt(CreatePsbtArgs),
     #[command(
+        name = "onchain-create-funded-psbt",
         about = "Create funded PSBT with automatic input selection and change output (wallet handles coin selection)"
     )]
-    CreateFundedPsbt(CreateFundedPsbtArgs),
+    OnchainCreateFundedPsbt(CreateFundedPsbtArgs),
     #[command(
+        name = "onchain-move-utxos",
         about = "Consolidate/move UTXOs to a single destination address (output = total inputs - fee)"
     )]
-    MoveUtxos(MoveUtxosArgs),
-    #[command(about = "Decode a PSBT (Partially Signed Bitcoin Transaction)")]
-    DecodePsbt(DecodePsbtArgs),
+    OnchainMoveUtxos(MoveUtxosArgs),
+    #[command(
+        name = "onchain-decode-psbt",
+        about = "Decode a PSBT (Partially Signed Bitcoin Transaction)"
+    )]
+    OnchainDecodePsbt(DecodePsbtArgs),
 }
 
 // Lightning Network Args
@@ -555,49 +591,49 @@ async fn main() -> anyhow::Result<()> {
     let args: Cli = Cli::parse();
     match args.command {
         // Lightning Network Operations
-        Commands::DecodeInvoice(args) => decode_invoice(args)?,
-        Commands::DecodeLnurl(args) => decode_lnurl(args)?,
-        Commands::GenerateInvoice(args) => generate_invoice(args).await?,
+        Commands::LnDecodeInvoice(args) => decode_invoice(args)?,
+        Commands::LnDecodeLnurl(args) => decode_lnurl(args)?,
+        Commands::LnGenerateInvoice(args) => generate_invoice(args).await?,
 
         // Fedimint Operations
-        Commands::DecodeFedimintInvite(args) => decode_fedimint_invite(args)?,
-        Commands::EncodeFedimintInvite(args) => encode_fedimint_invite(args)?,
-        Commands::FedimintConfig(args) => fedimint_config(args).await?,
+        Commands::FmDecodeInvite(args) => decode_fedimint_invite(args)?,
+        Commands::FmEncodeInvite(args) => encode_fedimint_invite(args)?,
+        Commands::FmFetchConfig(args) => fedimint_config(args).await?,
 
         // Hardware Wallet Operations
         #[cfg(feature = "smartcards")]
-        Commands::TapsignerAddress(args) => tapsigner_address(args).await?,
+        Commands::HwTapsignerAddress(args) => tapsigner_address(args).await?,
         #[cfg(feature = "smartcards")]
-        Commands::TapsignerInit(args) => tapsigner_init(args).await?,
+        Commands::HwTapsignerInit(args) => tapsigner_init(args).await?,
         #[cfg(feature = "smartcards")]
-        Commands::SatscardAddress(args) => satscard_address(args).await?,
+        Commands::HwSatscardAddress(args) => satscard_address(args).await?,
 
         // Coldcard Operations
         #[cfg(feature = "coldcard")]
-        Commands::ColdcardAddress(args) => coldcard_address(args).await?,
+        Commands::HwColdcardAddress(args) => coldcard_address(args).await?,
         #[cfg(feature = "coldcard")]
-        Commands::ColdcardSignPsbt(args) => coldcard_sign_psbt(args).await?,
+        Commands::HwColdcardSignPsbt(args) => coldcard_sign_psbt(args).await?,
         #[cfg(feature = "coldcard")]
-        Commands::ColdcardExportPsbt(args) => coldcard_export_psbt(args).await?,
+        Commands::HwColdcardExportPsbt(args) => coldcard_export_psbt(args).await?,
         #[cfg(feature = "trezor")]
-        Commands::TrezorAddress(args) => trezor_address(args).await?,
+        Commands::HwTrezorAddress(args) => trezor_address(args).await?,
         #[cfg(feature = "trezor")]
-        Commands::TrezorSignPsbt(args) => trezor_sign_psbt(args).await?,
+        Commands::HwTrezorSignPsbt(args) => trezor_sign_psbt(args).await?,
 
         // Jade Hardware Wallet Operations
         #[cfg(feature = "jade")]
-        Commands::JadeAddress(args) => jade_address(args).await?,
+        Commands::HwJadeAddress(args) => jade_address(args).await?,
         #[cfg(feature = "jade")]
-        Commands::JadeXpub(args) => jade_xpub(args).await?,
+        Commands::HwJadeXpub(args) => jade_xpub(args).await?,
         #[cfg(feature = "jade")]
-        Commands::JadeSignPsbt(args) => jade_sign_psbt(args).await?,
+        Commands::HwJadeSignPsbt(args) => jade_sign_psbt(args).await?,
 
-        // Bitcoin RPC Operations
-        Commands::ListUtxos(args) => bitcoin_list_utxos(args).await?,
-        Commands::CreatePsbt(args) => bitcoin_create_psbt(args).await?,
-        Commands::CreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
-        Commands::MoveUtxos(args) => bitcoin_move_utxos(args).await?,
-        Commands::DecodePsbt(args) => decode_psbt(args)?,
+        // Bitcoin Onchain Operations
+        Commands::OnchainListUtxos(args) => bitcoin_list_utxos(args).await?,
+        Commands::OnchainCreatePsbt(args) => bitcoin_create_psbt(args).await?,
+        Commands::OnchainCreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
+        Commands::OnchainMoveUtxos(args) => bitcoin_move_utxos(args).await?,
+        Commands::OnchainDecodePsbt(args) => decode_psbt(args)?,
     }
     Ok(())
 }

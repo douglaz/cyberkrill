@@ -53,6 +53,14 @@ Powered by BDK (Bitcoin Development Kit) with multiple backend support:
 - **Descriptor Support**: Full output descriptor compatibility
 - **[frozenkrill](https://github.com/planktonlabs/frozenkrill) Integration**: Import wallet export files
 
+## Command Structure
+
+Commands are organized with logical prefixes for better clarity:
+- `ln-*` - Lightning Network operations
+- `fm-*` - Fedimint operations  
+- `hw-*` - Hardware wallet operations
+- `onchain-*` - Bitcoin onchain operations
+
 ## Installation
 
 ### Using Nix (Recommended)
@@ -86,13 +94,13 @@ cargo build --release
 
 ```bash
 # Decode a Lightning invoice
-cyberkrill decode-invoice lnbc1000n1pn...
+cyberkrill ln-decode-invoice lnbc1000n1pn...
 
 # Decode LNURL
-cyberkrill decode-lnurl lnurl1dp68gurn8ghj7mr0v...
+cyberkrill ln-decode-lnurl lnurl1dp68gurn8ghj7mr0v...
 
 # Generate invoice from Lightning address
-cyberkrill generate-invoice user@getalby.com 100000 --comment "Payment"
+cyberkrill ln-generate-invoice user@getalby.com 100000 --comment "Payment"
 ```
 
 ### Smartcard Operations (Tapsigner/Satscard)
@@ -100,26 +108,26 @@ cyberkrill generate-invoice user@getalby.com 100000 --comment "Payment"
 ```bash
 # Initialize Tapsigner (one-time setup)
 export TAPSIGNER_CVC=123456  # Your 6-digit PIN
-cyberkrill tapsigner-init
+cyberkrill hw-tapsigner-init
 
 # Generate Bitcoin address from Tapsigner
-cyberkrill tapsigner-address --path "m/84'/0'/0'/0/0"
+cyberkrill hw-tapsigner-address --path "m/84'/0'/0'/0/0"
 
 # Generate address from Satscard
-cyberkrill satscard-address --slot 1
+cyberkrill hw-satscard-address --slot 1
 ```
 
 ### Hardware Wallet Operations
 
 ```bash
 # Coldcard - Generate address
-cyberkrill coldcard-address --path "m/84'/0'/0'/0/0" --network mainnet
+cyberkrill hw-coldcard-address --path "m/84'/0'/0'/0/0" --network mainnet
 
 # Trezor - Get extended public key
-cyberkrill trezor-xpub --path "m/84'/0'/0'" --network mainnet
+cyberkrill hw-trezor-xpub --path "m/84'/0'/0'" --network mainnet
 
 # Jade - Generate address
-cyberkrill jade-address --path "m/84'/0'/0'/0/0" --network mainnet
+cyberkrill hw-jade-address --path "m/84'/0'/0'/0/0" --network mainnet
 ```
 
 ### Bitcoin UTXO Operations
@@ -127,14 +135,14 @@ cyberkrill jade-address --path "m/84'/0'/0'/0/0" --network mainnet
 ```bash
 # List UTXOs using different backends
 # Bitcoin Core (default)
-cyberkrill list-utxos --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
+cyberkrill onchain-list-utxos --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)"
 
 # Electrum backend
-cyberkrill list-utxos --descriptor "wpkh([...]xpub...)" \
+cyberkrill onchain-list-utxos --descriptor "wpkh([...]xpub...)" \
   --electrum ssl://electrum.blockstream.info:50002
 
 # Esplora backend
-cyberkrill list-utxos --descriptor "wpkh([...]xpub...)" \
+cyberkrill onchain-list-utxos --descriptor "wpkh([...]xpub...)" \
   --esplora https://blockstream.info/api
 ```
 
@@ -142,18 +150,18 @@ cyberkrill list-utxos --descriptor "wpkh([...]xpub...)" \
 
 ```bash
 # Manual PSBT - Full control
-cyberkrill create-psbt \
+cyberkrill onchain-create-psbt \
   --inputs "txid:0" --inputs "txid:1" \
   --outputs "bc1qaddr:0.001" \
   --fee-rate 10sats
 
 # Funded PSBT - Automatic coin selection
-cyberkrill create-funded-psbt \
+cyberkrill onchain-create-funded-psbt \
   --outputs "bc1qaddr:0.001" \
   --fee-rate 15.5sats
 
 # UTXO Consolidation
-cyberkrill move-utxos \
+cyberkrill onchain-move-utxos \
   --inputs "txid:0" --inputs "txid:1" \
   --destination "bc1qconsolidated" \
   --fee-rate 5sats
@@ -165,10 +173,10 @@ cyberkrill move-utxos \
 
 ```bash
 # Using cookie authentication (recommended)
-cyberkrill list-utxos --bitcoin-dir ~/.bitcoin --descriptor "..."
+cyberkrill onchain-list-utxos --bitcoin-dir ~/.bitcoin --descriptor "..."
 
 # Using username/password
-cyberkrill list-utxos --rpc-user myuser --rpc-password mypass --descriptor "..."
+cyberkrill onchain-list-utxos --rpc-user myuser --rpc-password mypass --descriptor "..."
 ```
 
 ### Electrum
@@ -218,8 +226,8 @@ Full support for Bitcoin output descriptors:
 Import [frozenkrill](https://github.com/planktonlabs/frozenkrill) wallet export files instead of raw descriptors:
 
 ```bash
-cyberkrill list-utxos --wallet-file mywallet_pub.json
-cyberkrill create-funded-psbt --wallet-file mywallet_pub.json --outputs "bc1q...:0.001"
+cyberkrill onchain-list-utxos --wallet-file mywallet_pub.json
+cyberkrill onchain-create-funded-psbt --wallet-file mywallet_pub.json --outputs "bc1q...:0.001"
 ```
 
 ## Documentation
