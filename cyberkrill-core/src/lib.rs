@@ -7,6 +7,11 @@ pub mod frozenkrill;
 pub mod satscard;
 #[cfg(feature = "smartcards")]
 pub mod tapsigner;
+// Trezor support temporarily disabled due to bitcoin version incompatibility
+// #[cfg(feature = "trezor")]
+// pub mod slip132;
+// #[cfg(feature = "trezor")]
+// pub mod trezor;
 
 // Hardware wallet common trait
 #[cfg(feature = "coldcard")]
@@ -50,3 +55,10 @@ pub use coldcard::{
     export_psbt_to_coldcard, generate_coldcard_address, sign_psbt_with_coldcard,
     ColdcardAddressOutput, ColdcardSignOutput, ColdcardWallet,
 };
+
+// Trezor support temporarily disabled due to bitcoin version incompatibility
+// #[cfg(feature = "trezor")]
+// pub use trezor::{
+//     generate_trezor_address, sign_psbt_with_trezor, TrezorAddressOutput, TrezorSignOutput,
+//     TrezorWallet,
+// };
