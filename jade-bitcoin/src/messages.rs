@@ -50,10 +50,12 @@ pub struct ErrorResponse {
     pub code: i32,
     pub message: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub data: Option<Value>,
 }
 
 /// Methods supported by Jade
+#[allow(dead_code)]
 pub mod methods {
     pub const GET_VERSION_INFO: &str = "get_version_info";
     pub const AUTH_USER: &str = "auth_user";
@@ -70,6 +72,7 @@ pub mod methods {
 }
 
 /// Error codes from Jade
+#[allow(dead_code)]
 pub mod error_codes {
     pub const USER_CANCELLED: i32 = -32000;
     pub const INVALID_REQUEST: i32 = -32600;
