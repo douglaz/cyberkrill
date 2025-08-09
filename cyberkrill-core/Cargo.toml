@@ -13,6 +13,7 @@ default = ["smartcards", "frozenkrill"]
 smartcards = ["cktap-direct", "rusb"]
 frozenkrill = ["frozenkrill-core"]
 coldcard = ["dep:coldcard"]
+trezor = ["dep:trezor-client", "rusb"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
@@ -43,6 +44,8 @@ bdk_esplora = { version = "0.22.0", default-features = false, features = ["block
 frozenkrill-core = { git = "https://github.com/planktonlabs/frozenkrill", optional = true }
 # Coldcard hardware wallet support
 coldcard = { git = "https://github.com/douglaz/rust-coldcard", branch = "hidraw", optional = true, default-features = false, features = ["hidraw-backend"] }
+# Trezor hardware wallet support (using master branch with bitcoin 0.32 support)
+trezor-client = { git = "https://github.com/trezor/trezor-firmware", package = "trezor-client", optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"

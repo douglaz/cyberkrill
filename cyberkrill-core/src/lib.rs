@@ -5,8 +5,12 @@ pub mod decoder;
 pub mod frozenkrill;
 #[cfg(feature = "smartcards")]
 pub mod satscard;
+#[cfg(feature = "trezor")]
+pub mod slip132;
 #[cfg(feature = "smartcards")]
 pub mod tapsigner;
+#[cfg(feature = "trezor")]
+pub mod trezor;
 
 // Hardware wallet common trait
 #[cfg(feature = "coldcard")]
@@ -49,4 +53,11 @@ pub use frozenkrill::FrozenkrillWallet;
 pub use coldcard::{
     export_psbt_to_coldcard, generate_coldcard_address, sign_psbt_with_coldcard,
     ColdcardAddressOutput, ColdcardSignOutput, ColdcardWallet,
+};
+
+// Re-export trezor functionality
+#[cfg(feature = "trezor")]
+pub use trezor::{
+    generate_trezor_address, sign_psbt_with_trezor, TrezorAddressOutput, TrezorSignOutput,
+    TrezorWallet,
 };
