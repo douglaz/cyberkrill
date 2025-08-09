@@ -63,7 +63,53 @@ Commands are organized with logical prefixes for better clarity:
 
 ## Installation
 
-### Using Nix (Recommended)
+### Download Pre-built Binaries (Easiest)
+
+Download the latest pre-built binaries from the [releases page](https://github.com/douglaz/cyberkrill/releases/tag/latest-master).
+
+**Available Binaries:**
+
+| Platform | Variant | Features | Notes |
+|----------|---------|----------|-------|
+| Linux x86_64 | `musl` | Smartcards | Static binary, works on all distros |
+| Linux x86_64 | `musl-minimal` | Core only | Smaller static binary |
+| Linux x86_64 | `gnu` | All hardware wallets | Requires glibc, full features |
+| Linux x86_64 | `nix-static` | Core | Nix-built static binary |
+| macOS x86_64 | Standard | Core | Intel Macs |
+| macOS ARM64 | Standard | Core | Apple Silicon (M1/M2/M3) |
+| Windows x86_64 | Standard | Core | 64-bit Windows |
+
+#### Linux
+```bash
+# Download the appropriate binary (example for x86_64 with smartcard support)
+wget https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-linux-x86_64-musl.tar.gz
+
+# Extract and install
+tar xzf cyberkrill-linux-x86_64-musl.tar.gz
+chmod +x cyberkrill-linux-x86_64-musl/cyberkrill
+sudo mv cyberkrill-linux-x86_64-musl/cyberkrill /usr/local/bin/
+
+# Verify installation
+cyberkrill --help
+```
+
+#### macOS
+```bash
+# Intel Mac
+curl -L https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-macos-x86_64.tar.gz | tar xz
+
+# Apple Silicon (M1/M2/M3)
+curl -L https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-macos-aarch64.tar.gz | tar xz
+
+# Install
+chmod +x cyberkrill-macos-*/cyberkrill
+sudo mv cyberkrill-macos-*/cyberkrill /usr/local/bin/
+```
+
+#### Windows
+Download `cyberkrill-windows-x86_64.zip` from the [releases page](https://github.com/douglaz/cyberkrill/releases/tag/latest-master), extract, and add to your PATH.
+
+### Using Nix
 
 ```bash
 # Run directly from GitHub
@@ -75,7 +121,7 @@ cd cyberkrill
 nix run .
 ```
 
-### Using Cargo
+### Build from Source
 
 ```bash
 git clone https://github.com/douglaz/cyberkrill.git
