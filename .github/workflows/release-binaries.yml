@@ -8,6 +8,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: write  # Required for creating releases
+
 jobs:
   build-linux:
     name: Build Linux Binaries
