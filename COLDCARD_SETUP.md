@@ -1,4 +1,4 @@
-# Coldcard Setup Guide for CyberKrill
+# Coldcard Setup Guide for cyberkrill
 
 ## Important: Critical Runtime Issue - Stack Buffer Overflow
 
