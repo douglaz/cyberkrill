@@ -295,7 +295,8 @@ impl JadeProtocol {
             .as_array()
             .ok_or_else(|| Error::Other("Missing urls in http_request".to_string()))?;
 
-        let url = urls.first()
+        let url = urls
+            .first()
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::Other("No URL provided".to_string()))?;
 
