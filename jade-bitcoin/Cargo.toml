@@ -1,0 +1,35 @@
+[package]
+name = "jade-bitcoin"
+version = "0.1.0"
+edition = "2021"
+authors = ["CyberKrill Contributors"]
+description = "Bitcoin-focused Rust client for Blockstream Jade hardware wallet"
+repository = "https://github.com/douglaz/cyberkrill"
+license = "MIT OR Apache-2.0"
+keywords = ["bitcoin", "jade", "hardware-wallet", "blockstream"]
+categories = ["cryptography::cryptocurrencies", "hardware-support"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_cbor = "0.11"
+serde_json = "1.0"
+tokio-serial = "5.4"
+bitcoin = "0.32"
+hex = "0.4"
+thiserror = "1.0"
+log = "0.4"
+base64 = "0.22"
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"], optional = true }
+tokio = { version = "1", features = ["rt", "time", "io-util", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+env_logger = "0.11"
+
+[features]
+default = ["pinserver"]
+# Enable PIN server authentication support
+pinserver = ["reqwest"]
+# Feature for integration tests that require a real device
+integration-tests = []

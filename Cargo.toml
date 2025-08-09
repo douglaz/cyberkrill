@@ -3,6 +3,7 @@ members = [
     "cyberkrill",
     "cyberkrill-core",
     "fedimint-lite",
+    "jade-bitcoin",
 ]
 resolver = "2"
 
