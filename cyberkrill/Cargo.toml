@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/douglaz/cyberkrill"
 
 [features]
-default = ["smartcards", "frozenkrill"]
+default = ["smartcards", "frozenkrill", "coldcard", "trezor", "jade"]
 smartcards = ["cyberkrill-core/smartcards"]
 frozenkrill = ["cyberkrill-core/frozenkrill"]
 coldcard = ["cyberkrill-core/coldcard"]
