@@ -1,14 +1,14 @@
 use anyhow::{anyhow, bail, Context, Result};
-use bitcoin::bip32::{DerivationPath, Xpub};
+use bitcoin::bip32::{ChildNumber, DerivationPath, Xpub};
 use bitcoin::Network;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use trezor_client::client::common::handle_interaction;
+use trezor_client::protos;
 use trezor_client::{InputScriptType, Trezor as TrezorClient};
 
 use crate::hardware_wallet::{AddressInfo, DeviceInfo, SignedPsbt};
-// SLIP-0132 support is available but trezor-client doesn't expose raw keys
-// use crate::slip132::parse_slip132_xpub;
+use crate::slip132::parse_slip132_xpub;
 
 /// Trezor hardware wallet implementation
 pub struct TrezorWallet {
@@ -88,13 +88,12 @@ impl TrezorWallet {
         )
         .context("User cancelled or interaction failed")?;
 
-        // Try to get the xpub for this path, but make it optional
-        // BIP49/BIP84 paths may fail due to SLIP-0132 format issues
+        // Try to get the xpub using our improved method
         let (xpub_str, pubkey_hex) = match self.get_xpub(path, network) {
             Ok(xpub) => (Some(xpub.to_string()), hex::encode(xpub.public_key.serialize())),
-            Err(_) => {
-                // If we can't get the xpub (likely due to SLIP-0132 format), 
-                // we can still return the address without it
+            Err(e) => {
+                // Log the error for debugging but don't fail
+                eprintln!("Warning: Could not extract xpub: {}", e);
                 (None, String::new())
             }
         };
@@ -107,6 +106,75 @@ impl TrezorWallet {
         })
     }
 
+    /// Get the raw public key response from Trezor (bypasses xpub parsing)
+    fn get_public_key_raw(
+        &mut self,
+        path: &DerivationPath,
+        script_type: InputScriptType,
+        network: Network,
+    ) -> Result<protos::PublicKey> {
+        use trezor_client::utils;
+        
+        let mut req = protos::GetPublicKey::new();
+        req.address_n = utils::convert_path(path);
+        req.set_show_display(false);
+        req.set_coin_name(utils::coin_name(network)?);
+        req.set_script_type(script_type);
+        
+        // Call with a custom handler that just returns the raw message
+        let response = self.client.call(
+            req,
+            Box::new(|_, m: protos::PublicKey| Ok(m)),
+        )?;
+        
+        handle_interaction(response).context("Failed to get public key from Trezor")
+    }
+
+    /// Build an Xpub from HDNodeType components
+    fn build_xpub_from_node(
+        &self,
+        node: &protos::HDNodeType,
+        network: Network,
+    ) -> Result<Xpub> {
+        use bitcoin::bip32::{ChainCode, Fingerprint};
+        use bitcoin::secp256k1;
+        
+        // Extract components from HDNodeType
+        let depth = node.depth() as u8;
+        
+        // Convert fingerprint (4 bytes)
+        let fingerprint_bytes = node.fingerprint().to_be_bytes();
+        let parent_fingerprint = Fingerprint::from(fingerprint_bytes);
+        
+        let child_number = ChildNumber::from(node.child_num());
+        
+        // Get chain code (32 bytes)
+        let chain_code_bytes = node.chain_code();
+        if chain_code_bytes.len() != 32 {
+            bail!("Invalid chain code length: {}", chain_code_bytes.len());
+        }
+        let mut chain_code_array = [0u8; 32];
+        chain_code_array.copy_from_slice(chain_code_bytes);
+        let chain_code = ChainCode::from(chain_code_array);
+        
+        // Get public key (33 bytes compressed)
+        let pubkey_bytes = node.public_key();
+        if pubkey_bytes.len() != 33 {
+            bail!("Invalid public key length: {}", pubkey_bytes.len());
+        }
+        let public_key = secp256k1::PublicKey::from_slice(pubkey_bytes)?;
+        
+        // Build the Xpub
+        Ok(Xpub {
+            network: network.into(),
+            depth,
+            parent_fingerprint,
+            child_number,
+            chain_code,
+            public_key,
+        })
+    }
+
     /// Get extended public key at the given derivation path
     pub fn get_xpub(&mut self, path: &str, network: Network) -> Result<Xpub> {
         let derivation_path = DerivationPath::from_str(path)
@@ -114,38 +182,23 @@ impl TrezorWallet {
 
         let script_type = determine_script_type(&derivation_path);
 
-        // Get the raw public key node from Trezor
-        let node = handle_interaction(
-            self.client
-                .get_public_key(&derivation_path, script_type, network, false)
-                .context("Failed to get public key from Trezor")?,
-        );
-
-        match node {
-            Ok(xpub) => {
-                // For BIP44 paths, this should work directly
-                Ok(xpub)
-            }
-            Err(e) => {
-                // Check if this is a SLIP-0132 format issue
-                let err_str = e.to_string();
-                if err_str.contains("unknown version magic bytes") {
-                    // The trezor-client library doesn't handle SLIP-0132 formats properly
-                    // We need to work around this limitation
-                    // For now, we'll provide a helpful error message
-                    if err_str.contains("[4, 178, 71, 70]") {
-                        bail!("Trezor returned zpub format (BIP84). Address generation works but xpub extraction is limited by trezor-client library.");
-                    } else if err_str.contains("[4, 157, 124, 178]") {
-                        bail!("Trezor returned ypub format (BIP49). Address generation works but xpub extraction is limited by trezor-client library.");
-                    } else if err_str.contains("[4, 95, 28, 246]") {
-                        bail!("Trezor returned vpub format (testnet BIP84). Address generation works but xpub extraction is limited by trezor-client library.");
-                    } else if err_str.contains("[4, 74, 82, 98]") {
-                        bail!("Trezor returned upub format (testnet BIP49). Address generation works but xpub extraction is limited by trezor-client library.");
-                    }
+        // Get the raw public key response
+        let pubkey_msg = self.get_public_key_raw(&derivation_path, script_type, network)?;
+        
+        // First try to parse the xpub string (handles BIP44 and SLIP-0132 formats)
+        if pubkey_msg.has_xpub() {
+            let xpub_str = pubkey_msg.xpub();
+            if !xpub_str.is_empty() {
+                // Try to parse it, handling SLIP-0132 formats
+                if let Ok(xpub) = parse_slip132_xpub(xpub_str) {
+                    return Ok(xpub);
                 }
-                Err(e.into())
             }
         }
+        
+        // If that didn't work, build from the HDNodeType
+        // The node field is always present in the response
+        self.build_xpub_from_node(&pubkey_msg.node, network)
     }
 
     /// Sign a PSBT (Partially Signed Bitcoin Transaction)
