@@ -217,6 +217,39 @@ cyberkrill onchain-move-utxos \
   --fee-rate 5sats
 ```
 
+### DCA (Dollar Cost Averaging) Report
+
+Generate a comprehensive DCA analysis report for your Bitcoin holdings:
+
+```bash
+# Using Bitcoin Core RPC (default)
+cyberkrill onchain-dca-report \
+  --descriptor "wpkh([fingerprint/84'/0'/0']xpub...)" \
+  --cache-dir ~/.cyberkrill/cache
+
+# Using Electrum
+cyberkrill onchain-dca-report \
+  --descriptor "wpkh([...]xpub...)" \
+  --electrum ssl://electrum.blockstream.info:50002 \
+  --currency usd \
+  --cache-dir ~/.cyberkrill/cache
+
+# Using Esplora
+cyberkrill onchain-dca-report \
+  --descriptor "wpkh([...]xpub...)" \
+  --esplora https://blockstream.info/api \
+  --currency eur \
+  -o dca_report.json
+```
+
+The report includes:
+- Historical purchase prices for each UTXO
+- Average cost basis calculation
+- Current value and unrealized profit/loss
+- Purchase date range and statistics
+- Support for multiple fiat currencies (USD, EUR, GBP, etc.)
+- Price data caching to minimize API calls
+
 ## Backend Configuration
 
 ### Bitcoin Core RPC

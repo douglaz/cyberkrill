@@ -1,5 +1,6 @@
 pub mod bdk_wallet;
 pub mod bitcoin_rpc;
+pub mod dca_report;
 pub mod decoder;
 #[cfg(feature = "frozenkrill")]
 pub mod frozenkrill;
@@ -70,3 +71,6 @@ pub use jade::{
     generate_jade_address, generate_jade_xpub, sign_psbt_with_jade, JadeAddressResult,
     JadeSignedPsbtResult, JadeXpubResult,
 };
+
+// Re-export DCA report functionality
+pub use dca_report::{generate_dca_report, Backend, DcaMetrics, DcaReport, DcaUtxo};

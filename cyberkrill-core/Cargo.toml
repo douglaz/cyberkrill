@@ -29,6 +29,7 @@ base64 = "0.22"
 url = "2.5.0"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1.0", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
 fedimint-lite = { path = "../fedimint-lite" }
 # Tapsigner/Satscard support via USB (optional feature)
 cktap-direct = { git = "https://github.com/douglaz/cktap-direct", optional = true }
@@ -52,3 +53,5 @@ jade-bitcoin = { path = "../jade-bitcoin", optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"
+mockito = "1.0"
+serial_test = "3.0"
