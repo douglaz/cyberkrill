@@ -63,14 +63,32 @@
           buildFeatures = [ "smartcards" ];
           
           # Force cargo to use the musl target from .cargo/config.toml
-          CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = "${pkgs.pkgsStatic.stdenv.cc}/bin/${pkgs.pkgsStatic.stdenv.cc.targetPrefix}cc";
           CC_x86_64_unknown_linux_musl = "${pkgs.pkgsStatic.stdenv.cc}/bin/${pkgs.pkgsStatic.stdenv.cc.targetPrefix}cc";
           CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static -C link-arg=-static";
           
-          # Override cargo target dir to use musl subdirectory
-          preBuild = ''
-            export CARGO_TARGET_DIR="target"
+          # Override buildPhase to use the correct target
+          buildPhase = ''
+            runHook preBuild
+            
+            echo "Building with musl target..."
+            cargo build \
+              --release \
+              --target x86_64-unknown-linux-musl \
+              --features=smartcards \
+              --offline \
+              -j $NIX_BUILD_CORES
+            
+            runHook postBuild
+          '';
+          
+          installPhase = ''
+            runHook preInstall
+            
+            mkdir -p $out/bin
+            cp target/x86_64-unknown-linux-musl/release/cyberkrill $out/bin/
+            
+            runHook postInstall
           '';
           
           # Ensure static linking
