@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("✓ Device unlocked successfully!");
             }
             Err(e) => {
-                println!("✗ Failed to unlock: {}", e);
+                println!("✗ Failed to unlock: {e}");
                 return Err(e.into());
             }
         }
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✓ Got xpub: {}", &xpub[..20]);
         }
         Err(e) => {
-            println!("✗ Failed to get xpub: {}", e);
+            println!("✗ Failed to get xpub: {e}");
         }
     }
 

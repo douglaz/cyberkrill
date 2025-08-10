@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Has PIN: {}", version.jade_has_pin);
         }
         Err(e) => {
-            eprintln!("Failed to get version info: {}", e);
+            eprintln!("Failed to get version info: {e}");
         }
     }
 

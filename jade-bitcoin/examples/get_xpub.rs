@@ -28,12 +28,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Jade unlocked");
 
     // Get extended public key
-    println!("\nGetting xpub for path: {}", path);
+    println!("\nGetting xpub for path: {path}");
     let xpub = jade.get_xpub(path).await?;
 
     println!("\n=== Extended Public Key ===");
-    println!("Path: {}", path);
-    println!("xpub: {}", xpub);
+    println!("Path: {path}");
+    println!("xpub: {xpub}");
 
     // Demonstrate getting multiple xpubs
     println!("\n=== Additional xpubs ===");
@@ -48,11 +48,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let account_path = format!("m/{}'/{}'/{}'", purpose, 0, 0);
         match jade.get_xpub(&account_path).await {
             Ok(xpub) => {
-                println!("\n{} - {}", name, account_path);
-                println!("{}", xpub);
+                println!("\n{name} - {account_path}");
+                println!("{xpub}");
             }
             Err(e) => {
-                eprintln!("Failed to get xpub for {}: {}", account_path, e);
+                eprintln!("Failed to get xpub for {account_path}: {e}");
             }
         }
     }

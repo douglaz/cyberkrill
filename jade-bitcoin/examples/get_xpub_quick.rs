@@ -23,17 +23,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => println!("Device unlocked"),
         Err(e) => {
             // If already unlocked, this might succeed anyway
-            println!("Note: {}", e);
+            println!("Note: {e}");
         }
     }
 
     // Get extended public key
-    println!("\nGetting xpub for path: {}", path);
+    println!("\nGetting xpub for path: {path}");
     let xpub = jade.get_xpub(path).await?;
 
     println!("\n=== Extended Public Key ===");
-    println!("Path: {}", path);
-    println!("xpub: {}", xpub);
+    println!("Path: {path}");
+    println!("xpub: {xpub}");
 
     Ok(())
 }
