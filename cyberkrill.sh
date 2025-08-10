@@ -40,8 +40,27 @@ detect_platform() {
 
 # Get latest release version from GitHub
 get_latest_version() {
-    # For now, we always use the latest-master pre-release
-    # In the future, we could check for stable releases first
+    # Get the latest release (including pre-releases since they pass CI)
+    local releases=$(curl -s "https://api.github.com/repos/$REPO/releases")
+    
+    # Check if jq is available for proper JSON parsing
+    if command -v jq >/dev/null 2>&1; then
+        local latest_version=$(echo "$releases" | jq -r '.[0].tag_name // empty')
+        if [[ -n "$latest_version" ]]; then
+            echo "$latest_version"
+            return
+        fi
+    else
+        # Fallback to grep-based parsing (less reliable but works without jq)
+        # Get the first tag_name from the JSON response
+        local tag_name=$(echo "$releases" | grep -m1 '"tag_name":' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+        if [[ -n "$tag_name" ]]; then
+            echo "$tag_name"
+            return
+        fi
+    fi
+    
+    # Fall back to latest-master if API call fails or no releases found
     echo "latest-master"
 }
 
