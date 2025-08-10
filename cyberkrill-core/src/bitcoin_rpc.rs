@@ -412,7 +412,11 @@ impl BitcoinRpcClient {
         }
     }
 
-    async fn rpc_call(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn rpc_call(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value> {
         let request_body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": "cyberkrill",

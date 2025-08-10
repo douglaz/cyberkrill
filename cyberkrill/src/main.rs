@@ -124,6 +124,11 @@ enum Commands {
         about = "Decode a PSBT (Partially Signed Bitcoin Transaction)"
     )]
     OnchainDecodePsbt(DecodePsbtArgs),
+    #[command(
+        name = "onchain-dca-report",
+        about = "Generate DCA (Dollar Cost Averaging) report for UTXOs"
+    )]
+    OnchainDcaReport(DcaReportArgs),
 }
 
 // Lightning Network Args
@@ -578,6 +583,37 @@ struct DecodePsbtArgs {
     network: String,
 }
 
+#[derive(clap::Args, Debug)]
+struct DcaReportArgs {
+    /// Output descriptor to analyze
+    #[clap(long)]
+    descriptor: String,
+
+    /// Bitcoin Core data directory (for RPC backend)
+    #[clap(long, value_hint = clap::ValueHint::DirPath, conflicts_with_all = &["electrum", "esplora"])]
+    bitcoin_dir: Option<std::path::PathBuf>,
+
+    /// Electrum server URL (e.g., ssl://electrum.blockstream.info:50002)
+    #[clap(long, conflicts_with_all = &["bitcoin_dir", "esplora"])]
+    electrum: Option<String>,
+
+    /// Esplora server URL (e.g., https://blockstream.info/api)
+    #[clap(long, conflicts_with_all = &["bitcoin_dir", "electrum"])]
+    esplora: Option<String>,
+
+    /// Fiat currency for price data
+    #[clap(long, default_value = "usd")]
+    currency: String,
+
+    /// Directory for caching price data
+    #[clap(long, value_hint = clap::ValueHint::DirPath)]
+    cache_dir: Option<std::path::PathBuf>,
+
+    /// Path to output file (default: stdout)
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize rustls crypto provider for TLS connections (required for Electrum)
@@ -634,6 +670,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::OnchainCreateFundedPsbt(args) => bitcoin_create_funded_psbt(args).await?,
         Commands::OnchainMoveUtxos(args) => bitcoin_move_utxos(args).await?,
         Commands::OnchainDecodePsbt(args) => decode_psbt(args)?,
+        Commands::OnchainDcaReport(args) => dca_report(args).await?,
     }
     Ok(())
 }
@@ -1615,6 +1652,46 @@ async fn trezor_sign_psbt(args: TrezorSignPsbtArgs) -> anyhow::Result<()> {
     if let Some(psbt_path) = args.psbt_output {
         let psbt_bytes = hex::decode(&result.psbt_hex)?;
         std::fs::write(psbt_path, psbt_bytes)?;
+    }
+
+    Ok(())
+}
+
+async fn dca_report(args: DcaReportArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::{generate_dca_report, Backend};
+
+    // Determine backend based on arguments
+    let backend = if let Some(bitcoin_dir) = args.bitcoin_dir {
+        Backend::BitcoinCore { bitcoin_dir }
+    } else if let Some(electrum_url) = args.electrum {
+        Backend::Electrum { url: electrum_url }
+    } else if let Some(esplora_url) = args.esplora {
+        Backend::Esplora { url: esplora_url }
+    } else {
+        // Default to Bitcoin Core with default directory
+        let default_dir = std::path::Path::new(&std::env::var("HOME")?).join(".bitcoin");
+        Backend::BitcoinCore {
+            bitcoin_dir: default_dir,
+        }
+    };
+
+    // Generate the report
+    let report = generate_dca_report(
+        &args.descriptor,
+        backend,
+        &args.currency,
+        args.cache_dir.as_deref(),
+    )
+    .await?;
+
+    // Serialize to JSON
+    let json = serde_json::to_string_pretty(&report)?;
+
+    // Output
+    if let Some(output_path) = args.output {
+        std::fs::write(output_path, json)?;
+    } else {
+        println!("{json}");
     }
 
     Ok(())
