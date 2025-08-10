@@ -16,12 +16,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Try to get version
     println!("Getting version info...");
     let version = client.get_version_info().await?;
-    println!("Version: {:?}", version);
+    println!("Version: {version:?}");
 
     // Check if unlocked
     println!("Checking unlock status...");
     let unlocked = client.is_unlocked().await;
-    println!("Unlocked: {}", unlocked);
+    println!("Unlocked: {unlocked}");
 
     if !unlocked {
         println!("Device is locked. Attempting to unlock for mainnet...");
@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Try to get xpub
     println!("Getting xpub...");
     let xpub = client.get_xpub("m/84'/0'/0'").await?;
-    println!("xpub: {}", xpub);
+    println!("xpub: {xpub}");
 
     println!("Test completed successfully!");
     Ok(())

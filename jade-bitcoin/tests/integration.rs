@@ -86,6 +86,6 @@ mod unit_tests {
         // This should work even without a device
         let devices = JadeClient::list_devices();
         // Just ensure it doesn't panic
-        println!("Device list returned: {:?}", devices);
+        println!("Device list returned: {devices:?}");
     }
 }

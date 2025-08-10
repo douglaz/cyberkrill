@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(Network::Bitcoin);
 
     // Read PSBT file
-    println!("Reading PSBT from: {}", psbt_file);
+    println!("Reading PSBT from: {psbt_file}");
     let psbt_bytes = fs::read(psbt_file)?;
     println!("PSBT size: {} bytes", psbt_bytes.len());
 
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Jade version: {}", version.jade_version);
 
     // Unlock the device
-    println!("\nUnlocking Jade for {:?}...", network);
+    println!("\nUnlocking Jade for {network:?}...");
     println!("Please check your Jade device and confirm the operation");
     jade.unlock(network).await?;
     println!("Jade unlocked");
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Save signed PSBT
     let output_file = psbt_file.replace(".psbt", "_signed.psbt");
     fs::write(&output_file, signed_psbt)?;
-    println!("Signed PSBT saved to: {}", output_file);
+    println!("Signed PSBT saved to: {output_file}");
 
     // Logout
     jade.logout().await?;

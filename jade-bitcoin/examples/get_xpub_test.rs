@@ -18,10 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "regtest" => Network::Regtest,
         "signet" => Network::Signet,
         _ => {
-            eprintln!(
-                "Invalid network: {}. Use mainnet, testnet, regtest, or signet",
-                network_str
-            );
+            eprintln!("Invalid network: {network_str}. Use mainnet, testnet, regtest, or signet");
             return Ok(());
         }
     };
@@ -33,18 +30,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connected to Jade");
 
     // Try to unlock for the specified network
-    println!("Unlocking device for {:?}...", network);
+    println!("Unlocking device for {network:?}...");
     jade.unlock(network).await?;
     println!("Device unlocked");
 
     // Get extended public key
-    println!("\nGetting xpub for path: {}", path);
+    println!("\nGetting xpub for path: {path}");
     let xpub = jade.get_xpub(path).await?;
 
     println!("\n=== Extended Public Key ===");
-    println!("Network: {:?}", network);
-    println!("Path: {}", path);
-    println!("xpub: {}", xpub);
+    println!("Network: {network:?}");
+    println!("Path: {path}");
+    println!("xpub: {xpub}");
 
     Ok(())
 }

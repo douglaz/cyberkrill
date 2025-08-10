@@ -43,19 +43,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Board type: {}", version.board_type);
 
     // Unlock the device
-    println!("\nUnlocking Jade for {:?}...", network);
+    println!("\nUnlocking Jade for {network:?}...");
     println!("Please check your Jade device and confirm the operation");
     jade.unlock(network).await?;
     println!("Jade unlocked");
 
     // Generate address
-    println!("\nGenerating address for path: {}", path);
+    println!("\nGenerating address for path: {path}");
     let address = jade.get_address(path, network).await?;
 
     println!("\n=== Bitcoin Address ===");
-    println!("Path:    {}", path);
-    println!("Network: {:?}", network);
-    println!("Address: {}", address);
+    println!("Path:    {path}");
+    println!("Network: {network:?}");
+    println!("Address: {address}");
 
     // Logout
     jade.logout().await?;
