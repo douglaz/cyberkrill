@@ -59,8 +59,8 @@
           LIBUSB_STATIC = "1";
           PKG_CONFIG_PATH = "${pkgs.pkgsStatic.libusb1}/lib/pkgconfig";
           
-          # Build with smartcards feature by default
-          buildFeatures = [ "smartcards" ];
+          # Don't specify features - use the defaults from Cargo.toml
+          # which includes all hardware wallets
           
           # Force cargo to use the musl target from .cargo/config.toml
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = "${pkgs.pkgsStatic.stdenv.cc}/bin/${pkgs.pkgsStatic.stdenv.cc.targetPrefix}cc";
@@ -71,11 +71,10 @@
           buildPhase = ''
             runHook preBuild
             
-            echo "Building with musl target..."
+            echo "Building with musl target and default features (all hardware wallets)..."
             cargo build \
               --release \
               --target x86_64-unknown-linux-musl \
-              --features=smartcards \
               --offline \
               -j $NIX_BUILD_CORES
             
@@ -137,8 +136,8 @@
             libusb1
           ];
           
-          # Build with smartcards feature by default
-          buildFeatures = [ "smartcards" ];
+          # Use default features from Cargo.toml (all hardware wallets)
+          # No need to specify buildFeatures
           
           meta = with pkgs.lib; {
             description = "CLI utility for Bitcoin and Lightning Network operations (dynamic build)";
