@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use bitcoin::{bip32::Xpub, Network};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -23,25 +22,6 @@ pub struct DeviceInfo {
     pub version: String,
     pub initialized: bool,
     pub fingerprint: Option<String>,
-}
-
-/// Common trait for all hardware wallet implementations
-#[async_trait::async_trait]
-pub trait HardwareWallet: Send + Sync {
-    /// Get device information
-    async fn get_device_info(&self) -> Result<DeviceInfo>;
-
-    /// Generate a Bitcoin address at the given derivation path
-    async fn get_address(&self, path: &str, network: Network) -> Result<AddressInfo>;
-
-    /// Get extended public key at the given derivation path
-    async fn get_xpub(&self, path: &str) -> Result<Xpub>;
-
-    /// Sign a PSBT (Partially Signed Bitcoin Transaction)
-    async fn sign_psbt(&self, psbt: &[u8]) -> Result<SignedPsbt>;
-
-    /// Check if the device is connected and responsive
-    async fn ping(&self) -> Result<bool>;
 }
 
 /// Helper function to parse and validate BIP32 derivation paths
