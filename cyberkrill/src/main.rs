@@ -130,7 +130,7 @@ enum Commands {
         about = "Generate DCA (Dollar Cost Averaging) report for UTXOs"
     )]
     OnchainDcaReport(DcaReportArgs),
-    
+
     // Utility Commands
     #[command(name = "version", about = "Print version information")]
     Version,
@@ -676,7 +676,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::OnchainMoveUtxos(args) => bitcoin_move_utxos(args).await?,
         Commands::OnchainDecodePsbt(args) => decode_psbt(args)?,
         Commands::OnchainDcaReport(args) => dca_report(args).await?,
-        
+
         // Utility Commands
         Commands::Version => {
             println!("cyberkrill {}", env!("CARGO_PKG_VERSION"));
