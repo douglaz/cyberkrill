@@ -218,6 +218,11 @@ jobs:
         mv release-artifacts/cyberkrill-linux-binaries/* release-files/
         mv release-artifacts/cyberkrill-macos-binaries/* release-files/
         mv release-artifacts/cyberkrill-windows-binaries/* release-files/
+        
+        # Add the bootstrap script
+        cp cyberkrill.sh release-files/
+        chmod +x release-files/cyberkrill.sh
+        
         ls -la release-files/
     
     - name: Create release notes
@@ -242,6 +247,24 @@ jobs:
         - \`cyberkrill-windows-x86_64.zip\` - Windows 64-bit executable
         
         ### Installation
+        
+        #### Quick Install (Using Bootstrap Script)
+        
+        Download and use \`cyberkrill.sh\` for automatic installation and updates:
+        
+        \`\`\`bash
+        curl -L https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill.sh -o cyberkrill.sh
+        chmod +x cyberkrill.sh
+        ./cyberkrill.sh --help
+        \`\`\`
+        
+        The bootstrap script will:
+        - Automatically detect your platform
+        - Download the appropriate binary
+        - Extract and install to \`~/.local/bin\`
+        - Use local builds when available (for development)
+        
+        #### Manual Installation
         
         1. Download the appropriate binary for your platform
         2. Extract the archive
