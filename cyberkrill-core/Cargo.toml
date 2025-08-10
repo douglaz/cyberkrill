@@ -1,6 +1,6 @@
 [package]
 name = "cyberkrill-core"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Core functionality for Bitcoin and Lightning Network operations"
 license = "MIT"

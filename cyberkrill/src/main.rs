@@ -8,6 +8,7 @@ const DEFAULT_BITCOIN_RPC_URL: &str = "http://127.0.0.1:8332";
 
 #[derive(Parser)]
 #[command(name = "cyberkrill")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "A CLI toolkit for Bitcoin and Lightning Network operations")]
 struct Cli {
     #[clap(subcommand)]
@@ -129,6 +130,10 @@ enum Commands {
         about = "Generate DCA (Dollar Cost Averaging) report for UTXOs"
     )]
     OnchainDcaReport(DcaReportArgs),
+    
+    // Utility Commands
+    #[command(name = "version", about = "Print version information")]
+    Version,
 }
 
 // Lightning Network Args
@@ -671,6 +676,11 @@ async fn main() -> anyhow::Result<()> {
         Commands::OnchainMoveUtxos(args) => bitcoin_move_utxos(args).await?,
         Commands::OnchainDecodePsbt(args) => decode_psbt(args)?,
         Commands::OnchainDcaReport(args) => dca_report(args).await?,
+        
+        // Utility Commands
+        Commands::Version => {
+            println!("cyberkrill {}", env!("CARGO_PKG_VERSION"));
+        }
     }
     Ok(())
 }
