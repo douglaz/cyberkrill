@@ -220,11 +220,24 @@ pub struct GeneratedInvoiceOutput {
     pub decoded_invoice: InvoiceOutput,
 }
 
+/// Generate a Lightning invoice from a Lightning address using the LNURL-pay protocol.
+///
+/// This function implements the LNURL-pay protocol to generate Lightning invoices
+/// from Lightning addresses (e.g., user@domain.com). It:
+/// 1. Resolves the Lightning address to an LNURL-pay endpoint
+/// 2. Fetches payment request metadata from the endpoint
+/// 3. Generates an invoice with the specified amount and optional comment
+///
+/// # Arguments
+/// * `address` - Lightning address in format user@domain.com
+/// * `amount` - Amount to request (supports various formats: BTC, sats, msats)
+/// * `comment` - Optional comment to include with payment request
 pub async fn generate_invoice_from_address(
     address: &str,
-    amount_msats: u64,
+    amount: &crate::bitcoin_rpc::AmountInput,
     comment: Option<&str>,
 ) -> Result<GeneratedInvoiceOutput> {
+    let amount_msats = amount.as_millisats();
     // Parse lightning address
     let parts: Vec<&str> = address.split('@').collect();
     if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {

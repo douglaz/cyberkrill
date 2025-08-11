@@ -223,6 +223,21 @@ impl FromStr for AmountInput {
             return Err(AmountInputError::EmptyAmount);
         }
 
+        // Check for millisatoshi suffixes
+        if s.ends_with("msats") || s.ends_with("msat") {
+            let number_part = if s.ends_with("msats") {
+                &s[..s.len() - 5]
+            } else {
+                &s[..s.len() - 4]
+            };
+
+            let msats: u64 = number_part
+                .parse()
+                .map_err(|_| AmountInputError::InvalidSatoshiAmount(number_part.to_string()))?;
+
+            return Ok(AmountInput::from_millisats(msats));
+        }
+
         // Check for satoshi suffixes
         if s.ends_with("sats") || s.ends_with("sat") {
             let number_part = if s.ends_with("sats") {
@@ -844,25 +859,33 @@ impl BitcoinRpcClient {
         // Parse and expand inputs (handles both "txid:vout" and descriptor formats)
         let input_objects = self.parse_and_expand_inputs(inputs).await?;
 
-        // Parse outputs from "address:amount,address:amount" format
+        // Parse outputs from "address:amount,address:amount" format with flexible amount support
         let mut output_object = serde_json::Map::new();
         for output in outputs.split(',') {
             let parts: Vec<&str> = output.trim().split(':').collect();
             if parts.len() != 2 {
                 bail!(
-                    "Invalid output format: '{}'. Expected 'address:amount_btc'",
+                    "Invalid output format: '{}'. Expected 'address:amount'",
                     output
                 );
             }
             let address = parts[0];
-            let amount: f64 = parts[1].parse().map_err(|_| {
+            let amount_str = parts[1];
+
+            // Parse amount using AmountInput for flexible format support
+            let amount_input = AmountInput::from_str(amount_str).map_err(|e| {
                 anyhow!(
-                    "Invalid amount '{amount}' in output '{output}'",
-                    amount = parts[1]
+                    "Invalid amount '{}' in output '{}': {}",
+                    amount_str,
+                    output,
+                    e
                 )
             })?;
 
-            output_object.insert(address.to_string(), serde_json::json!(amount));
+            // Convert to BTC for Bitcoin Core RPC
+            let amount_btc = amount_input.as_btc();
+
+            output_object.insert(address.to_string(), serde_json::json!(amount_btc));
         }
 
         // Store counts before moving the objects
@@ -1120,38 +1143,33 @@ impl BitcoinRpcClient {
             self.parse_and_expand_inputs(inputs).await?
         };
 
-        // Parse outputs
+        // Parse outputs with flexible amount format support
         let mut output_object = serde_json::Map::new();
         for output in outputs.split(',') {
             let parts: Vec<&str> = output.trim().split(':').collect();
             if parts.len() != 2 {
                 bail!(
-                    "Invalid output format: '{}'. Expected 'address:amount_btc'",
+                    "Invalid output format: '{}'. Expected 'address:amount'",
                     output
                 );
             }
             let address = parts[0];
             let amount_str = parts[1];
 
-            // Parse amount with support for btc suffix
-            let amount: f64 = if amount_str.to_lowercase().ends_with("btc") {
-                let number_part = &amount_str[..amount_str.len() - 3];
-                number_part.parse().map_err(|_| {
-                    anyhow!(
-                        "Invalid amount '{amount}' in output '{output}'",
-                        amount = parts[1]
-                    )
-                })?
-            } else {
-                amount_str.parse().map_err(|_| {
-                    anyhow!(
-                        "Invalid amount '{amount}' in output '{output}'",
-                        amount = parts[1]
-                    )
-                })?
-            };
+            // Parse amount using AmountInput for flexible format support
+            let amount_input = AmountInput::from_str(amount_str).map_err(|e| {
+                anyhow!(
+                    "Invalid amount '{}' in output '{}': {}",
+                    amount_str,
+                    output,
+                    e
+                )
+            })?;
 
-            output_object.insert(address.to_string(), serde_json::json!(amount));
+            // Convert to BTC for Bitcoin Core RPC
+            let amount_btc = amount_input.as_btc();
+
+            output_object.insert(address.to_string(), serde_json::json!(amount_btc));
         }
 
         // Try to derive a change address from input descriptors
@@ -1409,6 +1427,32 @@ mod tests {
         // Test with whitespace
         let amount = AmountInput::from_str("  50000sats  ")?;
         assert_eq!(amount.as_sat(), 50000);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_parsing_msats() -> Result<()> {
+        // Test millisatoshi parsing
+        let amount = AmountInput::from_str("123000msats")?;
+        assert_eq!(amount.as_millisats(), 123000);
+        assert_eq!(amount.as_sat(), 123);
+        assert_eq!(amount.as_btc(), 0.00000123);
+
+        let amount = AmountInput::from_str("100000000msat")?;
+        assert_eq!(amount.as_millisats(), 100000000);
+        assert_eq!(amount.as_sat(), 100000);
+        assert_eq!(amount.as_btc(), 0.001);
+
+        // Test with whitespace
+        let amount = AmountInput::from_str("  50000000msats  ")?;
+        assert_eq!(amount.as_millisats(), 50000000);
+        assert_eq!(amount.as_sat(), 50000);
+
+        // Test case insensitivity
+        let amount1 = AmountInput::from_str("1000MSATS")?;
+        let amount2 = AmountInput::from_str("1000msats")?;
+        assert_eq!(amount1, amount2);
 
         Ok(())
     }
@@ -1696,7 +1740,7 @@ mod tests {
 
     #[test]
     fn test_output_parsing_logic() -> Result<()> {
-        // Test the output parsing logic that would be in create_psbt
+        // Test the output parsing logic with flexible amount formats
         let outputs = "bc1qtest123:0.001,bc1qtest456:0.002";
         let mut output_object = serde_json::Map::new();
 
@@ -1704,21 +1748,72 @@ mod tests {
             let parts: Vec<&str> = output.trim().split(':').collect();
             if parts.len() != 2 {
                 bail!(
-                    "Invalid output format: '{}'. Expected 'address:amount_btc'",
+                    "Invalid output format: '{}'. Expected 'address:amount'",
                     output
                 );
             }
             let address = parts[0];
-            let amount: f64 = parts[1]
-                .parse()
-                .with_context(|| format!("Invalid amount '{}' in output", parts[1]))?;
+            let amount_str = parts[1];
 
-            output_object.insert(address.to_string(), serde_json::json!(amount));
+            // Parse amount using AmountInput for flexible format support
+            let amount_input = AmountInput::from_str(amount_str)?;
+            let amount_btc = amount_input.as_btc();
+
+            output_object.insert(address.to_string(), serde_json::json!(amount_btc));
         }
 
         assert_eq!(output_object.len(), 2);
         assert_eq!(output_object["bc1qtest123"], 0.001);
         assert_eq!(output_object["bc1qtest456"], 0.002);
+        Ok(())
+    }
+
+    #[test]
+    fn test_output_parsing_flexible_formats() -> Result<()> {
+        // Test parsing outputs with various amount formats
+        let test_cases = vec![
+            ("bc1qaddr:0.5", 0.5),
+            ("bc1qaddr:0.5btc", 0.5),
+            ("bc1qaddr:50000000sats", 0.5),
+            ("bc1qaddr:50000000sat", 0.5),
+            ("bc1qaddr:50000000000msats", 0.5),
+            ("bc1qaddr:50000000000msat", 0.5),
+        ];
+
+        for (output_str, expected_btc) in test_cases {
+            let parts: Vec<&str> = output_str.split(':').collect();
+            let amount_input = AmountInput::from_str(parts[1])?;
+            let amount_btc = amount_input.as_btc();
+
+            assert!(
+                (amount_btc - expected_btc).abs() < 0.00000001,
+                "Failed for '{}': expected {} BTC, got {} BTC",
+                output_str,
+                expected_btc,
+                amount_btc
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_output_parsing_mixed_formats() -> Result<()> {
+        // Test parsing multiple outputs with mixed amount formats
+        let outputs = "bc1qaddr1:0.1btc,bc1qaddr2:100000sats,bc1qaddr3:0.00001";
+        let mut output_object = serde_json::Map::new();
+
+        for output in outputs.split(',') {
+            let parts: Vec<&str> = output.trim().split(':').collect();
+            let address = parts[0];
+            let amount_input = AmountInput::from_str(parts[1])?;
+            let amount_btc = amount_input.as_btc();
+            output_object.insert(address.to_string(), serde_json::json!(amount_btc));
+        }
+
+        assert_eq!(output_object.len(), 3);
+        assert_eq!(output_object["bc1qaddr1"], 0.1);
+        assert_eq!(output_object["bc1qaddr2"], 0.001);
+        assert_eq!(output_object["bc1qaddr3"], 0.00001);
         Ok(())
     }
 
