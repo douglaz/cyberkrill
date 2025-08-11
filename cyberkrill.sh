@@ -158,49 +158,6 @@ should_check_update() {
     return 0
 }
 
-# Build from source if in repository
-build_from_source() {
-    echo "No releases available. Building from source..." >&2
-    
-    if [[ ! -d "${SCRIPT_DIR}/.git" ]]; then
-        echo "Error: Not in a git repository. Cannot build from source." >&2
-        echo "Please clone the repository first:" >&2
-        echo "  git clone https://github.com/${REPO}.git" >&2
-        exit 1
-    fi
-    
-    # Check if we have cargo
-    if ! command -v cargo &> /dev/null; then
-        # Try with nix develop if available
-        if command -v nix &> /dev/null && [[ -f "${SCRIPT_DIR}/flake.nix" ]]; then
-            echo "Building with nix develop..." >&2
-            cd "$SCRIPT_DIR"
-            nix develop -c cargo build --release
-        else
-            echo "Error: cargo not found. Please install Rust or use nix develop." >&2
-            exit 1
-        fi
-    else
-        echo "Building with cargo..." >&2
-        cd "$SCRIPT_DIR"
-        cargo build --release
-    fi
-    
-    # Find the built binary
-    local built_binary="${SCRIPT_DIR}/target/release/${BINARY_NAME}"
-    if [[ ! -f "$built_binary" ]]; then
-        # Try musl target
-        built_binary="${SCRIPT_DIR}/target/x86_64-unknown-linux-musl/release/${BINARY_NAME}"
-    fi
-    
-    if [[ ! -f "$built_binary" ]]; then
-        echo "Error: Failed to find built binary" >&2
-        exit 1
-    fi
-    
-    # Use the built binary directly
-    exec "$built_binary" "$@"
-}
 
 # Main logic
 main() {
@@ -239,8 +196,22 @@ main() {
         exec "${INSTALL_DIR}/${BINARY_NAME}" "$@"
     fi
     
-    # No installed binary and no releases - try to build from source
-    build_from_source "$@"
+    # No installed binary - try to download latest release
+    local latest_version=$(get_latest_version)
+    if [[ -n "$latest_version" ]]; then
+        echo "Installing cyberkrill ${latest_version}..." >&2
+        install_binary "$latest_version" "$platform"
+        
+        # After successful install, run the binary
+        if [[ -f "${INSTALL_DIR}/${BINARY_NAME}" ]]; then
+            exec "${INSTALL_DIR}/${BINARY_NAME}" "$@"
+        fi
+    fi
+    
+    # No releases available
+    echo "Error: No cyberkrill releases available for download." >&2
+    echo "Please check https://github.com/${REPO}/releases" >&2
+    exit 1
 }
 
 # Run main function
