@@ -215,19 +215,24 @@ impl CyberkrillMcpServer {
 
     /// Start the MCP server
     pub async fn run(self) -> Result<()> {
-        // Initialize tracing
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::from_default_env()
-                    .add_directive(tracing::Level::INFO.into()),
-            )
-            .init();
+        // Initialize tracing only if not in test mode (RUST_LOG != error)
+        let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+        if log_level != "error" {
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::from_default_env()
+                        .add_directive(tracing::Level::INFO.into()),
+                )
+                .init();
 
-        info!("Starting cyberkrill MCP server");
+            info!("Starting cyberkrill MCP server");
+        }
 
         match self.config.transport {
             Transport::Stdio => {
-                info!("Starting MCP server with stdio transport");
+                if log_level != "error" {
+                    info!("Starting MCP server with stdio transport");
+                }
                 let service = self.serve(stdio()).await?;
                 service.waiting().await?;
             }
