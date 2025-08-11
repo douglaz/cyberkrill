@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cyberkrill": {
+      "command": "cargo",
+      "args": ["run", "--bin", "cyberkrill", "--", "mcp-server"],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
