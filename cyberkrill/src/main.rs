@@ -1320,8 +1320,9 @@ fn parse_outputs(
         let amount_str = parts[1].trim();
 
         // Parse amount using AmountInput for flexible format support
-        let amount_input = AmountInput::from_str(amount_str)
-            .with_context(|| format!("Failed to parse amount '{amount_str}' in output '{output}'"))?;
+        let amount_input = AmountInput::from_str(amount_str).with_context(|| {
+            format!("Failed to parse amount '{amount_str}' in output '{output}'")
+        })?;
 
         // Convert to bitcoin::Amount (loses millisat precision)
         let amount = amount_input.as_amount();
