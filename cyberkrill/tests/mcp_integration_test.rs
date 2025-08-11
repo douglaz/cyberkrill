@@ -11,7 +11,7 @@ struct McpRequest {
     jsonrpc: String,
     method: String,
     params: Value,
-    id: Option<u64>,  // Notifications don't have IDs
+    id: Option<u64>, // Notifications don't have IDs
 }
 
 /// MCP protocol response structure
@@ -20,7 +20,7 @@ struct McpResponse {
     jsonrpc: String,
     result: Option<Value>,
     error: Option<Value>,
-    id: Option<u64>,  // Some responses may not have IDs
+    id: Option<u64>, // Some responses may not have IDs
 }
 
 /// MCP test client for integration testing
@@ -44,10 +44,7 @@ impl McpTestClient {
             .spawn()
             .context("Failed to spawn MCP server")?;
 
-        let stdin = process
-            .stdin
-            .take()
-            .context("Failed to get stdin handle")?;
+        let stdin = process.stdin.take().context("Failed to get stdin handle")?;
         let stdout = BufReader::new(
             process
                 .stdout
@@ -89,20 +86,20 @@ impl McpTestClient {
         // Read response
         let mut response_str = String::new();
         self.stdout.read_line(&mut response_str)?;
-        
+
         let response: McpResponse = serde_json::from_str(&response_str)
             .with_context(|| format!("Failed to parse response: {}", response_str))?;
 
         Ok(response)
     }
-    
+
     /// Send a notification (no response expected)
     fn send_notification(&mut self, method: &str, params: Value) -> Result<()> {
         let notification = McpRequest {
             jsonrpc: "2.0".to_string(),
             method: method.to_string(),
             params,
-            id: None,  // Notifications don't have IDs
+            id: None, // Notifications don't have IDs
         };
 
         // Send notification
@@ -175,7 +172,7 @@ fn test_mcp_server_starts_and_stops() -> Result<()> {
 #[test]
 fn test_decode_invoice_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // Sample BOLT11 invoice
     let invoice = "lnbc100n1p3g0jthpp5uypgqerzuah0ure0f9nauzqxul7zhrvgn6r0a072lqkgt5vy4dsdqqcqzpgxqyz5vqsp5k0tg68rk4ezgvaskyv2rwqe0pjeqve68mwfqr5c93qkc0u7z90q9qyyssqny4pdhqmqfhh7g5rl058qjzk6t3jqutegjhxqhtv0p7g8ex6czmgp026x6pnk9aw64kk65aqay09q8yddwmaf5cuvm0ngcm7kxdqpvgqyt8";
 
@@ -197,7 +194,7 @@ fn test_decode_invoice_tool() -> Result<()> {
 #[test]
 fn test_decode_lnurl_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // Sample LNURL
     let lnurl = "LNURL1DP68GURN8GHJ7UM9WFMXJCM99E3K7MF0V9CXJ0M385EKVCENXC6R2C35XVUKXEFCV5MKVV34X5EKZD3EV56NYD3HXQURZEPEXEJXXEPNXSCRVWFNV9NXZCN9XQ6XYEFHVGCXXCMYXYMNSERXFQ5FNS";
 
@@ -218,7 +215,7 @@ fn test_decode_lnurl_tool() -> Result<()> {
 #[test]
 fn test_decode_fedimint_invite_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // Sample Fedimint invite code
     let invite_code = "fed11qgqzxgthwden5te0v9cxjtnzd96xxmmfdckhqunfde3kjurvv4ejucm0d5hsqqfqkggx3jz0tvfv5n7lj0e7gs7nh47z06ry95x4963wfh8xlka7a80su3952t";
 
@@ -239,7 +236,7 @@ fn test_decode_fedimint_invite_tool() -> Result<()> {
 #[test]
 fn test_encode_fedimint_invite_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     let result = client.call_tool(
         "encode_fedimint_invite",
         json!({
@@ -265,7 +262,7 @@ fn test_encode_fedimint_invite_tool() -> Result<()> {
 #[test]
 fn test_decode_psbt_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // Sample PSBT (empty transaction for testing)
     let psbt = "cHNidP8BAHUCAAAAASaBcTce3/KF6Tet7qSze3gADAVmy7OtZGQXE8pCFxv2AAAAAAD+////AtPf9QUAAAAAGXapFNDFmQPFusKGh2DpD9UhpGZap2UgiKwA4fUFAAAAABepFDVF5uM7gyxHBQ8k0+65PJwDlIvHh7MuEwAAAQD9pQEBAAAAAAECiaPHHqtNIOA3G7ukzGmPopXJRjr6Ljl/hTPMti+VZ+UBAAAAFxYAFL4Y0VKpsBIDna89p95PUzSe7LmF/////4b4qkOnHf8USIk6UwpyN+9rRgi7st0tAXHmOuxqSJC0AQAAABcWABT+Pp7xp0XpdNkCxDVZQ6vLNL1TU/////8CAMLrCwAAAAAZdqkUhc/xCX/Z4Ai7NK9wnGIZeziXikiIrHL++E4sAAAAF6kUM5cluiHv1irHU6m80GfWx6ajnQWHAkcwRAIgJxK+IuAnDzlPVoMR3HyppolwuAJf3TskAinwf4pfOiQCIAGLONfc0xTnNMkna9b7QPZzMlvEuqFEyADS8vAtsnZcASED0uFWdJQbrUqZY3LLh+GFbTZSYG2YVi/jnF6efkE/IQUCSDBFAiEA0SuFLYXc2WHS9fSrZgZU327tzHlMDDPOXMMJ/7X85Y0CIGczio4OFyXBl/saiK9Z9R5E5CVbIBZ8hoQDHAXR8lkqASECI7cr7vCWXRC+B3jv7NYfysb3mk6haTkzgHNEZPhPKrMAAAAAAAAA";
 
@@ -287,7 +284,7 @@ fn test_decode_psbt_tool() -> Result<()> {
 #[test]
 fn test_list_utxos_tool_with_invalid_descriptor() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // This should return an error since we're using a test descriptor without a real backend
     let result = client.call_tool(
         "list_utxos",
@@ -306,7 +303,7 @@ fn test_list_utxos_tool_with_invalid_descriptor() -> Result<()> {
 #[test]
 fn test_invalid_tool_call() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // Try to call a non-existent tool
     let result = client.send_request(
         "tools/call",
@@ -327,12 +324,9 @@ fn test_invalid_tool_call() -> Result<()> {
 #[test]
 fn test_tool_with_invalid_arguments() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // Call decode_invoice without required invoice parameter
-    let result = client.call_tool(
-        "decode_invoice",
-        json!({}),
-    )?;
+    let result = client.call_tool("decode_invoice", json!({}))?;
 
     // Should return an error
     let result_str = result.as_str().unwrap_or("");
@@ -344,7 +338,7 @@ fn test_tool_with_invalid_arguments() -> Result<()> {
 #[test]
 fn test_create_psbt_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // This will fail without a real backend, but tests the tool is available
     let result = client.call_tool(
         "create_psbt",
@@ -365,7 +359,7 @@ fn test_create_psbt_tool() -> Result<()> {
 #[test]
 fn test_move_utxos_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // This will fail without a real backend, but tests the tool is available
     let result = client.call_tool(
         "move_utxos",
@@ -383,10 +377,10 @@ fn test_move_utxos_tool() -> Result<()> {
     Ok(())
 }
 
-#[test] 
+#[test]
 fn test_dca_report_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
-    
+
     // This will fail without a real backend, but tests the tool is available
     let result = client.call_tool(
         "dca_report",
