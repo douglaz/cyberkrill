@@ -88,21 +88,17 @@ Download pre-built binaries directly from the [releases page](https://github.com
 
 **Available Binaries:**
 
-| Platform | Variant | Features | Notes |
-|----------|---------|----------|-------|
-| Linux x86_64 | Standard | All hardware wallets | Static binary, works on all distros |
-| Linux x86_64 | Minimal | Core only | Smaller static binary |
-| macOS x86_64 | Minimal | Core | Intel Macs |
-| macOS ARM64 | Minimal | Core | Apple Silicon (M1/M2/M3) |
-| Windows x86_64 | Minimal | Core | 64-bit Windows |
+| Platform | Features | Notes |
+|----------|----------|-------|
+| Linux x86_64 | All hardware wallets | Static binary, works on all distros |
+| macOS x86_64 | Core | Intel Macs |
+| macOS ARM64 | Core | Apple Silicon (M1/M2/M3) |
+| Windows x86_64 | Core | 64-bit Windows |
 
 #### Linux Manual Installation
 ```bash
-# Download the full-featured binary (all hardware wallets)
+# Download the binary with all hardware wallet support
 wget https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-linux-x86_64.tar.gz
-
-# Or download the minimal binary (core features only)
-wget https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-linux-x86_64-minimal.tar.gz
 
 # Extract and install
 tar xzf cyberkrill-linux-x86_64.tar.gz
