@@ -22,7 +22,9 @@ use tracing::info;
 #[derive(Debug, Clone)]
 pub struct McpServerConfig {
     pub transport: Transport,
+    #[allow(dead_code)] // Will be used when SSE transport is implemented
     pub host: String,
+    #[allow(dead_code)] // Will be used when SSE transport is implemented
     pub port: u16,
 }
 
@@ -46,6 +48,7 @@ impl Default for McpServerConfig {
 #[derive(Clone)]
 pub struct CyberkrillMcpServer {
     config: McpServerConfig,
+    #[allow(dead_code)] // Reserved for future shared state management
     state: Arc<Mutex<ServerState>>,
 }
 
@@ -150,12 +153,14 @@ pub struct CreateFundedPsbtRequest {
     #[schemars(description = "Output specifications (address:amount format, comma-separated)")]
     pub outputs: String,
     #[schemars(description = "Optional input specifications (txid:vout format or descriptors)")]
+    #[allow(dead_code)] // Will be used when Bitcoin Core RPC path is implemented
     pub inputs: Option<Vec<String>>,
     #[schemars(description = "Fee rate in sat/vB (overrides conf_target)")]
     pub fee_rate: Option<f64>,
     #[schemars(description = "Confirmation target in blocks")]
     pub conf_target: Option<u32>,
     #[schemars(description = "Fee estimation mode (ECONOMICAL or CONSERVATIVE)")]
+    #[allow(dead_code)] // Will be used when Bitcoin Core RPC path is implemented
     pub estimate_mode: Option<String>,
     #[schemars(description = "Output descriptor for BDK backends")]
     pub descriptor: Option<String>,
@@ -166,6 +171,7 @@ pub struct CreateFundedPsbtRequest {
     #[schemars(description = "Backend URL")]
     pub backend_url: Option<String>,
     #[schemars(description = "Bitcoin data directory")]
+    #[allow(dead_code)] // Will be used when Bitcoin Core RPC path is implemented
     pub bitcoin_dir: Option<String>,
 }
 
@@ -676,15 +682,15 @@ impl CyberkrillMcpServer {
         &self,
         CreateFundedPsbtRequest {
             outputs,
-            inputs: _,
+            inputs: _, // TODO: Will be used when Bitcoin Core RPC path is implemented
             fee_rate,
             conf_target,
-            estimate_mode: _,
+            estimate_mode: _, // TODO: Will be used when Bitcoin Core RPC path is implemented
             descriptor,
             network,
             backend,
             backend_url,
-            bitcoin_dir: _,
+            bitcoin_dir: _, // TODO: Will be used when Bitcoin Core RPC path is implemented
         }: CreateFundedPsbtRequest,
     ) -> CallToolResult {
         let network_str = network.as_deref().unwrap_or("mainnet");
