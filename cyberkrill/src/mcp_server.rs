@@ -153,14 +153,12 @@ pub struct CreateFundedPsbtRequest {
     #[schemars(description = "Output specifications (address:amount format, comma-separated)")]
     pub outputs: String,
     #[schemars(description = "Optional input specifications (txid:vout format or descriptors)")]
-    #[allow(dead_code)] // Will be used when Bitcoin Core RPC path is implemented
     pub inputs: Option<Vec<String>>,
     #[schemars(description = "Fee rate in sat/vB (overrides conf_target)")]
     pub fee_rate: Option<f64>,
     #[schemars(description = "Confirmation target in blocks")]
     pub conf_target: Option<u32>,
     #[schemars(description = "Fee estimation mode (ECONOMICAL or CONSERVATIVE)")]
-    #[allow(dead_code)] // Will be used when Bitcoin Core RPC path is implemented
     pub estimate_mode: Option<String>,
     #[schemars(description = "Output descriptor for BDK backends")]
     pub descriptor: Option<String>,
@@ -168,10 +166,9 @@ pub struct CreateFundedPsbtRequest {
     pub network: Option<String>,
     #[schemars(description = "Backend to use (bitcoind, electrum, esplora)")]
     pub backend: Option<String>,
-    #[schemars(description = "Backend URL")]
+    #[schemars(description = "Backend URL or RPC URL for bitcoind")]
     pub backend_url: Option<String>,
-    #[schemars(description = "Bitcoin data directory")]
-    #[allow(dead_code)] // Will be used when Bitcoin Core RPC path is implemented
+    #[schemars(description = "Bitcoin data directory for cookie auth")]
     pub bitcoin_dir: Option<String>,
 }
 
@@ -463,9 +460,7 @@ impl CyberkrillMcpServer {
 
             let utxo_response = match client.list_utxos_for_addresses(addrs).await {
                 Ok(r) => r,
-                Err(e) => {
-                    return CallToolResult::error(vec![Content::text(format!("Error: {e}"))])
-                }
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             };
 
             // Convert UtxoListResponse to Vec<BdkUtxo> for compatibility
@@ -682,15 +677,15 @@ impl CyberkrillMcpServer {
         &self,
         CreateFundedPsbtRequest {
             outputs,
-            inputs: _, // TODO: Will be used when Bitcoin Core RPC path is implemented
+            inputs,
             fee_rate,
             conf_target,
-            estimate_mode: _, // TODO: Will be used when Bitcoin Core RPC path is implemented
+            estimate_mode,
             descriptor,
             network,
             backend,
             backend_url,
-            bitcoin_dir: _, // TODO: Will be used when Bitcoin Core RPC path is implemented
+            bitcoin_dir,
         }: CreateFundedPsbtRequest,
     ) -> CallToolResult {
         let network_str = network.as_deref().unwrap_or("mainnet");
@@ -789,10 +784,56 @@ impl CyberkrillMcpServer {
                 Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
         } else {
-            // Bitcoin Core RPC path - not yet implemented in core
-            return CallToolResult::error(vec![Content::text(
-                "Error: create_funded_psbt requires a descriptor for now".to_string(),
-            )]);
+            // Bitcoin Core RPC path
+            let bitcoin_dir_path = bitcoin_dir.as_ref().map(std::path::Path::new);
+
+            // Create RPC client - using cookie auth with bitcoin_dir
+            let rpc_url = backend_url.unwrap_or_else(|| "http://127.0.0.1:8332".to_string());
+
+            match cyberkrill_core::BitcoinRpcClient::new_auto(
+                rpc_url,
+                bitcoin_dir_path,
+                None, // rpc_user - not provided via MCP
+                None, // rpc_password - not provided via MCP
+            ) {
+                Ok(client) => {
+                    // Convert inputs from Option<Vec<String>> to Vec<String> for the RPC call
+                    let input_vec = inputs.unwrap_or_default();
+
+                    // Convert fee_rate if provided
+                    let fee_rate_amt = if let Some(rate) = fee_rate {
+                        match cyberkrill_core::AmountInput::from_btc(rate) {
+                            Ok(amt) => Some(amt),
+                            Err(e) => {
+                                return CallToolResult::error(vec![Content::text(format!(
+                                    "Invalid fee rate: {e}"
+                                ))])
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                    match client
+                        .wallet_create_funded_psbt(
+                            &input_vec,
+                            &outputs,
+                            conf_target,
+                            estimate_mode.as_deref(),
+                            fee_rate_amt,
+                        )
+                        .await
+                    {
+                        Ok(r) => CallToolResult::success(vec![Content::text(
+                            serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
+                        )]),
+                        Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
+                    }
+                }
+                Err(e) => CallToolResult::error(vec![Content::text(format!(
+                    "Error creating Bitcoin RPC client: {e}"
+                ))]),
+            }
         };
 
         result
