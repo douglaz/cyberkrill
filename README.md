@@ -1,6 +1,6 @@
 # cyberkrill
 
-<img src="https://github.com/user-attachments/assets/246dc789-4a2d-4040-afeb-3ac9045dddfb" width="200" />
+<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/193c5cb9-f8d0-46c9-b7be-99274ceb1d6b" />
 
 A comprehensive Bitcoin and Lightning Network toolkit written in Rust. cyberkrill provides a unified command-line interface and reusable core library for working with Bitcoin, Lightning, and various hardware signing devices.
 
