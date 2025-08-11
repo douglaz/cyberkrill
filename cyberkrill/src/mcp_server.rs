@@ -1,10 +1,10 @@
 use anyhow::Result;
 use rmcp::{
     handler::server::ServerHandler,
-    model::{ServerCapabilities, ServerInfo},
+    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
     schemars,
     service::ServiceExt,
-    tool,
+    tool, tool_router,
     transport::stdio,
 };
 use serde::Deserialize;
@@ -254,10 +254,12 @@ impl CyberkrillMcpServer {
     async fn decode_invoice(
         &self,
         DecodeInvoiceRequest { invoice }: DecodeInvoiceRequest,
-    ) -> String {
+    ) -> CallToolResult {
         match cyberkrill_core::decode_invoice(&invoice) {
-            Ok(result) => serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
-            Err(e) => format!("Error: {}", e),
+            Ok(result) => CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+            )]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
         }
     }
 
@@ -265,10 +267,12 @@ impl CyberkrillMcpServer {
     async fn decode_lnurl(
         &self,
         DecodeLnurlRequest { lnurl }: DecodeLnurlRequest,
-    ) -> String {
+    ) -> CallToolResult {
         match cyberkrill_core::decode_lnurl(&lnurl) {
-            Ok(result) => serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
-            Err(e) => format!("Error: {}", e),
+            Ok(result) => CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+            )]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
         }
     }
 
@@ -280,7 +284,7 @@ impl CyberkrillMcpServer {
             amount_msats,
             comment,
         }: GenerateInvoiceRequest,
-    ) -> String {
+    ) -> CallToolResult {
         match cyberkrill_core::generate_invoice_from_address(
             &address,
             amount_msats,
@@ -288,8 +292,10 @@ impl CyberkrillMcpServer {
         )
         .await
         {
-            Ok(result) => serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
-            Err(e) => format!("Error: {}", e),
+            Ok(result) => CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+            )]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
         }
     }
 
@@ -298,10 +304,12 @@ impl CyberkrillMcpServer {
     async fn decode_fedimint_invite(
         &self,
         DecodeFedimintInviteRequest { invite_code }: DecodeFedimintInviteRequest,
-    ) -> String {
+    ) -> CallToolResult {
         match fedimint_lite::decode_invite(&invite_code) {
-            Ok(result) => serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
-            Err(e) => format!("Error: {}", e),
+            Ok(result) => CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+            )]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
         }
     }
 
@@ -314,7 +322,7 @@ impl CyberkrillMcpServer {
             api_secret,
             skip_api_secret,
         }: EncodeFedimintInviteRequest,
-    ) -> String {
+    ) -> CallToolResult {
         // We need to build the FedimintInviteOutput structure directly
         let guardians_info = guardians
             .into_iter()
@@ -334,8 +342,10 @@ impl CyberkrillMcpServer {
         };
         
         match fedimint_lite::encode_fedimint_invite(&invite) {
-            Ok(result) => serde_json::json!({ "invite_code": result }).to_string(),
-            Err(e) => format!("Error: {}", e),
+            Ok(result) => CallToolResult::success(vec![Content::text(
+                serde_json::json!({ "invite_code": result }).to_string()
+            )]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
         }
     }
 
@@ -351,14 +361,14 @@ impl CyberkrillMcpServer {
             backend_url,
             bitcoin_dir,
         }: ListUtxosRequest,
-    ) -> String {
+    ) -> CallToolResult {
         let network_str = network.as_deref().unwrap_or("mainnet");
         let network = match network_str.to_lowercase().as_str() {
             "mainnet" | "bitcoin" => cyberkrill_core::Network::Bitcoin,
             "testnet" => cyberkrill_core::Network::Testnet,
             "signet" => cyberkrill_core::Network::Signet,
             "regtest" => cyberkrill_core::Network::Regtest,
-            _ => return format!("Invalid network: {}", network_str),
+            _ => return CallToolResult::error(vec![Content::text(format!("Invalid network: {}", network_str))]),
         };
 
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
@@ -369,20 +379,20 @@ impl CyberkrillMcpServer {
                     if let Some(url) = backend_url {
                         match cyberkrill_core::scan_and_list_utxos_electrum(&desc, network, &url, 200).await {
                             Ok(r) => r,
-                            Err(e) => return format!("Error: {}", e),
+                            Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
                         }
                     } else {
-                        return "Error: backend_url required for electrum".to_string();
+                        return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
                     }
                 }
                 "esplora" => {
                     if let Some(url) = backend_url {
                         match cyberkrill_core::scan_and_list_utxos_esplora(&desc, network, &url, 200).await {
                             Ok(r) => r,
-                            Err(e) => return format!("Error: {}", e),
+                            Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
                         }
                     } else {
-                        return "Error: backend_url required for esplora".to_string();
+                        return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
                     }
                 }
                 _ => {
@@ -390,7 +400,7 @@ impl CyberkrillMcpServer {
                     let path = std::path::Path::new(dir);
                     match cyberkrill_core::scan_and_list_utxos_bitcoind(&desc, network, path).await {
                         Ok(r) => r,
-                        Err(e) => return format!("Error: {}", e),
+                        Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
                     }
                 }
             }
@@ -403,12 +413,12 @@ impl CyberkrillMcpServer {
                 None,
             ) {
                 Ok(c) => c,
-                Err(e) => return format!("Error creating client: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error creating client: {}", e))]),
             };
 
             let utxo_response = match client.list_utxos_for_addresses(addrs).await {
                 Ok(r) => r,
-                Err(e) => return format!("Error: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
             };
             
             // Convert UtxoListResponse to Vec<BdkUtxo> for compatibility
@@ -426,29 +436,31 @@ impl CyberkrillMcpServer {
                 }
             }).collect()
         } else {
-            return "Error: Either descriptor or addresses required".to_string();
+            return CallToolResult::error(vec![Content::text("Error: Either descriptor or addresses required".to_string())]);
         };
 
         let summary = cyberkrill_core::get_utxo_summary(result);
-        serde_json::to_string_pretty(&summary).unwrap_or_else(|e| e.to_string())
+        CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&summary).unwrap_or_else(|e| e.to_string())
+        )])
     }
 
     #[tool(description = "Decode a PSBT (Partially Signed Bitcoin Transaction)")]
     async fn decode_psbt(
         &self,
         DecodePsbtRequest { psbt }: DecodePsbtRequest,
-    ) -> String {
+    ) -> CallToolResult {
         use base64::Engine;
 
         let psbt_bytes = if psbt.starts_with("cHNidP") {
             match base64::engine::general_purpose::STANDARD.decode(&psbt) {
                 Ok(b) => b,
-                Err(e) => return format!("Error decoding base64: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error decoding base64: {}", e))]),
             }
         } else {
             match hex::decode(&psbt) {
                 Ok(b) => b,
-                Err(e) => return format!("Error decoding hex: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error decoding hex: {}", e))]),
             }
         };
 
@@ -460,9 +472,11 @@ impl CyberkrillMcpServer {
                     "inputs": parsed_psbt.inputs.len(),
                     "outputs": parsed_psbt.outputs.len(),
                 });
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+                CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+                )])
             }
-            Err(e) => format!("Error parsing PSBT: {}", e),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error parsing PSBT: {}", e))]),
         }
     }
 
@@ -479,21 +493,21 @@ impl CyberkrillMcpServer {
             backend_url,
             bitcoin_dir,
         }: CreatePsbtRequest,
-    ) -> String {
+    ) -> CallToolResult {
         let network_str = network.as_deref().unwrap_or("mainnet");
         let network = match network_str.to_lowercase().as_str() {
             "mainnet" | "bitcoin" => cyberkrill_core::Network::Bitcoin,
             "testnet" => cyberkrill_core::Network::Testnet,
             "signet" => cyberkrill_core::Network::Signet,
             "regtest" => cyberkrill_core::Network::Regtest,
-            _ => return format!("Invalid network: {}", network_str),
+            _ => return CallToolResult::error(vec![Content::text(format!("Invalid network: {}", network_str))]),
         };
 
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
-                Err(e) => return format!("Invalid fee rate: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid fee rate: {}", e))]),
             }
         } else {
             None
@@ -506,14 +520,14 @@ impl CyberkrillMcpServer {
                     if let Some(url) = backend_url {
                         format!("electrum://{}", url)
                     } else {
-                        return "Error: backend_url required for electrum".to_string();
+                        return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
                     }
                 }
                 "esplora" => {
                     if let Some(url) = backend_url {
                         format!("esplora://{}", url)
                     } else {
-                        return "Error: backend_url required for esplora".to_string();
+                        return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
                     }
                 }
                 _ => {
@@ -535,10 +549,10 @@ impl CyberkrillMcpServer {
                             let amount = bitcoin::Amount::from_sat(amount_sats);
                             parsed_outputs.push((address, amount));
                         }
-                        Err(e) => return format!("Invalid amount in output '{}': {}", output, e),
+                        Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid amount in output '{}': {}", output, e))]),
                     }
                 } else {
-                    return format!("Invalid output format: '{}'. Expected 'address:amount'", output);
+                    return CallToolResult::error(vec![Content::text(format!("Invalid output format: '{}'. Expected 'address:amount'", output))]);
                 }
             }
 
@@ -552,8 +566,10 @@ impl CyberkrillMcpServer {
             )
             .await
             {
-                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
-                Err(e) => format!("Error: {}", e),
+                Ok(r) => CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                )]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
             }
         } else {
             // Bitcoin Core RPC path
@@ -565,12 +581,14 @@ impl CyberkrillMcpServer {
                 None,
             ) {
                 Ok(c) => c,
-                Err(e) => return format!("Error creating client: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error creating client: {}", e))]),
             };
 
             match client.create_psbt(&inputs, &outputs, fee_rate_input).await {
-                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
-                Err(e) => format!("Error: {}", e),
+                Ok(r) => CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                )]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
             }
         };
 
@@ -592,21 +610,21 @@ impl CyberkrillMcpServer {
             backend_url,
             bitcoin_dir,
         }: CreateFundedPsbtRequest,
-    ) -> String {
+    ) -> CallToolResult {
         let network_str = network.as_deref().unwrap_or("mainnet");
         let network = match network_str.to_lowercase().as_str() {
             "mainnet" | "bitcoin" => cyberkrill_core::Network::Bitcoin,
             "testnet" => cyberkrill_core::Network::Testnet,
             "signet" => cyberkrill_core::Network::Signet,
             "regtest" => cyberkrill_core::Network::Regtest,
-            _ => return format!("Invalid network: {}", network_str),
+            _ => return CallToolResult::error(vec![Content::text(format!("Invalid network: {}", network_str))]),
         };
 
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
-                Err(e) => return format!("Invalid fee rate: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid fee rate: {}", e))]),
             }
         } else {
             None
@@ -619,14 +637,14 @@ impl CyberkrillMcpServer {
                     if let Some(url) = backend_url {
                         format!("electrum://{}", url)
                     } else {
-                        return "Error: backend_url required for electrum".to_string();
+                        return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
                     }
                 }
                 "esplora" => {
                     if let Some(url) = backend_url {
                         format!("esplora://{}", url)
                     } else {
-                        return "Error: backend_url required for esplora".to_string();
+                        return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
                     }
                 }
                 _ => {
@@ -648,10 +666,10 @@ impl CyberkrillMcpServer {
                             let amount = bitcoin::Amount::from_sat(amount_sats);
                             parsed_outputs.push((address, amount));
                         }
-                        Err(e) => return format!("Invalid amount in output '{}': {}", output, e),
+                        Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid amount in output '{}': {}", output, e))]),
                     }
                 } else {
-                    return format!("Invalid output format: '{}'. Expected 'address:amount'", output);
+                    return CallToolResult::error(vec![Content::text(format!("Invalid output format: '{}'. Expected 'address:amount'", output))]);
                 }
             }
 
@@ -665,12 +683,14 @@ impl CyberkrillMcpServer {
             )
             .await
             {
-                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
-                Err(e) => format!("Error: {}", e),
+                Ok(r) => CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                )]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
             }
         } else {
             // Bitcoin Core RPC path - not yet implemented in core
-            return "Error: create_funded_psbt requires a descriptor for now".to_string();
+            return CallToolResult::error(vec![Content::text("Error: create_funded_psbt requires a descriptor for now".to_string())]);
         };
 
         result
@@ -691,21 +711,21 @@ impl CyberkrillMcpServer {
             backend_url,
             bitcoin_dir,
         }: MoveUtxosRequest,
-    ) -> String {
+    ) -> CallToolResult {
         let network_str = network.as_deref().unwrap_or("mainnet");
         let network = match network_str.to_lowercase().as_str() {
             "mainnet" | "bitcoin" => cyberkrill_core::Network::Bitcoin,
             "testnet" => cyberkrill_core::Network::Testnet,
             "signet" => cyberkrill_core::Network::Signet,
             "regtest" => cyberkrill_core::Network::Regtest,
-            _ => return format!("Invalid network: {}", network_str),
+            _ => return CallToolResult::error(vec![Content::text(format!("Invalid network: {}", network_str))]),
         };
 
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
-                Err(e) => return format!("Invalid fee rate: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid fee rate: {}", e))]),
             }
         } else {
             None
@@ -714,7 +734,7 @@ impl CyberkrillMcpServer {
         let max_amount_input = if let Some(max_str) = max_amount {
             match cyberkrill_core::AmountInput::from_str(&max_str) {
                 Ok(amt) => Some(amt),
-                Err(e) => return format!("Invalid max_amount: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid max_amount: {}", e))]),
             }
         } else {
             None
@@ -727,14 +747,14 @@ impl CyberkrillMcpServer {
                     if let Some(url) = backend_url {
                         format!("electrum://{}", url)
                     } else {
-                        return "Error: backend_url required for electrum".to_string();
+                        return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
                     }
                 }
                 "esplora" => {
                     if let Some(url) = backend_url {
                         format!("esplora://{}", url)
                     } else {
-                        return "Error: backend_url required for esplora".to_string();
+                        return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
                     }
                 }
                 _ => {
@@ -755,8 +775,10 @@ impl CyberkrillMcpServer {
             )
             .await
             {
-                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
-                Err(e) => format!("Error: {}", e),
+                Ok(r) => CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                )]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
             }
         } else {
             // Bitcoin Core RPC path
@@ -768,15 +790,17 @@ impl CyberkrillMcpServer {
                 None,
             ) {
                 Ok(c) => c,
-                Err(e) => return format!("Error creating client: {}", e),
+                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error creating client: {}", e))]),
             };
 
             match client
                 .move_utxos(&inputs, &destination, fee_rate_input, fee_input, max_amount_input)
                 .await
             {
-                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
-                Err(e) => format!("Error: {}", e),
+                Ok(r) => CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                )]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
             }
         };
 
@@ -794,7 +818,7 @@ impl CyberkrillMcpServer {
             bitcoin_dir,
             cache_dir,
         }: DcaReportRequest,
-    ) -> String {
+    ) -> CallToolResult {
         let currency_str = currency.as_deref().unwrap_or("USD");
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
 
@@ -803,14 +827,14 @@ impl CyberkrillMcpServer {
                 if let Some(url) = backend_url {
                     cyberkrill_core::Backend::Electrum { url }
                 } else {
-                    return "Error: backend_url required for electrum".to_string();
+                    return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
                 }
             }
             "esplora" => {
                 if let Some(url) = backend_url {
                     cyberkrill_core::Backend::Esplora { url }
                 } else {
-                    return "Error: backend_url required for esplora".to_string();
+                    return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
                 }
             }
             _ => {
@@ -833,8 +857,10 @@ impl CyberkrillMcpServer {
         )
         .await
         {
-            Ok(report) => serde_json::to_string_pretty(&report).unwrap_or_else(|e| e.to_string()),
-            Err(e) => format!("Error generating DCA report: {}", e),
+            Ok(report) => CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&report).unwrap_or_else(|e| e.to_string())
+            )]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error generating DCA report: {}", e))]),
         }
     }
 }

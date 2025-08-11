@@ -29,84 +29,83 @@ The cyberkrill MCP server exposes 12 tools:
 
 ## Setup Instructions
 
-### 1. Build the Project
+### 1. Install cyberkrill
 
-First, build cyberkrill with the release profile:
+First, install cyberkrill to your system. You can either:
 
+**Option A: Install to ~/bin (Recommended)**
 ```bash
+# Build and copy to ~/bin
 cd /path/to/cyberkrill
 cargo build --release
+cp target/release/cyberkrill ~/bin/
 ```
 
-### 2. Configure MCP in Claude Code
-
-There are three ways to configure the MCP server:
-
-#### Option A: Project Scope (Recommended for Teams)
-
-The `.mcp.json` file is already included in this repository. This configuration is shared with your team when you commit it to version control.
-
-```json
-{
-  "mcpServers": {
-    "cyberkrill": {
-      "command": "cargo",
-      "args": ["run", "--bin", "cyberkrill", "--", "mcp-server"],
-      "env": {
-        "RUST_LOG": "info"
-      }
-    }
-  }
-}
+**Option B: Install via cargo**
+```bash
+cargo install --path cyberkrill
 ```
 
-#### Option B: Local Scope (Private to You)
+### 2. Configure MCP with Claude Code CLI
 
-Add the server to your local Claude Code configuration:
+Use the Claude Code CLI to add the cyberkrill MCP server:
+
+#### Global Setup (Recommended - Available in All Projects)
 
 ```bash
-claude mcp add cyberkrill /path/to/cyberkrill/target/release/cyberkrill mcp-server
+# Add cyberkrill MCP server globally for all projects
+claude mcp add cyberkrill ~/bin/cyberkrill mcp-server -s user -e RUST_LOG=info
 ```
 
-#### Option C: User Scope (Available in All Projects)
+This makes cyberkrill tools available in every project without additional configuration.
 
-Add the server globally for all your projects:
+#### Project-Specific Setup (For Team Sharing)
+
+If you want to share the configuration with your team via version control:
 
 ```bash
-claude mcp add cyberkrill --scope user /path/to/cyberkrill/target/release/cyberkrill mcp-server
+# Add to project configuration
+claude mcp add cyberkrill cyberkrill mcp-server -s project -e RUST_LOG=info
 ```
 
-### 3. Using the Production Binary
+This creates/updates `.mcp.json` in your project root that can be committed to version control.
 
-For production use, build and use the release binary:
+### 3. Verify MCP Server Connection
 
-1. Build the release binary:
-   ```bash
-   cargo build --release
-   ```
-
-2. Update `.mcp.json` to use the release binary:
-   ```json
-   {
-     "mcpServers": {
-       "cyberkrill": {
-         "command": "${HOME}/p/cyberkrill/target/release/cyberkrill",
-         "args": ["mcp-server"],
-         "env": {
-           "RUST_LOG": "info"
-         }
-       }
-     }
-   }
-   ```
-
-### 4. Verify MCP Server is Running
-
-After configuration, restart Claude Code and check if the MCP server is available:
+Check that the MCP server is properly connected:
 
 ```bash
-# In Claude Code, you should see cyberkrill tools available
-# You can ask Claude to list available MCP tools
+# List all configured MCP servers and their status
+claude mcp list
+```
+
+You should see:
+```
+Checking MCP server health...
+cyberkrill: ~/bin/cyberkrill mcp-server - ✓ Connected
+```
+
+### 4. Manage MCP Servers
+
+**View configuration:**
+```bash
+# Show all MCP servers across different scopes
+claude mcp list
+```
+
+**Remove a server:**
+```bash
+# Remove from specific scope
+claude mcp remove cyberkrill -s user    # Remove from global config
+claude mcp remove cyberkrill -s project  # Remove from project config
+claude mcp remove cyberkrill -s local    # Remove from local config
+```
+
+**Update configuration:**
+```bash
+# Remove and re-add with new settings
+claude mcp remove cyberkrill -s user
+claude mcp add cyberkrill ~/bin/cyberkrill mcp-server -s user -e RUST_LOG=debug -e BITCOIN_DIR=/custom/path
 ```
 
 ## Usage Examples
@@ -148,35 +147,44 @@ Currently, the MCP server supports stdio transport (default). SSE transport supp
 
 ## Troubleshooting
 
-### Server Not Starting
+### Server Not Connecting
 
-1. Check that cyberkrill is built:
+1. **Check binary exists and is executable:**
    ```bash
-   cargo build --release
+   ls -la ~/bin/cyberkrill
+   # Should show executable permissions (x)
    ```
 
-2. Verify the path in `.mcp.json` is correct:
+2. **Test the MCP server directly:**
    ```bash
-   ls -la target/release/cyberkrill
+   # This should start without errors
+   ~/bin/cyberkrill mcp-server
+   # Press Ctrl+C to stop
    ```
 
-3. Check logs for errors:
+3. **Check MCP connection status:**
    ```bash
-   RUST_LOG=debug cargo run -- mcp-server
+   claude mcp list
    ```
 
-### Tools Not Available
+### Common Issues
 
-1. Restart Claude Code after updating configuration
-2. Check that `.mcp.json` is in the project root
-3. Verify the MCP server process is running
+**"Failed to connect" error:**
+- Make sure you're using the full path to the binary (e.g., `~/bin/cyberkrill` or `/home/user/bin/cyberkrill`)
+- The relative path `cyberkrill` only works if it's in your PATH
 
-### Permission Issues
+**Multiple scope conflicts:**
+- If you have the same server in multiple scopes, remove duplicates:
+  ```bash
+  claude mcp remove cyberkrill -s project
+  claude mcp remove cyberkrill -s local
+  # Keep only the user scope for global access
+  ```
 
-Make sure the binary has execute permissions:
-```bash
-chmod +x target/release/cyberkrill
-```
+**Binary not found:**
+- Ensure cyberkrill is built: `cargo build --release`
+- Copy to ~/bin: `cp target/release/cyberkrill ~/bin/`
+- Make executable: `chmod +x ~/bin/cyberkrill`
 
 ## Security Considerations
 
