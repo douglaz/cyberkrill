@@ -444,7 +444,13 @@ struct CreatePsbtArgs {
     /// Examples: --inputs txid1:0 --inputs txid2:1 or --inputs "wpkh([fingerprint/84'/0'/0']xpub...)"
     #[clap(long, required = true)]
     inputs: Vec<String>,
-    /// Output addresses and amounts in format address:amount_btc (comma-separated)
+    /// Output addresses and amounts (comma-separated).
+    /// Format: address:amount where amount supports:
+    /// - Plain number (BTC): "0.5"
+    /// - BTC with suffix: "0.5btc"
+    /// - Satoshis: "50000000sats"
+    /// - Millisatoshis: "50000000000msats"
+    ///   Example: "bc1qaddr1:0.5,bc1qaddr2:100000sats"
     #[clap(long, required = true)]
     outputs: String,
     /// Fee rate in sats/vB (optional, will use Bitcoin Core's default if not specified) - supports formats like '15', '20.5sats', '15btc'
@@ -499,7 +505,13 @@ struct CreateFundedPsbtArgs {
     /// Note: For automatic selection from a descriptor, use --descriptor instead
     #[clap(long)]
     inputs: Vec<String>,
-    /// Output addresses and amounts in format address:amount_btc (comma-separated)
+    /// Output addresses and amounts (comma-separated).
+    /// Format: address:amount where amount supports:
+    /// - Plain number (BTC): "0.5"
+    /// - BTC with suffix: "0.5btc"
+    /// - Satoshis: "50000000sats"
+    /// - Millisatoshis: "50000000000msats"
+    ///   Example: "bc1qaddr1:0.5,bc1qaddr2:100000sats"
     #[clap(long, required = true)]
     outputs: String,
     /// Confirmation target in blocks (1-1008)
@@ -1290,6 +1302,7 @@ fn encode_fedimint_invite(args: EncodeFedimintInviteArgs) -> anyhow::Result<()> 
 }
 
 /// Parse output string in format "address:amount,address:amount" into Vec<(String, Amount)>
+/// Supports flexible amount formats: "0.5", "0.5btc", "50000000sats", "50000000000msats"
 fn parse_outputs(
     outputs_str: &str,
 ) -> anyhow::Result<Vec<(String, cyberkrill_core::bitcoin::Amount)>> {
@@ -1306,12 +1319,12 @@ fn parse_outputs(
         let address = parts[0].trim().to_string();
         let amount_str = parts[1].trim();
 
-        // Parse amount as BTC
-        let amount_btc: f64 = amount_str
-            .parse()
-            .context("Failed to parse amount as BTC")?;
-        let amount =
-            cyberkrill_core::bitcoin::Amount::from_btc(amount_btc).context("Invalid BTC amount")?;
+        // Parse amount using AmountInput for flexible format support
+        let amount_input = AmountInput::from_str(amount_str)
+            .with_context(|| format!("Failed to parse amount '{amount_str}' in output '{output}'"))?;
+
+        // Convert to bitcoin::Amount (loses millisat precision)
+        let amount = amount_input.as_amount();
 
         outputs.push((address, amount));
     }
