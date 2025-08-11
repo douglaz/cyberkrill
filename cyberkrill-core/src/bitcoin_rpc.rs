@@ -223,6 +223,21 @@ impl FromStr for AmountInput {
             return Err(AmountInputError::EmptyAmount);
         }
 
+        // Check for millisatoshi suffixes
+        if s.ends_with("msats") || s.ends_with("msat") {
+            let number_part = if s.ends_with("msats") {
+                &s[..s.len() - 5]
+            } else {
+                &s[..s.len() - 4]
+            };
+
+            let msats: u64 = number_part
+                .parse()
+                .map_err(|_| AmountInputError::InvalidSatoshiAmount(number_part.to_string()))?;
+
+            return Ok(AmountInput::from_millisats(msats));
+        }
+
         // Check for satoshi suffixes
         if s.ends_with("sats") || s.ends_with("sat") {
             let number_part = if s.ends_with("sats") {
@@ -1409,6 +1424,32 @@ mod tests {
         // Test with whitespace
         let amount = AmountInput::from_str("  50000sats  ")?;
         assert_eq!(amount.as_sat(), 50000);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_amount_input_parsing_msats() -> Result<()> {
+        // Test millisatoshi parsing
+        let amount = AmountInput::from_str("123000msats")?;
+        assert_eq!(amount.as_millisats(), 123000);
+        assert_eq!(amount.as_sat(), 123);
+        assert_eq!(amount.as_btc(), 0.00000123);
+
+        let amount = AmountInput::from_str("100000000msat")?;
+        assert_eq!(amount.as_millisats(), 100000000);
+        assert_eq!(amount.as_sat(), 100000);
+        assert_eq!(amount.as_btc(), 0.001);
+
+        // Test with whitespace
+        let amount = AmountInput::from_str("  50000000msats  ")?;
+        assert_eq!(amount.as_millisats(), 50000000);
+        assert_eq!(amount.as_sat(), 50000);
+
+        // Test case insensitivity
+        let amount1 = AmountInput::from_str("1000MSATS")?;
+        let amount2 = AmountInput::from_str("1000msats")?;
+        assert_eq!(amount1, amount2);
 
         Ok(())
     }

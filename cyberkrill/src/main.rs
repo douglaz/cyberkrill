@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use cyberkrill_core::AmountInput;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
+use std::str::FromStr;
 
 const DEFAULT_BITCOIN_RPC_URL: &str = "http://127.0.0.1:8332";
 
@@ -24,7 +25,7 @@ enum Commands {
     LnDecodeLnurl(DecodeLnurlArgs),
     #[command(
         name = "ln-generate-invoice",
-        about = "Generate invoice from Lightning address"
+        about = "Generate Lightning invoice from Lightning address using LNURL-pay protocol"
     )]
     LnGenerateInvoice(GenerateInvoiceArgs),
 
@@ -186,9 +187,13 @@ struct FedimintConfigArgs {
 struct GenerateInvoiceArgs {
     /// Lightning address (e.g., user@domain.com)
     address: String,
-    /// Amount in millisatoshis
-    amount_msats: u64,
-    /// Optional comment
+    /// Amount to request. Supports multiple formats:
+    /// - Plain number (interpreted as BTC): "0.5" or "1.5"
+    /// - BTC with suffix: "0.5btc" or "1.5BTC"
+    /// - Satoshis: "50000000sats" or "100000sat"
+    /// - Millisatoshis: "50000000000msats" or "100000000msat"
+    amount: String,
+    /// Optional comment for the payment request
     #[clap(short, long)]
     comment: Option<String>,
     /// Output file path
@@ -751,9 +756,13 @@ async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
         None => Box::new(BufWriter::new(std::io::stdout())),
     };
 
+    // Parse amount with flexible format support
+    let amount = AmountInput::from_str(&args.amount)
+        .map_err(|e| anyhow::anyhow!("Invalid amount format: {e}"))?;
+
     let invoice = cyberkrill_core::generate_invoice_from_address(
         &args.address,
-        args.amount_msats,
+        &amount,
         args.comment.as_deref(),
     )
     .await?;
