@@ -9,6 +9,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use std::future::Future;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
@@ -118,6 +119,90 @@ pub struct ListUtxosRequest {
 pub struct DecodePsbtRequest {
     #[schemars(description = "PSBT in base64 or hex format")]
     pub psbt: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreatePsbtRequest {
+    #[schemars(description = "Input specifications (txid:vout format or descriptors)")]
+    pub inputs: Vec<String>,
+    #[schemars(description = "Output specifications (address:amount format, comma-separated)")]
+    pub outputs: String,
+    #[schemars(description = "Fee rate in sat/vB")]
+    pub fee_rate: Option<f64>,
+    #[schemars(description = "Output descriptor for BDK backends")]
+    pub descriptor: Option<String>,
+    #[schemars(description = "Bitcoin network (mainnet, testnet, signet, regtest)")]
+    pub network: Option<String>,
+    #[schemars(description = "Backend to use (bitcoind, electrum, esplora)")]
+    pub backend: Option<String>,
+    #[schemars(description = "Backend URL (for electrum/esplora)")]
+    pub backend_url: Option<String>,
+    #[schemars(description = "Bitcoin data directory (for bitcoind)")]
+    pub bitcoin_dir: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateFundedPsbtRequest {
+    #[schemars(description = "Output specifications (address:amount format, comma-separated)")]
+    pub outputs: String,
+    #[schemars(description = "Optional input specifications (txid:vout format or descriptors)")]
+    pub inputs: Option<Vec<String>>,
+    #[schemars(description = "Fee rate in sat/vB (overrides conf_target)")]
+    pub fee_rate: Option<f64>,
+    #[schemars(description = "Confirmation target in blocks")]
+    pub conf_target: Option<u32>,
+    #[schemars(description = "Fee estimation mode (ECONOMICAL or CONSERVATIVE)")]
+    pub estimate_mode: Option<String>,
+    #[schemars(description = "Output descriptor for BDK backends")]
+    pub descriptor: Option<String>,
+    #[schemars(description = "Bitcoin network (mainnet, testnet, signet, regtest)")]
+    pub network: Option<String>,
+    #[schemars(description = "Backend to use (bitcoind, electrum, esplora)")]
+    pub backend: Option<String>,
+    #[schemars(description = "Backend URL")]
+    pub backend_url: Option<String>,
+    #[schemars(description = "Bitcoin data directory")]
+    pub bitcoin_dir: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MoveUtxosRequest {
+    #[schemars(description = "Input specifications (txid:vout format or descriptors)")]
+    pub inputs: Vec<String>,
+    #[schemars(description = "Destination Bitcoin address")]
+    pub destination: String,
+    #[schemars(description = "Fee rate in sat/vB")]
+    pub fee_rate: Option<f64>,
+    #[schemars(description = "Absolute fee in satoshis")]
+    pub fee: Option<u64>,
+    #[schemars(description = "Maximum amount to move (e.g., '0.5btc' or '50000000sats')")]
+    pub max_amount: Option<String>,
+    #[schemars(description = "Output descriptor for BDK backends")]
+    pub descriptor: Option<String>,
+    #[schemars(description = "Bitcoin network (mainnet, testnet, signet, regtest)")]
+    pub network: Option<String>,
+    #[schemars(description = "Backend to use (bitcoind, electrum, esplora)")]
+    pub backend: Option<String>,
+    #[schemars(description = "Backend URL")]
+    pub backend_url: Option<String>,
+    #[schemars(description = "Bitcoin data directory")]
+    pub bitcoin_dir: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DcaReportRequest {
+    #[schemars(description = "Output descriptor to analyze")]
+    pub descriptor: String,
+    #[schemars(description = "Fiat currency for price data (USD, EUR, GBP)")]
+    pub currency: Option<String>,
+    #[schemars(description = "Backend to use (bitcoind, electrum, esplora)")]
+    pub backend: Option<String>,
+    #[schemars(description = "Backend URL")]
+    pub backend_url: Option<String>,
+    #[schemars(description = "Bitcoin data directory (for bitcoind)")]
+    pub bitcoin_dir: Option<String>,
+    #[schemars(description = "Cache directory for price data")]
+    pub cache_dir: Option<String>,
 }
 
 impl CyberkrillMcpServer {
@@ -373,6 +458,378 @@ impl CyberkrillMcpServer {
                 serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
             }
             Err(e) => format!("Error parsing PSBT: {}", e),
+        }
+    }
+
+    #[tool(description = "Create PSBT with manual input/output specification")]
+    async fn create_psbt(
+        &self,
+        CreatePsbtRequest {
+            inputs,
+            outputs,
+            fee_rate,
+            descriptor,
+            network,
+            backend,
+            backend_url,
+            bitcoin_dir,
+        }: CreatePsbtRequest,
+    ) -> String {
+        let network_str = network.as_deref().unwrap_or("mainnet");
+        let network = match network_str.to_lowercase().as_str() {
+            "mainnet" | "bitcoin" => cyberkrill_core::Network::Bitcoin,
+            "testnet" => cyberkrill_core::Network::Testnet,
+            "signet" => cyberkrill_core::Network::Signet,
+            "regtest" => cyberkrill_core::Network::Regtest,
+            _ => return format!("Invalid network: {}", network_str),
+        };
+
+        let backend_type = backend.as_deref().unwrap_or("bitcoind");
+        let fee_rate_input = if let Some(rate) = fee_rate {
+            match cyberkrill_core::AmountInput::from_btc(rate) {
+                Ok(amt) => Some(amt),
+                Err(e) => return format!("Invalid fee rate: {}", e),
+            }
+        } else {
+            None
+        };
+
+        let result = if let Some(desc) = descriptor {
+            // BDK path
+            let backend_url_str = match backend_type {
+                "electrum" => {
+                    if let Some(url) = backend_url {
+                        format!("electrum://{}", url)
+                    } else {
+                        return "Error: backend_url required for electrum".to_string();
+                    }
+                }
+                "esplora" => {
+                    if let Some(url) = backend_url {
+                        format!("esplora://{}", url)
+                    } else {
+                        return "Error: backend_url required for esplora".to_string();
+                    }
+                }
+                _ => {
+                    let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
+                    format!("bitcoind://{}", dir)
+                }
+            };
+
+            // Parse outputs into proper format for BDK
+            let mut parsed_outputs = Vec::new();
+            for output in outputs.split(',') {
+                let parts: Vec<&str> = output.trim().split(':').collect();
+                if parts.len() == 2 {
+                    let address = parts[0].to_string();
+                    match parts[1].parse::<f64>() {
+                        Ok(amount_btc) => {
+                            // Convert BTC to satoshis for Amount
+                            let amount_sats = (amount_btc * 100_000_000.0) as u64;
+                            let amount = bitcoin::Amount::from_sat(amount_sats);
+                            parsed_outputs.push((address, amount));
+                        }
+                        Err(e) => return format!("Invalid amount in output '{}': {}", output, e),
+                    }
+                } else {
+                    return format!("Invalid output format: '{}'. Expected 'address:amount'", output);
+                }
+            }
+
+            match cyberkrill_core::create_psbt_bdk(
+                &inputs,
+                &parsed_outputs,
+                fee_rate_input.map(|r| r.as_sat() as f64 / 100.0),
+                &desc,
+                network,
+                &backend_url_str,
+            )
+            .await
+            {
+                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
+                Err(e) => format!("Error: {}", e),
+            }
+        } else {
+            // Bitcoin Core RPC path
+            let bitcoin_path = bitcoin_dir.map(|d| std::path::Path::new(&d).to_path_buf());
+            let client = match cyberkrill_core::BitcoinRpcClient::new_auto(
+                "http://127.0.0.1:8332".to_string(),
+                bitcoin_path.as_deref(),
+                None,
+                None,
+            ) {
+                Ok(c) => c,
+                Err(e) => return format!("Error creating client: {}", e),
+            };
+
+            match client.create_psbt(&inputs, &outputs, fee_rate_input).await {
+                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
+                Err(e) => format!("Error: {}", e),
+            }
+        };
+
+        result
+    }
+
+    #[tool(description = "Create funded PSBT with automatic input selection")]
+    async fn create_funded_psbt(
+        &self,
+        CreateFundedPsbtRequest {
+            outputs,
+            inputs,
+            fee_rate,
+            conf_target,
+            estimate_mode,
+            descriptor,
+            network,
+            backend,
+            backend_url,
+            bitcoin_dir,
+        }: CreateFundedPsbtRequest,
+    ) -> String {
+        let network_str = network.as_deref().unwrap_or("mainnet");
+        let network = match network_str.to_lowercase().as_str() {
+            "mainnet" | "bitcoin" => cyberkrill_core::Network::Bitcoin,
+            "testnet" => cyberkrill_core::Network::Testnet,
+            "signet" => cyberkrill_core::Network::Signet,
+            "regtest" => cyberkrill_core::Network::Regtest,
+            _ => return format!("Invalid network: {}", network_str),
+        };
+
+        let backend_type = backend.as_deref().unwrap_or("bitcoind");
+        let fee_rate_input = if let Some(rate) = fee_rate {
+            match cyberkrill_core::AmountInput::from_btc(rate) {
+                Ok(amt) => Some(amt),
+                Err(e) => return format!("Invalid fee rate: {}", e),
+            }
+        } else {
+            None
+        };
+
+        let result = if let Some(desc) = descriptor {
+            // BDK path
+            let backend_url_str = match backend_type {
+                "electrum" => {
+                    if let Some(url) = backend_url {
+                        format!("electrum://{}", url)
+                    } else {
+                        return "Error: backend_url required for electrum".to_string();
+                    }
+                }
+                "esplora" => {
+                    if let Some(url) = backend_url {
+                        format!("esplora://{}", url)
+                    } else {
+                        return "Error: backend_url required for esplora".to_string();
+                    }
+                }
+                _ => {
+                    let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
+                    format!("bitcoind://{}", dir)
+                }
+            };
+
+            // Parse outputs into proper format for BDK
+            let mut parsed_outputs = Vec::new();
+            for output in outputs.split(',') {
+                let parts: Vec<&str> = output.trim().split(':').collect();
+                if parts.len() == 2 {
+                    let address = parts[0].to_string();
+                    match parts[1].parse::<f64>() {
+                        Ok(amount_btc) => {
+                            // Convert BTC to satoshis for Amount
+                            let amount_sats = (amount_btc * 100_000_000.0) as u64;
+                            let amount = bitcoin::Amount::from_sat(amount_sats);
+                            parsed_outputs.push((address, amount));
+                        }
+                        Err(e) => return format!("Invalid amount in output '{}': {}", output, e),
+                    }
+                } else {
+                    return format!("Invalid output format: '{}'. Expected 'address:amount'", output);
+                }
+            }
+
+            match cyberkrill_core::create_funded_psbt_bdk(
+                &parsed_outputs,
+                conf_target,
+                fee_rate_input.map(|r| r.as_sat() as f64 / 100.0),
+                &desc,
+                network,
+                &backend_url_str,
+            )
+            .await
+            {
+                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
+                Err(e) => format!("Error: {}", e),
+            }
+        } else {
+            // Bitcoin Core RPC path - not yet implemented in core
+            return "Error: create_funded_psbt requires a descriptor for now".to_string();
+        };
+
+        result
+    }
+
+    #[tool(description = "Consolidate/move UTXOs to a single destination")]
+    async fn move_utxos(
+        &self,
+        MoveUtxosRequest {
+            inputs,
+            destination,
+            fee_rate,
+            fee,
+            max_amount,
+            descriptor,
+            network,
+            backend,
+            backend_url,
+            bitcoin_dir,
+        }: MoveUtxosRequest,
+    ) -> String {
+        let network_str = network.as_deref().unwrap_or("mainnet");
+        let network = match network_str.to_lowercase().as_str() {
+            "mainnet" | "bitcoin" => cyberkrill_core::Network::Bitcoin,
+            "testnet" => cyberkrill_core::Network::Testnet,
+            "signet" => cyberkrill_core::Network::Signet,
+            "regtest" => cyberkrill_core::Network::Regtest,
+            _ => return format!("Invalid network: {}", network_str),
+        };
+
+        let backend_type = backend.as_deref().unwrap_or("bitcoind");
+        let fee_rate_input = if let Some(rate) = fee_rate {
+            match cyberkrill_core::AmountInput::from_btc(rate) {
+                Ok(amt) => Some(amt),
+                Err(e) => return format!("Invalid fee rate: {}", e),
+            }
+        } else {
+            None
+        };
+        let fee_input = fee.map(cyberkrill_core::AmountInput::from_sats);
+        let max_amount_input = if let Some(max_str) = max_amount {
+            match cyberkrill_core::AmountInput::from_str(&max_str) {
+                Ok(amt) => Some(amt),
+                Err(e) => return format!("Invalid max_amount: {}", e),
+            }
+        } else {
+            None
+        };
+
+        let result = if let Some(desc) = descriptor {
+            // BDK path
+            let backend_url_str = match backend_type {
+                "electrum" => {
+                    if let Some(url) = backend_url {
+                        format!("electrum://{}", url)
+                    } else {
+                        return "Error: backend_url required for electrum".to_string();
+                    }
+                }
+                "esplora" => {
+                    if let Some(url) = backend_url {
+                        format!("esplora://{}", url)
+                    } else {
+                        return "Error: backend_url required for esplora".to_string();
+                    }
+                }
+                _ => {
+                    let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
+                    format!("bitcoind://{}", dir)
+                }
+            };
+
+            match cyberkrill_core::move_utxos_bdk(
+                &inputs,
+                &destination,
+                fee_rate_input.map(|r| r.as_sat() as f64 / 100.0),
+                fee_input.map(|f| f.as_sat()),
+                max_amount_input.map(|amt| bitcoin::Amount::from_sat(amt.as_sat())),
+                &desc,
+                network,
+                &backend_url_str,
+            )
+            .await
+            {
+                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
+                Err(e) => format!("Error: {}", e),
+            }
+        } else {
+            // Bitcoin Core RPC path
+            let bitcoin_path = bitcoin_dir.map(|d| std::path::Path::new(&d).to_path_buf());
+            let client = match cyberkrill_core::BitcoinRpcClient::new_auto(
+                "http://127.0.0.1:8332".to_string(),
+                bitcoin_path.as_deref(),
+                None,
+                None,
+            ) {
+                Ok(c) => c,
+                Err(e) => return format!("Error creating client: {}", e),
+            };
+
+            match client
+                .move_utxos(&inputs, &destination, fee_rate_input, fee_input, max_amount_input)
+                .await
+            {
+                Ok(r) => serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
+                Err(e) => format!("Error: {}", e),
+            }
+        };
+
+        result
+    }
+
+    #[tool(description = "Generate DCA (Dollar Cost Averaging) report for UTXOs")]
+    async fn dca_report(
+        &self,
+        DcaReportRequest {
+            descriptor,
+            currency,
+            backend,
+            backend_url,
+            bitcoin_dir,
+            cache_dir,
+        }: DcaReportRequest,
+    ) -> String {
+        let currency_str = currency.as_deref().unwrap_or("USD");
+        let backend_type = backend.as_deref().unwrap_or("bitcoind");
+
+        let backend_enum = match backend_type {
+            "electrum" => {
+                if let Some(url) = backend_url {
+                    cyberkrill_core::Backend::Electrum { url }
+                } else {
+                    return "Error: backend_url required for electrum".to_string();
+                }
+            }
+            "esplora" => {
+                if let Some(url) = backend_url {
+                    cyberkrill_core::Backend::Esplora { url }
+                } else {
+                    return "Error: backend_url required for esplora".to_string();
+                }
+            }
+            _ => {
+                let dir = bitcoin_dir
+                    .as_deref()
+                    .unwrap_or("~/.bitcoin");
+                cyberkrill_core::Backend::BitcoinCore {
+                    bitcoin_dir: std::path::PathBuf::from(dir),
+                }
+            }
+        };
+
+        let cache_path = cache_dir.map(|d| std::path::Path::new(&d).to_path_buf());
+
+        match cyberkrill_core::generate_dca_report(
+            &descriptor,
+            backend_enum,
+            currency_str,
+            cache_path.as_deref(),
+        )
+        .await
+        {
+            Ok(report) => serde_json::to_string_pretty(&report).unwrap_or_else(|e| e.to_string()),
+            Err(e) => format!("Error generating DCA report: {}", e),
         }
     }
 }
