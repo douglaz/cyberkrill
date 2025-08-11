@@ -9,12 +9,11 @@ use serde_json::json;
 /// Helper function to start the MCP server and connect as a client
 async fn connect_to_server() -> Result<rmcp::service::RunningService<rmcp::RoleClient, ()>> {
     // Start our MCP server as a subprocess and connect to it using rmcp client
-    let transport = TokioChildProcess::new(
-        tokio::process::Command::new("cargo").configure(|cmd| {
-            cmd.args(&["run", "--quiet", "--", "mcp-server", "-t", "stdio"])
+    let transport =
+        TokioChildProcess::new(tokio::process::Command::new("cargo").configure(|cmd| {
+            cmd.args(["run", "--quiet", "--", "mcp-server", "-t", "stdio"])
                 .env("RUST_LOG", "error"); // Suppress logs for cleaner test output
-        })
-    )?;
+        }))?;
 
     let client = ().serve(transport).await?;
     Ok(client)
@@ -83,20 +82,25 @@ async fn test_decode_invoice_tool() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "decode_invoice".into(),
-            arguments: Some(json!({
-                "invoice": invoice
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "invoice": invoice
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 
     // Verify the response contains expected fields
     if let Some(content) = &result.content {
         assert!(!content.is_empty(), "Tool should return content");
-        
+
         // The result should contain text with the decoded invoice
         let content_text = content[0].as_text();
         assert!(content_text.is_some(), "Content should be text");
-        
+
         let decoded: serde_json::Value = serde_json::from_str(&content_text.unwrap().text)?;
         assert!(decoded.get("payment_hash").is_some());
         assert!(decoded.get("amount_msat").is_some());
@@ -119,9 +123,14 @@ async fn test_decode_lnurl_tool() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "decode_lnurl".into(),
-            arguments: Some(json!({
-                "lnurl": lnurl
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "lnurl": lnurl
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 
@@ -129,7 +138,7 @@ async fn test_decode_lnurl_tool() -> Result<()> {
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
         let decoded: serde_json::Value = serde_json::from_str(&content_text.text)?;
-        
+
         assert!(decoded.get("url").is_some());
         assert!(decoded.get("domain").is_some());
     }
@@ -148,9 +157,14 @@ async fn test_decode_fedimint_invite_tool() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "decode_fedimint_invite".into(),
-            arguments: Some(json!({
-                "invite_code": invite_code
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "invite_code": invite_code
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 
@@ -158,7 +172,7 @@ async fn test_decode_fedimint_invite_tool() -> Result<()> {
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
         let decoded: serde_json::Value = serde_json::from_str(&content_text.text)?;
-        
+
         assert!(decoded.get("federation_id").is_some());
         assert!(decoded.get("guardians").is_some());
     }
@@ -191,7 +205,7 @@ async fn test_encode_fedimint_invite_tool() -> Result<()> {
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
         let decoded: serde_json::Value = serde_json::from_str(&content_text.text)?;
-        
+
         assert!(decoded.get("invite_code").is_some());
         let invite_code = decoded["invite_code"].as_str().unwrap();
         assert!(invite_code.starts_with("fed1"));
@@ -211,9 +225,14 @@ async fn test_decode_psbt_tool() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "decode_psbt".into(),
-            arguments: Some(json!({
-                "psbt": psbt
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "psbt": psbt
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 
@@ -221,7 +240,7 @@ async fn test_decode_psbt_tool() -> Result<()> {
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
         let decoded: serde_json::Value = serde_json::from_str(&content_text.text)?;
-        
+
         assert!(decoded.get("version").is_some() || decoded.get("unsigned_tx").is_some());
     }
 
@@ -259,11 +278,16 @@ async fn test_create_psbt_tool_error_case() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "create_psbt".into(),
-            arguments: Some(json!({
-                "inputs": ["txid:0"],
-                "outputs": "bc1qtest:0.001",
-                "fee_rate": 10.0
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "inputs": ["txid:0"],
+                    "outputs": "bc1qtest:0.001",
+                    "fee_rate": 10.0
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 
@@ -284,11 +308,16 @@ async fn test_create_funded_psbt_tool_error_case() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "create_funded_psbt".into(),
-            arguments: Some(json!({
-                "outputs": "bc1qtest:0.001",
-                "fee_rate": 20.0,
-                "descriptor": "wpkh([fingerprint/84'/0'/0']xpub...)"
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "outputs": "bc1qtest:0.001",
+                    "fee_rate": 20.0,
+                    "descriptor": "wpkh([fingerprint/84'/0'/0']xpub...)"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 
@@ -309,11 +338,16 @@ async fn test_move_utxos_tool_error_case() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "move_utxos".into(),
-            arguments: Some(json!({
-                "inputs": ["txid:0"],
-                "destination": "bc1qtest",
-                "fee_rate": 10.0
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "inputs": ["txid:0"],
+                    "destination": "bc1qtest",
+                    "fee_rate": 10.0
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 
@@ -334,11 +368,16 @@ async fn test_generate_invoice_tool_error_case() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "generate_invoice".into(),
-            arguments: Some(json!({
-                "address": "test@example.com",
-                "amount_msats": 1000000,
-                "comment": "Test payment"
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "address": "test@example.com",
+                    "amount_msats": 1000000,
+                    "comment": "Test payment"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 
@@ -359,10 +398,15 @@ async fn test_dca_report_tool_error_case() -> Result<()> {
     let result = client
         .call_tool(CallToolRequestParam {
             name: "dca_report".into(),
-            arguments: Some(json!({
-                "descriptor": "wpkh([fingerprint/84'/0'/0']xpub...)",
-                "currency": "USD"
-            }).as_object().unwrap().clone()),
+            arguments: Some(
+                json!({
+                    "descriptor": "wpkh([fingerprint/84'/0'/0']xpub...)",
+                    "currency": "USD"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
         })
         .await?;
 

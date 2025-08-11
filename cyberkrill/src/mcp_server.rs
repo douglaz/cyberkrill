@@ -1,11 +1,15 @@
 use anyhow::Result;
 use rmcp::{
     handler::server::ServerHandler,
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    model::{
+        CallToolRequestParam, CallToolResult, Content, ListToolsResult, PaginatedRequestParam,
+        ServerCapabilities, ServerInfo, Tool,
+    },
     schemars,
-    service::ServiceExt,
-    tool, tool_router,
+    service::{RequestContext, ServiceExt},
+    tool,
     transport::stdio,
+    ErrorData as McpError, RoleServer,
 };
 use serde::Deserialize;
 use std::future::Future;
@@ -257,9 +261,9 @@ impl CyberkrillMcpServer {
     ) -> CallToolResult {
         match cyberkrill_core::decode_invoice(&invoice) {
             Ok(result) => CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
             )]),
-            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
         }
     }
 
@@ -270,9 +274,9 @@ impl CyberkrillMcpServer {
     ) -> CallToolResult {
         match cyberkrill_core::decode_lnurl(&lnurl) {
             Ok(result) => CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
             )]),
-            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
         }
     }
 
@@ -293,9 +297,9 @@ impl CyberkrillMcpServer {
         .await
         {
             Ok(result) => CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
             )]),
-            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
         }
     }
 
@@ -307,9 +311,9 @@ impl CyberkrillMcpServer {
     ) -> CallToolResult {
         match fedimint_lite::decode_invite(&invite_code) {
             Ok(result) => CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
             )]),
-            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
         }
     }
 
@@ -326,26 +330,28 @@ impl CyberkrillMcpServer {
         // We need to build the FedimintInviteOutput structure directly
         let guardians_info = guardians
             .into_iter()
-            .map(|g| {
-                fedimint_lite::GuardianInfo {
-                    peer_id: g.peer_id as u16,
-                    url: g.url,
-                }
+            .map(|g| fedimint_lite::GuardianInfo {
+                peer_id: g.peer_id as u16,
+                url: g.url,
             })
             .collect();
-        
+
         let invite = fedimint_lite::FedimintInviteOutput {
             federation_id,
             guardians: guardians_info,
-            api_secret: if skip_api_secret.unwrap_or(false) { None } else { api_secret },
+            api_secret: if skip_api_secret.unwrap_or(false) {
+                None
+            } else {
+                api_secret
+            },
             encoding_format: "bech32m".to_string(),
         };
-        
+
         match fedimint_lite::encode_fedimint_invite(&invite) {
             Ok(result) => CallToolResult::success(vec![Content::text(
-                serde_json::json!({ "invite_code": result }).to_string()
+                serde_json::json!({ "invite_code": result }).to_string(),
             )]),
-            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
         }
     }
 
@@ -368,7 +374,11 @@ impl CyberkrillMcpServer {
             "testnet" => cyberkrill_core::Network::Testnet,
             "signet" => cyberkrill_core::Network::Signet,
             "regtest" => cyberkrill_core::Network::Regtest,
-            _ => return CallToolResult::error(vec![Content::text(format!("Invalid network: {}", network_str))]),
+            _ => {
+                return CallToolResult::error(vec![Content::text(format!(
+                    "Invalid network: {network_str}"
+                ))])
+            }
         };
 
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
@@ -377,30 +387,55 @@ impl CyberkrillMcpServer {
             match backend_type {
                 "electrum" => {
                     if let Some(url) = backend_url {
-                        match cyberkrill_core::scan_and_list_utxos_electrum(&desc, network, &url, 200).await {
+                        match cyberkrill_core::scan_and_list_utxos_electrum(
+                            &desc, network, &url, 200,
+                        )
+                        .await
+                        {
                             Ok(r) => r,
-                            Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+                            Err(e) => {
+                                return CallToolResult::error(vec![Content::text(format!(
+                                    "Error: {e}"
+                                ))])
+                            }
                         }
                     } else {
-                        return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
+                        return CallToolResult::error(vec![Content::text(
+                            "Error: backend_url required for electrum".to_string(),
+                        )]);
                     }
                 }
                 "esplora" => {
                     if let Some(url) = backend_url {
-                        match cyberkrill_core::scan_and_list_utxos_esplora(&desc, network, &url, 200).await {
+                        match cyberkrill_core::scan_and_list_utxos_esplora(
+                            &desc, network, &url, 200,
+                        )
+                        .await
+                        {
                             Ok(r) => r,
-                            Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+                            Err(e) => {
+                                return CallToolResult::error(vec![Content::text(format!(
+                                    "Error: {e}"
+                                ))])
+                            }
                         }
                     } else {
-                        return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
+                        return CallToolResult::error(vec![Content::text(
+                            "Error: backend_url required for esplora".to_string(),
+                        )]);
                     }
                 }
                 _ => {
                     let dir = bitcoin_dir.as_deref().unwrap_or("~/.bitcoin");
                     let path = std::path::Path::new(dir);
-                    match cyberkrill_core::scan_and_list_utxos_bitcoind(&desc, network, path).await {
+                    match cyberkrill_core::scan_and_list_utxos_bitcoind(&desc, network, path).await
+                    {
                         Ok(r) => r,
-                        Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+                        Err(e) => {
+                            return CallToolResult::error(vec![Content::text(format!(
+                                "Error: {e}"
+                            ))])
+                        }
                     }
                 }
             }
@@ -413,54 +448,71 @@ impl CyberkrillMcpServer {
                 None,
             ) {
                 Ok(c) => c,
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error creating client: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Error creating client: {e}"
+                    ))])
+                }
             };
 
             let utxo_response = match client.list_utxos_for_addresses(addrs).await {
                 Ok(r) => r,
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
-            };
-            
-            // Convert UtxoListResponse to Vec<BdkUtxo> for compatibility
-            utxo_response.utxos.into_iter().map(|utxo| {
-                cyberkrill_core::BdkUtxo {
-                    txid: utxo.txid.clone(),
-                    vout: utxo.vout,
-                    address: utxo.address.clone().unwrap_or_default(),
-                    amount: utxo.amount_sats,
-                    amount_btc: utxo.amount_sats as f64 / 100_000_000.0,
-                    confirmations: utxo.confirmations,
-                    is_change: false,  // We don't know from the RPC response
-                    keychain: "External".to_string(),  // Default to external
-                    derivation_index: None,  // Not available from RPC
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!("Error: {e}"))])
                 }
-            }).collect()
+            };
+
+            // Convert UtxoListResponse to Vec<BdkUtxo> for compatibility
+            utxo_response
+                .utxos
+                .into_iter()
+                .map(|utxo| {
+                    cyberkrill_core::BdkUtxo {
+                        txid: utxo.txid.clone(),
+                        vout: utxo.vout,
+                        address: utxo.address.clone().unwrap_or_default(),
+                        amount: utxo.amount_sats,
+                        amount_btc: utxo.amount_sats as f64 / 100_000_000.0,
+                        confirmations: utxo.confirmations,
+                        is_change: false, // We don't know from the RPC response
+                        keychain: "External".to_string(), // Default to external
+                        derivation_index: None, // Not available from RPC
+                    }
+                })
+                .collect()
         } else {
-            return CallToolResult::error(vec![Content::text("Error: Either descriptor or addresses required".to_string())]);
+            return CallToolResult::error(vec![Content::text(
+                "Error: Either descriptor or addresses required".to_string(),
+            )]);
         };
 
         let summary = cyberkrill_core::get_utxo_summary(result);
         CallToolResult::success(vec![Content::text(
-            serde_json::to_string_pretty(&summary).unwrap_or_else(|e| e.to_string())
+            serde_json::to_string_pretty(&summary).unwrap_or_else(|e| e.to_string()),
         )])
     }
 
     #[tool(description = "Decode a PSBT (Partially Signed Bitcoin Transaction)")]
-    async fn decode_psbt(
-        &self,
-        DecodePsbtRequest { psbt }: DecodePsbtRequest,
-    ) -> CallToolResult {
+    async fn decode_psbt(&self, DecodePsbtRequest { psbt }: DecodePsbtRequest) -> CallToolResult {
         use base64::Engine;
 
         let psbt_bytes = if psbt.starts_with("cHNidP") {
             match base64::engine::general_purpose::STANDARD.decode(&psbt) {
                 Ok(b) => b,
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error decoding base64: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Error decoding base64: {e}"
+                    ))])
+                }
             }
         } else {
             match hex::decode(&psbt) {
                 Ok(b) => b,
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error decoding hex: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Error decoding hex: {e}"
+                    ))])
+                }
             }
         };
 
@@ -473,10 +525,12 @@ impl CyberkrillMcpServer {
                     "outputs": parsed_psbt.outputs.len(),
                 });
                 CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string())
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
                 )])
             }
-            Err(e) => CallToolResult::error(vec![Content::text(format!("Error parsing PSBT: {}", e))]),
+            Err(e) => {
+                CallToolResult::error(vec![Content::text(format!("Error parsing PSBT: {e}"))])
+            }
         }
     }
 
@@ -500,14 +554,22 @@ impl CyberkrillMcpServer {
             "testnet" => cyberkrill_core::Network::Testnet,
             "signet" => cyberkrill_core::Network::Signet,
             "regtest" => cyberkrill_core::Network::Regtest,
-            _ => return CallToolResult::error(vec![Content::text(format!("Invalid network: {}", network_str))]),
+            _ => {
+                return CallToolResult::error(vec![Content::text(format!(
+                    "Invalid network: {network_str}"
+                ))])
+            }
         };
 
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid fee rate: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Invalid fee rate: {e}"
+                    ))])
+                }
             }
         } else {
             None
@@ -518,21 +580,25 @@ impl CyberkrillMcpServer {
             let backend_url_str = match backend_type {
                 "electrum" => {
                     if let Some(url) = backend_url {
-                        format!("electrum://{}", url)
+                        format!("electrum://{url}")
                     } else {
-                        return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
+                        return CallToolResult::error(vec![Content::text(
+                            "Error: backend_url required for electrum".to_string(),
+                        )]);
                     }
                 }
                 "esplora" => {
                     if let Some(url) = backend_url {
-                        format!("esplora://{}", url)
+                        format!("esplora://{url}")
                     } else {
-                        return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
+                        return CallToolResult::error(vec![Content::text(
+                            "Error: backend_url required for esplora".to_string(),
+                        )]);
                     }
                 }
                 _ => {
                     let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
-                    format!("bitcoind://{}", dir)
+                    format!("bitcoind://{dir}")
                 }
             };
 
@@ -549,10 +615,16 @@ impl CyberkrillMcpServer {
                             let amount = bitcoin::Amount::from_sat(amount_sats);
                             parsed_outputs.push((address, amount));
                         }
-                        Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid amount in output '{}': {}", output, e))]),
+                        Err(e) => {
+                            return CallToolResult::error(vec![Content::text(format!(
+                                "Invalid amount in output '{output}': {e}"
+                            ))])
+                        }
                     }
                 } else {
-                    return CallToolResult::error(vec![Content::text(format!("Invalid output format: '{}'. Expected 'address:amount'", output))]);
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Invalid output format: '{output}'. Expected 'address:amount'"
+                    ))]);
                 }
             }
 
@@ -567,9 +639,9 @@ impl CyberkrillMcpServer {
             .await
             {
                 Ok(r) => CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
                 )]),
-                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
         } else {
             // Bitcoin Core RPC path
@@ -581,14 +653,18 @@ impl CyberkrillMcpServer {
                 None,
             ) {
                 Ok(c) => c,
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error creating client: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Error creating client: {e}"
+                    ))])
+                }
             };
 
             match client.create_psbt(&inputs, &outputs, fee_rate_input).await {
                 Ok(r) => CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
                 )]),
-                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
         };
 
@@ -600,15 +676,15 @@ impl CyberkrillMcpServer {
         &self,
         CreateFundedPsbtRequest {
             outputs,
-            inputs,
+            inputs: _,
             fee_rate,
             conf_target,
-            estimate_mode,
+            estimate_mode: _,
             descriptor,
             network,
             backend,
             backend_url,
-            bitcoin_dir,
+            bitcoin_dir: _,
         }: CreateFundedPsbtRequest,
     ) -> CallToolResult {
         let network_str = network.as_deref().unwrap_or("mainnet");
@@ -617,14 +693,22 @@ impl CyberkrillMcpServer {
             "testnet" => cyberkrill_core::Network::Testnet,
             "signet" => cyberkrill_core::Network::Signet,
             "regtest" => cyberkrill_core::Network::Regtest,
-            _ => return CallToolResult::error(vec![Content::text(format!("Invalid network: {}", network_str))]),
+            _ => {
+                return CallToolResult::error(vec![Content::text(format!(
+                    "Invalid network: {network_str}"
+                ))])
+            }
         };
 
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid fee rate: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Invalid fee rate: {e}"
+                    ))])
+                }
             }
         } else {
             None
@@ -635,21 +719,25 @@ impl CyberkrillMcpServer {
             let backend_url_str = match backend_type {
                 "electrum" => {
                     if let Some(url) = backend_url {
-                        format!("electrum://{}", url)
+                        format!("electrum://{url}")
                     } else {
-                        return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
+                        return CallToolResult::error(vec![Content::text(
+                            "Error: backend_url required for electrum".to_string(),
+                        )]);
                     }
                 }
                 "esplora" => {
                     if let Some(url) = backend_url {
-                        format!("esplora://{}", url)
+                        format!("esplora://{url}")
                     } else {
-                        return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
+                        return CallToolResult::error(vec![Content::text(
+                            "Error: backend_url required for esplora".to_string(),
+                        )]);
                     }
                 }
                 _ => {
                     let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
-                    format!("bitcoind://{}", dir)
+                    format!("bitcoind://{dir}")
                 }
             };
 
@@ -666,10 +754,16 @@ impl CyberkrillMcpServer {
                             let amount = bitcoin::Amount::from_sat(amount_sats);
                             parsed_outputs.push((address, amount));
                         }
-                        Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid amount in output '{}': {}", output, e))]),
+                        Err(e) => {
+                            return CallToolResult::error(vec![Content::text(format!(
+                                "Invalid amount in output '{output}': {e}"
+                            ))])
+                        }
                     }
                 } else {
-                    return CallToolResult::error(vec![Content::text(format!("Invalid output format: '{}'. Expected 'address:amount'", output))]);
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Invalid output format: '{output}'. Expected 'address:amount'"
+                    ))]);
                 }
             }
 
@@ -684,13 +778,15 @@ impl CyberkrillMcpServer {
             .await
             {
                 Ok(r) => CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
                 )]),
-                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
         } else {
             // Bitcoin Core RPC path - not yet implemented in core
-            return CallToolResult::error(vec![Content::text("Error: create_funded_psbt requires a descriptor for now".to_string())]);
+            return CallToolResult::error(vec![Content::text(
+                "Error: create_funded_psbt requires a descriptor for now".to_string(),
+            )]);
         };
 
         result
@@ -718,14 +814,22 @@ impl CyberkrillMcpServer {
             "testnet" => cyberkrill_core::Network::Testnet,
             "signet" => cyberkrill_core::Network::Signet,
             "regtest" => cyberkrill_core::Network::Regtest,
-            _ => return CallToolResult::error(vec![Content::text(format!("Invalid network: {}", network_str))]),
+            _ => {
+                return CallToolResult::error(vec![Content::text(format!(
+                    "Invalid network: {network_str}"
+                ))])
+            }
         };
 
         let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid fee rate: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Invalid fee rate: {e}"
+                    ))])
+                }
             }
         } else {
             None
@@ -734,7 +838,11 @@ impl CyberkrillMcpServer {
         let max_amount_input = if let Some(max_str) = max_amount {
             match cyberkrill_core::AmountInput::from_str(&max_str) {
                 Ok(amt) => Some(amt),
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Invalid max_amount: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Invalid max_amount: {e}"
+                    ))])
+                }
             }
         } else {
             None
@@ -745,21 +853,25 @@ impl CyberkrillMcpServer {
             let backend_url_str = match backend_type {
                 "electrum" => {
                     if let Some(url) = backend_url {
-                        format!("electrum://{}", url)
+                        format!("electrum://{url}")
                     } else {
-                        return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
+                        return CallToolResult::error(vec![Content::text(
+                            "Error: backend_url required for electrum".to_string(),
+                        )]);
                     }
                 }
                 "esplora" => {
                     if let Some(url) = backend_url {
-                        format!("esplora://{}", url)
+                        format!("esplora://{url}")
                     } else {
-                        return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
+                        return CallToolResult::error(vec![Content::text(
+                            "Error: backend_url required for esplora".to_string(),
+                        )]);
                     }
                 }
                 _ => {
                     let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
-                    format!("bitcoind://{}", dir)
+                    format!("bitcoind://{dir}")
                 }
             };
 
@@ -776,9 +888,9 @@ impl CyberkrillMcpServer {
             .await
             {
                 Ok(r) => CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
                 )]),
-                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
         } else {
             // Bitcoin Core RPC path
@@ -790,17 +902,27 @@ impl CyberkrillMcpServer {
                 None,
             ) {
                 Ok(c) => c,
-                Err(e) => return CallToolResult::error(vec![Content::text(format!("Error creating client: {}", e))]),
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Error creating client: {e}"
+                    ))])
+                }
             };
 
             match client
-                .move_utxos(&inputs, &destination, fee_rate_input, fee_input, max_amount_input)
+                .move_utxos(
+                    &inputs,
+                    &destination,
+                    fee_rate_input,
+                    fee_input,
+                    max_amount_input,
+                )
                 .await
             {
                 Ok(r) => CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string())
+                    serde_json::to_string_pretty(&r).unwrap_or_else(|e| e.to_string()),
                 )]),
-                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {}", e))]),
+                Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
         };
 
@@ -827,20 +949,22 @@ impl CyberkrillMcpServer {
                 if let Some(url) = backend_url {
                     cyberkrill_core::Backend::Electrum { url }
                 } else {
-                    return CallToolResult::error(vec![Content::text("Error: backend_url required for electrum".to_string())]);
+                    return CallToolResult::error(vec![Content::text(
+                        "Error: backend_url required for electrum".to_string(),
+                    )]);
                 }
             }
             "esplora" => {
                 if let Some(url) = backend_url {
                     cyberkrill_core::Backend::Esplora { url }
                 } else {
-                    return CallToolResult::error(vec![Content::text("Error: backend_url required for esplora".to_string())]);
+                    return CallToolResult::error(vec![Content::text(
+                        "Error: backend_url required for esplora".to_string(),
+                    )]);
                 }
             }
             _ => {
-                let dir = bitcoin_dir
-                    .as_deref()
-                    .unwrap_or("~/.bitcoin");
+                let dir = bitcoin_dir.as_deref().unwrap_or("~/.bitcoin");
                 cyberkrill_core::Backend::BitcoinCore {
                     bitcoin_dir: std::path::PathBuf::from(dir),
                 }
@@ -858,10 +982,23 @@ impl CyberkrillMcpServer {
         .await
         {
             Ok(report) => CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&report).unwrap_or_else(|e| e.to_string())
+                serde_json::to_string_pretty(&report).unwrap_or_else(|e| e.to_string()),
             )]),
-            Err(e) => CallToolResult::error(vec![Content::text(format!("Error generating DCA report: {}", e))]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!(
+                "Error generating DCA report: {e}"
+            ))]),
         }
+    }
+}
+
+// Helper function to create a Tool with proper types
+fn create_tool(name: &'static str, description: &'static str, schema: serde_json::Value) -> Tool {
+    Tool {
+        name: name.into(),
+        description: Some(description.into()),
+        input_schema: Arc::new(schema.as_object().unwrap().clone()),
+        output_schema: None,
+        annotations: None,
     }
 }
 
@@ -871,6 +1008,687 @@ impl ServerHandler for CyberkrillMcpServer {
         ServerInfo {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
+        }
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        let tools = vec![
+            create_tool(
+                "decode_invoice",
+                "Decode a BOLT11 Lightning Network invoice",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "invoice": {
+                            "type": "string",
+                            "description": "The BOLT11 invoice string to decode"
+                        }
+                    },
+                    "required": ["invoice"]
+                }),
+            ),
+            create_tool(
+                "decode_lnurl",
+                "Decode an LNURL string",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "lnurl": {
+                            "type": "string",
+                            "description": "The LNURL string to decode"
+                        }
+                    },
+                    "required": ["lnurl"]
+                }),
+            ),
+            create_tool(
+                "generate_invoice",
+                "Generate a Lightning invoice from a Lightning address",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "string",
+                            "description": "Lightning address (e.g., user@domain.com)"
+                        },
+                        "amount_msats": {
+                            "type": "integer",
+                            "description": "Amount in millisatoshis"
+                        },
+                        "comment": {
+                            "type": "string",
+                            "description": "Optional comment for the invoice"
+                        }
+                    },
+                    "required": ["address", "amount_msats"]
+                }),
+            ),
+            create_tool(
+                "decode_fedimint_invite",
+                "Decode a Fedimint federation invite code",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "invite_code": {
+                            "type": "string",
+                            "description": "The Fedimint invite code to decode"
+                        }
+                    },
+                    "required": ["invite_code"]
+                }),
+            ),
+            create_tool(
+                "encode_fedimint_invite",
+                "Encode a Fedimint federation invite code from JSON",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "federation_id": {
+                            "type": "string",
+                            "description": "The federation ID (hex string)"
+                        },
+                        "guardians": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "peer_id": { "type": "integer" },
+                                    "url": { "type": "string" }
+                                },
+                                "required": ["peer_id", "url"]
+                            },
+                            "description": "List of guardian nodes"
+                        },
+                        "api_secret": {
+                            "type": "string",
+                            "description": "Optional API secret"
+                        },
+                        "skip_api_secret": {
+                            "type": "boolean",
+                            "description": "Skip API secret for fedimint-cli compatibility"
+                        }
+                    },
+                    "required": ["federation_id", "guardians"]
+                }),
+            ),
+            create_tool(
+                "list_utxos",
+                "List Bitcoin UTXOs for addresses or descriptors",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "descriptor": {
+                            "type": "string",
+                            "description": "Output descriptor (e.g., wpkh(...))"
+                        },
+                        "addresses": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "List of Bitcoin addresses"
+                        },
+                        "network": {
+                            "type": "string",
+                            "description": "Bitcoin network (mainnet, testnet, signet, regtest)"
+                        },
+                        "backend": {
+                            "type": "string",
+                            "description": "Backend to use (bitcoind, electrum, esplora)"
+                        },
+                        "backend_url": {
+                            "type": "string",
+                            "description": "Backend URL (for electrum/esplora)"
+                        },
+                        "bitcoin_dir": {
+                            "type": "string",
+                            "description": "Bitcoin data directory (for bitcoind)"
+                        }
+                    }
+                }),
+            ),
+            create_tool(
+                "decode_psbt",
+                "Decode a PSBT (Partially Signed Bitcoin Transaction)",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "psbt": {
+                            "type": "string",
+                            "description": "PSBT in base64 or hex format"
+                        }
+                    },
+                    "required": ["psbt"]
+                }),
+            ),
+            create_tool(
+                "create_psbt",
+                "Create PSBT with manual input/output specification",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "inputs": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Input specifications (txid:vout format or descriptors)"
+                        },
+                        "outputs": {
+                            "type": "string",
+                            "description": "Output specifications (address:amount format, comma-separated)"
+                        },
+                        "fee_rate": {
+                            "type": "number",
+                            "description": "Fee rate in sat/vB"
+                        },
+                        "descriptor": {
+                            "type": "string",
+                            "description": "Output descriptor for BDK backends"
+                        },
+                        "network": {
+                            "type": "string",
+                            "description": "Bitcoin network (mainnet, testnet, signet, regtest)"
+                        },
+                        "backend": {
+                            "type": "string",
+                            "description": "Backend to use (bitcoind, electrum, esplora)"
+                        },
+                        "backend_url": {
+                            "type": "string",
+                            "description": "Backend URL (for electrum/esplora)"
+                        },
+                        "bitcoin_dir": {
+                            "type": "string",
+                            "description": "Bitcoin data directory (for bitcoind)"
+                        }
+                    },
+                    "required": ["inputs", "outputs"]
+                }),
+            ),
+            create_tool(
+                "create_funded_psbt",
+                "Create funded PSBT with automatic input selection",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "outputs": {
+                            "type": "string",
+                            "description": "Output specifications (address:amount format, comma-separated)"
+                        },
+                        "inputs": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Optional input specifications (txid:vout format or descriptors)"
+                        },
+                        "fee_rate": {
+                            "type": "number",
+                            "description": "Fee rate in sat/vB (overrides conf_target)"
+                        },
+                        "conf_target": {
+                            "type": "integer",
+                            "description": "Confirmation target in blocks"
+                        },
+                        "estimate_mode": {
+                            "type": "string",
+                            "description": "Fee estimation mode (ECONOMICAL or CONSERVATIVE)"
+                        },
+                        "descriptor": {
+                            "type": "string",
+                            "description": "Output descriptor for BDK backends"
+                        },
+                        "network": {
+                            "type": "string",
+                            "description": "Bitcoin network (mainnet, testnet, signet, regtest)"
+                        },
+                        "backend": {
+                            "type": "string",
+                            "description": "Backend to use (bitcoind, electrum, esplora)"
+                        },
+                        "backend_url": {
+                            "type": "string",
+                            "description": "Backend URL"
+                        },
+                        "bitcoin_dir": {
+                            "type": "string",
+                            "description": "Bitcoin data directory"
+                        }
+                    },
+                    "required": ["outputs"]
+                }),
+            ),
+            create_tool(
+                "move_utxos",
+                "Move/consolidate UTXOs to a destination address",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "inputs": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Input specifications (txid:vout format or descriptors)"
+                        },
+                        "destination": {
+                            "type": "string",
+                            "description": "Destination Bitcoin address"
+                        },
+                        "fee_rate": {
+                            "type": "number",
+                            "description": "Fee rate in sat/vB"
+                        },
+                        "fee": {
+                            "type": "integer",
+                            "description": "Absolute fee in satoshis"
+                        },
+                        "max_amount": {
+                            "type": "string",
+                            "description": "Maximum amount to move (e.g., '0.5btc' or '50000000sats')"
+                        },
+                        "descriptor": {
+                            "type": "string",
+                            "description": "Output descriptor for BDK backends"
+                        },
+                        "network": {
+                            "type": "string",
+                            "description": "Bitcoin network (mainnet, testnet, signet, regtest)"
+                        },
+                        "backend": {
+                            "type": "string",
+                            "description": "Backend to use (bitcoind, electrum, esplora)"
+                        },
+                        "backend_url": {
+                            "type": "string",
+                            "description": "Backend URL"
+                        },
+                        "bitcoin_dir": {
+                            "type": "string",
+                            "description": "Bitcoin data directory"
+                        }
+                    },
+                    "required": ["inputs", "destination"]
+                }),
+            ),
+            create_tool(
+                "dca_report",
+                "Generate Dollar Cost Averaging report for UTXOs",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "descriptor": {
+                            "type": "string",
+                            "description": "Output descriptor to analyze"
+                        },
+                        "currency": {
+                            "type": "string",
+                            "description": "Fiat currency for price data (USD, EUR, GBP)"
+                        },
+                        "backend": {
+                            "type": "string",
+                            "description": "Backend to use (bitcoind, electrum, esplora)"
+                        },
+                        "backend_url": {
+                            "type": "string",
+                            "description": "Backend URL"
+                        },
+                        "bitcoin_dir": {
+                            "type": "string",
+                            "description": "Bitcoin data directory (for bitcoind)"
+                        },
+                        "cache_dir": {
+                            "type": "string",
+                            "description": "Cache directory for price data"
+                        }
+                    },
+                    "required": ["descriptor"]
+                }),
+            ),
+        ];
+
+        Ok(ListToolsResult {
+            tools,
+            next_cursor: None,
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let args = request.arguments.unwrap_or_default();
+
+        match request.name.as_ref() {
+            "decode_invoice" => {
+                let invoice = args
+                    .get("invoice")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| McpError::invalid_request("invoice parameter required", None))?;
+                Ok(self
+                    .decode_invoice(DecodeInvoiceRequest {
+                        invoice: invoice.to_string(),
+                    })
+                    .await)
+            }
+            "decode_lnurl" => {
+                let lnurl = args
+                    .get("lnurl")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| McpError::invalid_request("lnurl parameter required", None))?;
+                Ok(self
+                    .decode_lnurl(DecodeLnurlRequest {
+                        lnurl: lnurl.to_string(),
+                    })
+                    .await)
+            }
+            "generate_invoice" => {
+                let address = args
+                    .get("address")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| McpError::invalid_request("address parameter required", None))?;
+                let amount_msats = args
+                    .get("amount_msats")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| {
+                        McpError::invalid_request("amount_msats parameter required", None)
+                    })?;
+                let comment = args
+                    .get("comment")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                Ok(self
+                    .generate_invoice(GenerateInvoiceRequest {
+                        address: address.to_string(),
+                        amount_msats,
+                        comment,
+                    })
+                    .await)
+            }
+            "decode_fedimint_invite" => {
+                let invite_code = args
+                    .get("invite_code")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        McpError::invalid_request("invite_code parameter required", None)
+                    })?;
+                Ok(self
+                    .decode_fedimint_invite(DecodeFedimintInviteRequest {
+                        invite_code: invite_code.to_string(),
+                    })
+                    .await)
+            }
+            "encode_fedimint_invite" => {
+                let federation_id = args
+                    .get("federation_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        McpError::invalid_request("federation_id parameter required", None)
+                    })?;
+                let guardians_json = args.get("guardians").ok_or_else(|| {
+                    McpError::invalid_request("guardians parameter required", None)
+                })?;
+                let guardians: Vec<Guardian> = serde_json::from_value(guardians_json.clone())
+                    .map_err(|e| {
+                        McpError::invalid_request(format!("Invalid guardians format: {e}"), None)
+                    })?;
+                let api_secret = args
+                    .get("api_secret")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let skip_api_secret = args.get("skip_api_secret").and_then(|v| v.as_bool());
+                Ok(self
+                    .encode_fedimint_invite(EncodeFedimintInviteRequest {
+                        federation_id: federation_id.to_string(),
+                        guardians,
+                        api_secret,
+                        skip_api_secret,
+                    })
+                    .await)
+            }
+            "list_utxos" => {
+                let descriptor = args
+                    .get("descriptor")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let addresses = args.get("addresses").and_then(|v| v.as_array()).map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                });
+                let network = args
+                    .get("network")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend = args
+                    .get("backend")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend_url = args
+                    .get("backend_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let bitcoin_dir = args
+                    .get("bitcoin_dir")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                Ok(self
+                    .list_utxos(ListUtxosRequest {
+                        descriptor,
+                        addresses,
+                        network,
+                        backend,
+                        backend_url,
+                        bitcoin_dir,
+                    })
+                    .await)
+            }
+            "decode_psbt" => {
+                let psbt = args
+                    .get("psbt")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| McpError::invalid_request("psbt parameter required", None))?;
+                Ok(self
+                    .decode_psbt(DecodePsbtRequest {
+                        psbt: psbt.to_string(),
+                    })
+                    .await)
+            }
+            "create_psbt" => {
+                let inputs_json = args
+                    .get("inputs")
+                    .ok_or_else(|| McpError::invalid_request("inputs parameter required", None))?;
+                let inputs: Vec<String> =
+                    serde_json::from_value(inputs_json.clone()).map_err(|e| {
+                        McpError::invalid_request(format!("Invalid inputs format: {e}"), None)
+                    })?;
+                let outputs = args
+                    .get("outputs")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| McpError::invalid_request("outputs parameter required", None))?;
+                let fee_rate = args.get("fee_rate").and_then(|v| v.as_f64());
+                let descriptor = args
+                    .get("descriptor")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let network = args
+                    .get("network")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend = args
+                    .get("backend")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend_url = args
+                    .get("backend_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let bitcoin_dir = args
+                    .get("bitcoin_dir")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                Ok(self
+                    .create_psbt(CreatePsbtRequest {
+                        inputs,
+                        outputs: outputs.to_string(),
+                        fee_rate,
+                        descriptor,
+                        network,
+                        backend,
+                        backend_url,
+                        bitcoin_dir,
+                    })
+                    .await)
+            }
+            "create_funded_psbt" => {
+                let outputs = args
+                    .get("outputs")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| McpError::invalid_request("outputs parameter required", None))?;
+                let inputs = args.get("inputs").and_then(|v| v.as_array()).map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                });
+                let fee_rate = args.get("fee_rate").and_then(|v| v.as_f64());
+                let conf_target = args
+                    .get("conf_target")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                let estimate_mode = args
+                    .get("estimate_mode")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let descriptor = args
+                    .get("descriptor")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let network = args
+                    .get("network")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend = args
+                    .get("backend")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend_url = args
+                    .get("backend_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let bitcoin_dir = args
+                    .get("bitcoin_dir")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                Ok(self
+                    .create_funded_psbt(CreateFundedPsbtRequest {
+                        outputs: outputs.to_string(),
+                        inputs,
+                        fee_rate,
+                        conf_target,
+                        estimate_mode,
+                        descriptor,
+                        network,
+                        backend,
+                        backend_url,
+                        bitcoin_dir,
+                    })
+                    .await)
+            }
+            "move_utxos" => {
+                let inputs_json = args
+                    .get("inputs")
+                    .ok_or_else(|| McpError::invalid_request("inputs parameter required", None))?;
+                let inputs: Vec<String> =
+                    serde_json::from_value(inputs_json.clone()).map_err(|e| {
+                        McpError::invalid_request(format!("Invalid inputs format: {e}"), None)
+                    })?;
+                let destination = args
+                    .get("destination")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        McpError::invalid_request("destination parameter required", None)
+                    })?;
+                let fee_rate = args.get("fee_rate").and_then(|v| v.as_f64());
+                let fee = args.get("fee").and_then(|v| v.as_u64());
+                let max_amount = args
+                    .get("max_amount")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let descriptor = args
+                    .get("descriptor")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let network = args
+                    .get("network")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend = args
+                    .get("backend")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend_url = args
+                    .get("backend_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let bitcoin_dir = args
+                    .get("bitcoin_dir")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                Ok(self
+                    .move_utxos(MoveUtxosRequest {
+                        inputs,
+                        destination: destination.to_string(),
+                        fee_rate,
+                        fee,
+                        max_amount,
+                        descriptor,
+                        network,
+                        backend,
+                        backend_url,
+                        bitcoin_dir,
+                    })
+                    .await)
+            }
+            "dca_report" => {
+                let descriptor =
+                    args.get("descriptor")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            McpError::invalid_request("descriptor parameter required", None)
+                        })?;
+                let currency = args
+                    .get("currency")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend = args
+                    .get("backend")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let backend_url = args
+                    .get("backend_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let bitcoin_dir = args
+                    .get("bitcoin_dir")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let cache_dir = args
+                    .get("cache_dir")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                Ok(self
+                    .dca_report(DcaReportRequest {
+                        descriptor: descriptor.to_string(),
+                        currency,
+                        backend,
+                        backend_url,
+                        bitcoin_dir,
+                        cache_dir,
+                    })
+                    .await)
+            }
+            _ => Err(McpError::invalid_request(
+                format!("Tool '{}' not found", request.name),
+                None,
+            )),
         }
     }
 }
