@@ -292,12 +292,11 @@ impl CyberkrillMcpServer {
             comment,
         }: GenerateInvoiceRequest,
     ) -> CallToolResult {
-        match cyberkrill_core::generate_invoice_from_address(
-            &address,
-            amount_msats,
-            comment.as_deref(),
-        )
-        .await
+        // Convert amount_msats to AmountInput
+        let amount = cyberkrill_core::AmountInput::from_millisats(amount_msats);
+
+        match cyberkrill_core::generate_invoice_from_address(&address, &amount, comment.as_deref())
+            .await
         {
             Ok(result) => CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string()),
