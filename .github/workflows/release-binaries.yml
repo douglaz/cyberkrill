@@ -46,13 +46,6 @@ jobs:
         mkdir -p artifacts/linux-x86_64
         cp target/x86_64-unknown-linux-musl/release/cyberkrill artifacts/linux-x86_64/cyberkrill
         chmod +x artifacts/linux-x86_64/cyberkrill
-        
-    - name: Build x86_64 Linux (minimal)
-      run: |
-        nix develop -c cargo build --release --no-default-features
-        mkdir -p artifacts/linux-x86_64-minimal
-        cp target/x86_64-unknown-linux-musl/release/cyberkrill artifacts/linux-x86_64-minimal/cyberkrill
-        chmod +x artifacts/linux-x86_64-minimal/cyberkrill
     
     - name: Create checksums
       run: |
@@ -237,7 +230,6 @@ jobs:
         
         #### Linux
         - \`cyberkrill-linux-x86_64.tar.gz\` - Static binary with all hardware wallet support (works on all Linux distros)
-        - \`cyberkrill-linux-x86_64-minimal.tar.gz\` - Static binary with core features only (smaller size)
         
         #### macOS
         - \`cyberkrill-macos-x86_64.tar.gz\` - Intel Mac binary
@@ -285,8 +277,7 @@ jobs:
         
         ### Features by Platform
         
-        - **Linux (full)**: All hardware wallets (Tapsigner, Satscard, Coldcard, Trezor, Jade)
-        - **Linux (minimal)**: Core functionality only
+        - **Linux**: All hardware wallets (Tapsigner, Satscard, Coldcard, Trezor, Jade)
         - **macOS/Windows**: Core functionality (Lightning, Bitcoin, Fedimint operations)
         
         ---

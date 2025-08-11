@@ -63,27 +63,42 @@ Commands are organized with logical prefixes for better clarity:
 
 ## Installation
 
-### Download Pre-built Binaries (Easiest)
+### Quick Install (Recommended)
 
-Download the latest pre-built binaries from the [releases page](https://github.com/douglaz/cyberkrill/releases/tag/latest-master).
+Use the bootstrap script for automatic installation and updates:
+
+```bash
+# Download and run directly
+curl -sSfL https://raw.githubusercontent.com/douglaz/cyberkrill/master/cyberkrill.sh | bash -s -- --help
+
+# Or download the script for repeated use
+curl -sSfL https://raw.githubusercontent.com/douglaz/cyberkrill/master/cyberkrill.sh -o cyberkrill
+chmod +x cyberkrill
+./cyberkrill --help
+```
+
+The bootstrap script will:
+- Detect your platform automatically (Linux, macOS, Windows)
+- Download the latest release if not installed
+- Auto-update when new versions are available
+
+### Manual Download
+
+Download pre-built binaries directly from the [releases page](https://github.com/douglaz/cyberkrill/releases/tag/latest-master).
 
 **Available Binaries:**
 
-| Platform | Variant | Features | Notes |
-|----------|---------|----------|-------|
-| Linux x86_64 | Standard | All hardware wallets | Static binary, works on all distros |
-| Linux x86_64 | Minimal | Core only | Smaller static binary |
-| macOS x86_64 | Minimal | Core | Intel Macs |
-| macOS ARM64 | Minimal | Core | Apple Silicon (M1/M2/M3) |
-| Windows x86_64 | Minimal | Core | 64-bit Windows |
+| Platform | Features | Notes |
+|----------|----------|-------|
+| Linux x86_64 | All hardware wallets | Static binary, works on all distros |
+| macOS x86_64 | Core | Intel Macs |
+| macOS ARM64 | Core | Apple Silicon (M1/M2/M3) |
+| Windows x86_64 | Core | 64-bit Windows |
 
-#### Linux
+#### Linux Manual Installation
 ```bash
-# Download the full-featured binary (all hardware wallets)
+# Download the binary with all hardware wallet support
 wget https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-linux-x86_64.tar.gz
-
-# Or download the minimal binary (core features only)
-wget https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-linux-x86_64-minimal.tar.gz
 
 # Extract and install
 tar xzf cyberkrill-linux-x86_64.tar.gz
@@ -94,7 +109,7 @@ sudo mv cyberkrill-linux-x86_64/cyberkrill /usr/local/bin/
 cyberkrill --help
 ```
 
-#### macOS
+#### macOS Manual Installation
 ```bash
 # Intel Mac
 curl -L https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-macos-x86_64.tar.gz | tar xz
@@ -107,7 +122,7 @@ chmod +x cyberkrill-macos-*/cyberkrill
 sudo mv cyberkrill-macos-*/cyberkrill /usr/local/bin/
 ```
 
-#### Windows
+#### Windows Manual Installation
 Download `cyberkrill-windows-x86_64.zip` from the [releases page](https://github.com/douglaz/cyberkrill/releases/tag/latest-master), extract, and add to your PATH.
 
 ### Using Nix
