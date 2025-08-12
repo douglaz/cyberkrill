@@ -16,7 +16,7 @@ struct McpRequest {
 
 /// MCP protocol response structure
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]  // These fields are part of the protocol but not all are used in tests
+#[allow(dead_code)] // These fields are part of the protocol but not all are used in tests
 struct McpResponse {
     jsonrpc: String,
     result: Option<Value>,
