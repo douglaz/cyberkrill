@@ -24,7 +24,10 @@ mod integration_tests {
             }
         };
 
-        let version = jade.get_version_info().await.expect("Failed to get version");
+        let version = jade
+            .get_version_info()
+            .await
+            .expect("Failed to get version");
         assert!(!version.jade_version.is_empty());
         println!("Jade version: {}", version.jade_version);
     }
@@ -70,7 +73,10 @@ mod integration_tests {
             .await
             .expect("Failed to unlock Jade");
 
-        let xpub = jade.get_xpub("m/84'/1'/0'").await.expect("Failed to get xpub");
+        let xpub = jade
+            .get_xpub("m/84'/1'/0'")
+            .await
+            .expect("Failed to get xpub");
 
         // Testnet xpubs start with "tpub"
         assert!(xpub.starts_with("tpub") || xpub.starts_with("vpub"));
