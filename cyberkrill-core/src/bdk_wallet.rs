@@ -64,7 +64,7 @@ pub fn list_utxos_bdk(descriptor: &str, network: Network) -> Result<Vec<BdkUtxo>
     let descriptors = expand_multipath_descriptor(descriptor);
     let mut all_utxos = Vec::new();
 
-    for desc in descriptors {
+    for desc in &descriptors {
         // Create a new in-memory wallet with only external descriptor
         match Wallet::create_single(desc.clone())
             .network(network)
@@ -132,13 +132,15 @@ pub async fn scan_and_list_utxos_electrum(
 
     let descriptors = expand_multipath_descriptor(descriptor);
     let mut all_utxos = Vec::new();
+    let mut all_failed = true;
+    let mut last_error = None;
 
     // Create Electrum client once for all descriptors
     let client = BdkElectrumClient::new(
         electrum_client::Client::new(electrum_url).context("Failed to create Electrum client")?,
     );
 
-    for desc in descriptors {
+    for desc in &descriptors {
         // Create wallet with only external descriptor
         let wallet_result = Wallet::create_single(desc.clone())
             .network(network)
@@ -148,6 +150,7 @@ pub async fn scan_and_list_utxos_electrum(
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
+                last_error = Some(e.to_string());
                 continue;
             }
         };
@@ -203,6 +206,7 @@ pub async fn scan_and_list_utxos_electrum(
                                 bdk_wallet::chain::ChainPosition::Unconfirmed { .. } => 0,
                             };
 
+                            all_failed = false; // At least one descriptor succeeded
                             all_utxos.push(BdkUtxo {
                                 txid: utxo.outpoint.txid.to_string(),
                                 vout: utxo.outpoint.vout,
@@ -223,7 +227,17 @@ pub async fn scan_and_list_utxos_electrum(
             }
             Err(e) => {
                 eprintln!("Warning: Failed to scan with Electrum for descriptor '{desc}': {e}");
+                last_error = Some(e.to_string());
             }
+        }
+    }
+
+    // If all descriptors failed, return an error
+    if all_failed && !descriptors.is_empty() {
+        if let Some(error) = last_error {
+            bail!("Failed to process descriptor: {}", error);
+        } else {
+            bail!("Failed to process descriptor");
         }
     }
 
@@ -320,11 +334,13 @@ pub async fn scan_and_list_utxos_esplora(
 
     let descriptors = expand_multipath_descriptor(descriptor);
     let mut all_utxos = Vec::new();
+    let mut all_failed = true;
+    let mut last_error = None;
 
     // Create Esplora client once for all descriptors
     let client = esplora_client::Builder::new(esplora_url).build_blocking();
 
-    for desc in descriptors {
+    for desc in &descriptors {
         // Create wallet with only external descriptor
         let wallet_result = Wallet::create_single(desc.clone())
             .network(network)
@@ -334,6 +350,7 @@ pub async fn scan_and_list_utxos_esplora(
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
+                last_error = Some(e.to_string());
                 continue;
             }
         };
@@ -389,6 +406,7 @@ pub async fn scan_and_list_utxos_esplora(
                                 bdk_wallet::chain::ChainPosition::Unconfirmed { .. } => 0,
                             };
 
+                            all_failed = false; // At least one descriptor succeeded
                             all_utxos.push(BdkUtxo {
                                 txid: utxo.outpoint.txid.to_string(),
                                 vout: utxo.outpoint.vout,
@@ -409,7 +427,17 @@ pub async fn scan_and_list_utxos_esplora(
             }
             Err(e) => {
                 eprintln!("Warning: Failed to scan with Esplora for descriptor '{desc}': {e}");
+                last_error = Some(e.to_string());
             }
+        }
+    }
+
+    // If all descriptors failed, return an error
+    if all_failed && !descriptors.is_empty() {
+        if let Some(error) = last_error {
+            bail!("Failed to process descriptor: {}", error);
+        } else {
+            bail!("Failed to process descriptor");
         }
     }
 

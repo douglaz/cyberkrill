@@ -278,7 +278,13 @@ async fn test_list_utxos_tool_error_case() -> Result<()> {
     // The result should contain an error message
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
-        assert!(content_text.text.contains("Error"));
+        assert!(
+            content_text.text.contains("Error"),
+            "Expected error message but got: {}",
+            content_text.text
+        );
+    } else {
+        panic!("Expected content but got none");
     }
 
     Ok(())
@@ -308,7 +314,13 @@ async fn test_create_psbt_tool_error_case() -> Result<()> {
     // Should return an error without real backend
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
-        assert!(content_text.text.contains("Error"));
+        assert!(
+            content_text.text.contains("Error"),
+            "Expected error message but got: {}",
+            content_text.text
+        );
+    } else {
+        panic!("Expected content but got none");
     }
 
     Ok(())
@@ -338,7 +350,13 @@ async fn test_create_funded_psbt_tool_error_case() -> Result<()> {
     // Should return an error without real backend
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
-        assert!(content_text.text.contains("Error"));
+        assert!(
+            content_text.text.contains("Error"),
+            "Expected error message but got: {}",
+            content_text.text
+        );
+    } else {
+        panic!("Expected content but got none");
     }
 
     Ok(())
@@ -368,7 +386,13 @@ async fn test_move_utxos_tool_error_case() -> Result<()> {
     // Should return an error without real backend
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
-        assert!(content_text.text.contains("Error"));
+        assert!(
+            content_text.text.contains("Error"),
+            "Expected error message but got: {}",
+            content_text.text
+        );
+    } else {
+        panic!("Expected content but got none");
     }
 
     Ok(())
@@ -427,7 +451,13 @@ async fn test_dca_report_tool_error_case() -> Result<()> {
     // Should return an error without real backend
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
-        assert!(content_text.text.contains("Error"));
+        assert!(
+            content_text.text.contains("Error"),
+            "Expected error message but got: {}",
+            content_text.text
+        );
+    } else {
+        panic!("Expected content but got none");
     }
 
     Ok(())
