@@ -102,15 +102,15 @@ async fn test_decode_invoice_tool() -> Result<()> {
         assert!(content_text.is_some(), "Content should be text");
 
         let text = &content_text.unwrap().text;
-        
+
         // Check if it's an error response
         if text.starts_with("Error:") {
             panic!("Tool returned error: {}", text);
         }
-        
+
         let decoded: serde_json::Value = serde_json::from_str(text)?;
         assert!(decoded.get("payment_hash").is_some());
-        assert!(decoded.get("amount_msats").is_some());  // Note: field is amount_msats not amount_msat
+        assert!(decoded.get("amount_msats").is_some()); // Note: field is amount_msats not amount_msat
         assert!(decoded.get("description").is_some());
     } else {
         panic!("No content in response");
@@ -145,16 +145,16 @@ async fn test_decode_lnurl_tool() -> Result<()> {
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
         let text = &content_text.text;
-        
+
         // Check if it's an error response
         if text.starts_with("Error:") {
             panic!("Tool returned error: {}", text);
         }
-        
+
         let decoded: serde_json::Value = serde_json::from_str(text)?;
 
         assert!(decoded.get("url").is_some());
-        assert!(decoded.get("host").is_some());  // Note: field is host not domain
+        assert!(decoded.get("host").is_some()); // Note: field is host not domain
     }
 
     Ok(())
