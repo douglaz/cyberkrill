@@ -24,7 +24,7 @@ mod integration_tests {
             }
         };
 
-        let version = jade.get_version_info().expect("Failed to get version");
+        let version = jade.get_version_info().await.expect("Failed to get version");
         assert!(!version.jade_version.is_empty());
         println!("Jade version: {}", version.jade_version);
     }
@@ -41,17 +41,19 @@ mod integration_tests {
 
         // Test with testnet to avoid mainnet operations
         jade.unlock(Network::Testnet)
+            .await
             .expect("Failed to unlock Jade");
 
         let address = jade
             .get_address("m/84'/1'/0'/0/0", Network::Testnet)
+            .await
             .expect("Failed to get address");
 
         // Testnet bech32 addresses start with "tb1"
         assert!(address.starts_with("tb1"));
         println!("Testnet address: {}", address);
 
-        jade.logout().expect("Failed to logout");
+        jade.logout().await.expect("Failed to logout");
     }
 
     #[tokio::test]
@@ -65,15 +67,16 @@ mod integration_tests {
         };
 
         jade.unlock(Network::Testnet)
+            .await
             .expect("Failed to unlock Jade");
 
-        let xpub = jade.get_xpub("m/84'/1'/0'").expect("Failed to get xpub");
+        let xpub = jade.get_xpub("m/84'/1'/0'").await.expect("Failed to get xpub");
 
         // Testnet xpubs start with "tpub"
         assert!(xpub.starts_with("tpub") || xpub.starts_with("vpub"));
         println!("xpub: {}", xpub);
 
-        jade.logout().expect("Failed to logout");
+        jade.logout().await.expect("Failed to logout");
     }
 }
 
