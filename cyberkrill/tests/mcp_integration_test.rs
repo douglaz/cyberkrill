@@ -211,8 +211,8 @@ fn test_mcp_server_starts_and_stops() -> Result<()> {
 fn test_decode_invoice_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
 
-    // Sample BOLT11 invoice
-    let invoice = "lnbc100n1p3g0jthpp5uypgqerzuah0ure0f9nauzqxul7zhrvgn6r0a072lqkgt5vy4dsdqqcqzpgxqyz5vqsp5k0tg68rk4ezgvaskyv2rwqe0pjeqve68mwfqr5c93qkc0u7z90q9qyyssqny4pdhqmqfhh7g5rl058qjzk6t3jqutegjhxqhtv0p7g8ex6czmgp026x6pnk9aw64kk65aqay09q8yddwmaf5cuvm0ngcm7kxdqpvgqyt8";
+    // Sample BOLT11 invoice (valid test invoice from cyberkrill-core tests)
+    let invoice = "lnbc99810310n1pju0sy7pp555srgtgcg6t4jr4j5v0jysgee4zy6nr4msylnycfjezxm5w6t3csdy9wdmkzupq95s8xcmjd9c8gw3qx5cnyvrrvymrwvnrxgmrzd3cxsckxdf4v3jxgcmzx9jxgenpxserjenyxv6nzwf3vsmnyctxvsuxvdehvdnrswryxgcnzdf5ve3rjvph8q6njcqzxgxq97zvuqrzjqgwf02g2gy0l9vgdc25wxt0z72wjlfyagxlmk54ag9hyvrdsw37smapyqqqqqqqq2qqqqqqqqqqqqqqq9qsp59ge5l9ndweyes4ntfrws3a3tshpkqt8eysuxnt5pmucy9hvxthmq9qyyssqaqwn0j2jf2xvcv42yl9p0yaw4t6gcqld2t44cmnfud49dxgl3dnpnjpj75kaf22yuynqtc8uzmtuckzxvfunxnr405gud8cexc5axqqphlk58z";
 
     let result = client.call_tool(
         "decode_invoice",
@@ -223,7 +223,7 @@ fn test_decode_invoice_tool() -> Result<()> {
 
     // Verify the response contains expected fields
     assert!(result.get("payment_hash").is_some());
-    assert!(result.get("amount_msat").is_some());
+    assert!(result.get("amount_msats").is_some());
     assert!(result.get("description").is_some());
 
     Ok(())
@@ -233,8 +233,8 @@ fn test_decode_invoice_tool() -> Result<()> {
 fn test_decode_lnurl_tool() -> Result<()> {
     let mut client = McpTestClient::new()?;
 
-    // Sample LNURL
-    let lnurl = "LNURL1DP68GURN8GHJ7UM9WFMXJCM99E3K7MF0V9CXJ0M385EKVCENXC6R2C35XVUKXEFCV5MKVV34X5EKZD3EV56NYD3HXQURZEPEXEJXXEPNXSCRVWFNV9NXZCN9XQ6XYEFHVGCXXCMYXYMNSERXFQ5FNS";
+    // Sample LNURL (valid test LNURL from cyberkrill-core tests)
+    let lnurl = "LNURL1DP68GURN8GHJ7UM9WFMXJCM99E5K7TELWY7NXENRXVMRGDTZXSENJCM98PJNWXQ96S9";
 
     let result = client.call_tool(
         "decode_lnurl",
@@ -245,7 +245,7 @@ fn test_decode_lnurl_tool() -> Result<()> {
 
     // Verify the response contains expected fields
     assert!(result.get("url").is_some());
-    assert!(result.get("domain").is_some());
+    assert!(result.get("host").is_some());
 
     Ok(())
 }
