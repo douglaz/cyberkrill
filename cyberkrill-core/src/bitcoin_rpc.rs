@@ -1787,10 +1787,7 @@ mod tests {
 
             assert!(
                 (amount_btc - expected_btc).abs() < 0.00000001,
-                "Failed for '{}': expected {} BTC, got {} BTC",
-                output_str,
-                expected_btc,
-                amount_btc
+                "Failed for '{output_str}': expected {expected_btc} BTC, got {amount_btc} BTC"
             );
         }
         Ok(())

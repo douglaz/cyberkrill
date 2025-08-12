@@ -105,7 +105,7 @@ async fn test_decode_invoice_tool() -> Result<()> {
 
         // Check if it's an error response
         if text.starts_with("Error:") {
-            panic!("Tool returned error: {}", text);
+            panic!("Tool returned error: {text}");
         }
 
         let decoded: serde_json::Value = serde_json::from_str(text)?;
@@ -148,7 +148,7 @@ async fn test_decode_lnurl_tool() -> Result<()> {
 
         // Check if it's an error response
         if text.starts_with("Error:") {
-            panic!("Tool returned error: {}", text);
+            panic!("Tool returned error: {text}");
         }
 
         let decoded: serde_json::Value = serde_json::from_str(text)?;

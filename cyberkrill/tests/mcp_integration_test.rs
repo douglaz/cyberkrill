@@ -37,7 +37,7 @@ impl McpTestClient {
     fn new() -> Result<Self> {
         // Set RUST_LOG to error to avoid info logs interfering with JSON parsing
         let mut process = Command::new("cargo")
-            .args(&["run", "--", "mcp-server", "-t", "stdio"])
+            .args(["run", "--", "mcp-server", "-t", "stdio"])
             .env("RUST_LOG", "error")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -81,7 +81,7 @@ impl McpTestClient {
 
         // Send request
         let request_str = serde_json::to_string(&request)?;
-        writeln!(self.stdin, "{}", request_str)?;
+        writeln!(self.stdin, "{request_str}")?;
         self.stdin.flush()?;
 
         // Read response
@@ -89,7 +89,7 @@ impl McpTestClient {
         self.stdout.read_line(&mut response_str)?;
 
         let response: McpResponse = serde_json::from_str(&response_str)
-            .with_context(|| format!("Failed to parse response: {}", response_str))?;
+            .with_context(|| format!("Failed to parse response: {response_str}"))?;
 
         Ok(response)
     }
@@ -105,7 +105,7 @@ impl McpTestClient {
 
         // Send notification
         let notification_str = serde_json::to_string(&notification)?;
-        writeln!(self.stdin, "{}", notification_str)?;
+        writeln!(self.stdin, "{notification_str}")?;
         self.stdin.flush()?;
 
         Ok(())
@@ -153,7 +153,7 @@ impl McpTestClient {
 
         if let Some(error) = response.error {
             // Return error as a string value for tests to check
-            return Ok(Value::String(format!("Error: {}", error)));
+            return Ok(Value::String(format!("Error: {error}")));
         }
 
         // Extract the content from the response
