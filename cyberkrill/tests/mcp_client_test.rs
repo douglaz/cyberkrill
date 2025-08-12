@@ -75,8 +75,8 @@ async fn test_list_all_tools() -> Result<()> {
 async fn test_decode_invoice_tool() -> Result<()> {
     let client = connect_to_server().await?;
 
-    // Sample BOLT11 invoice
-    let invoice = "lnbc100n1p3g0jthpp5uypgqerzuah0ure0f9nauzqxul7zhrvgn6r0a072lqkgt5vy4dsdqqcqzpgxqyz5vqsp5k0tg68rk4ezgvaskyv2rwqe0pjeqve68mwfqr5c93qkc0u7z90q9qyyssqny4pdhqmqfhh7g5rl058qjzk6t3jqutegjhxqhtv0p7g8ex6czmgp026x6pnk9aw64kk65aqay09q8yddwmaf5cuvm0ngcm7kxdqpvgqyt8";
+    // Sample BOLT11 invoice (valid test invoice from cyberkrill-core tests)
+    let invoice = "lnbc99810310n1pju0sy7pp555srgtgcg6t4jr4j5v0jysgee4zy6nr4msylnycfjezxm5w6t3csdy9wdmkzupq95s8xcmjd9c8gw3qx5cnyvrrvymrwvnrxgmrzd3cxsckxdf4v3jxgcmzx9jxgenpxserjenyxv6nzwf3vsmnyctxvsuxvdehvdnrswryxgcnzdf5ve3rjvph8q6njcqzxgxq97zvuqrzjqgwf02g2gy0l9vgdc25wxt0z72wjlfyagxlmk54ag9hyvrdsw37smapyqqqqqqqq2qqqqqqqqqqqqqqq9qsp59ge5l9ndweyes4ntfrws3a3tshpkqt8eysuxnt5pmucy9hvxthmq9qyyssqaqwn0j2jf2xvcv42yl9p0yaw4t6gcqld2t44cmnfud49dxgl3dnpnjpj75kaf22yuynqtc8uzmtuckzxvfunxnr405gud8cexc5axqqphlk58z";
 
     // Call the decode_invoice tool
     let result = client
@@ -101,9 +101,16 @@ async fn test_decode_invoice_tool() -> Result<()> {
         let content_text = content[0].as_text();
         assert!(content_text.is_some(), "Content should be text");
 
-        let decoded: serde_json::Value = serde_json::from_str(&content_text.unwrap().text)?;
+        let text = &content_text.unwrap().text;
+        
+        // Check if it's an error response
+        if text.starts_with("Error:") {
+            panic!("Tool returned error: {}", text);
+        }
+        
+        let decoded: serde_json::Value = serde_json::from_str(text)?;
         assert!(decoded.get("payment_hash").is_some());
-        assert!(decoded.get("amount_msat").is_some());
+        assert!(decoded.get("amount_msats").is_some());  // Note: field is amount_msats not amount_msat
         assert!(decoded.get("description").is_some());
     } else {
         panic!("No content in response");
@@ -116,8 +123,8 @@ async fn test_decode_invoice_tool() -> Result<()> {
 async fn test_decode_lnurl_tool() -> Result<()> {
     let client = connect_to_server().await?;
 
-    // Sample LNURL
-    let lnurl = "LNURL1DP68GURN8GHJ7UM9WFMXJCM99E3K7MF0V9CXJ0M385EKVCENXC6R2C35XVUKXEFCV5MKVV34X5EKZD3EV56NYD3HXQURZEPEXEJXXEPNXSCRVWFNV9NXZCN9XQ6XYEFHVGCXXCMYXYMNSERXFQ5FNS";
+    // Sample LNURL (valid test LNURL from cyberkrill-core tests)
+    let lnurl = "LNURL1DP68GURN8GHJ7UM9WFMXJCM99E5K7TELWY7NXENRXVMRGDTZXSENJCM98PJNWXQ96S9";
 
     // Call the decode_lnurl tool
     let result = client
@@ -137,10 +144,17 @@ async fn test_decode_lnurl_tool() -> Result<()> {
     // Verify the response
     if let Some(content) = &result.content {
         let content_text = content[0].as_text().unwrap();
-        let decoded: serde_json::Value = serde_json::from_str(&content_text.text)?;
+        let text = &content_text.text;
+        
+        // Check if it's an error response
+        if text.starts_with("Error:") {
+            panic!("Tool returned error: {}", text);
+        }
+        
+        let decoded: serde_json::Value = serde_json::from_str(text)?;
 
         assert!(decoded.get("url").is_some());
-        assert!(decoded.get("domain").is_some());
+        assert!(decoded.get("host").is_some());  // Note: field is host not domain
     }
 
     Ok(())
