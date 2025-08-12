@@ -139,6 +139,44 @@ impl McpTestClient {
         // Simple check - if we got here, the server is initialized
         true
     }
+
+    /// Call a tool and return the result
+    fn call_tool(&mut self, tool_name: &str, arguments: Value) -> Result<Value> {
+        let response = self.send_request(
+            "tools/call",
+            json!({
+                "name": tool_name,
+                "arguments": arguments
+            }),
+        )?;
+
+        if let Some(error) = response.error {
+            // Return error as a string value for tests to check
+            return Ok(Value::String(format!("Error: {}", error)));
+        }
+
+        // Extract the content from the response
+        if let Some(result) = response.result {
+            // The result should have a "content" field with an array of content items
+            if let Some(content_array) = result.get("content").and_then(|c| c.as_array()) {
+                if let Some(first_content) = content_array.first() {
+                    // Each content item has a "text" field with the actual response
+                    if let Some(text) = first_content.get("text").and_then(|t| t.as_str()) {
+                        // Try to parse the text as JSON, or return as string
+                        if let Ok(parsed) = serde_json::from_str::<Value>(text) {
+                            return Ok(parsed);
+                        } else {
+                            return Ok(Value::String(text.to_string()));
+                        }
+                    }
+                }
+            }
+            // If we can't extract content properly, return the raw result
+            Ok(result)
+        } else {
+            bail!("No result in response")
+        }
+    }
 }
 
 impl Drop for McpTestClient {
