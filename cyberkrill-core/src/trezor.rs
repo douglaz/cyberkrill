@@ -3,6 +3,7 @@ use bitcoin::bip32::{ChildNumber, DerivationPath, Xpub};
 use bitcoin::Network;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use tracing::warn;
 use trezor_client::client::common::handle_interaction;
 use trezor_client::protos;
 use trezor_client::{InputScriptType, Trezor as TrezorClient};
@@ -96,7 +97,7 @@ impl TrezorWallet {
             ),
             Err(e) => {
                 // Log the error for debugging but don't fail
-                eprintln!("Warning: Could not extract xpub: {e}");
+                warn!("Could not extract xpub: {e}");
                 (None, String::new())
             }
         };

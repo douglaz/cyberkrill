@@ -901,6 +901,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
  "trezor-client",
  "url",
 ]
@@ -1150,6 +1151,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-test",
+ "tracing",
 ]
 
 [[package]]

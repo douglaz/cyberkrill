@@ -5,6 +5,7 @@ use bitcoin::{Amount, FeeRate, Network, OutPoint, Txid};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::str::FromStr;
+use tracing::warn;
 
 /// UTXO information returned by BDK wallet
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,7 +111,7 @@ pub fn list_utxos_bdk(descriptor: &str, network: Network) -> Result<Vec<BdkUtxo>
             }
             Err(e) => {
                 // If this descriptor fails, log it but continue with others
-                eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
+                warn!("Failed to create wallet for descriptor '{desc}': {e}");
             }
         }
     }
@@ -149,9 +150,9 @@ pub async fn scan_and_list_utxos_electrum(
         let request = wallet
             .start_full_scan()
             .inspect({
-                move |keychain, spk_i, _| {
+                move |_keychain, _spk_i, _| {
                     // Progress output to stderr to keep stdout clean for JSON
-                    eprint!("\rScanning {keychain:?} {spk_i}...");
+                    // Progress indicator removed - use tracing instead
                 }
             })
             .build();
@@ -210,7 +211,7 @@ pub async fn scan_and_list_utxos_electrum(
                     });
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to derive address from script: {e}");
+                    warn!("Failed to derive address from script: {e}");
                 }
             }
         }
@@ -324,9 +325,9 @@ pub async fn scan_and_list_utxos_esplora(
         let request = wallet
             .start_full_scan()
             .inspect({
-                move |keychain, spk_i, _| {
+                move |_keychain, _spk_i, _| {
                     // Progress output to stderr to keep stdout clean for JSON
-                    eprint!("\rScanning {keychain:?} {spk_i}...");
+                    // Progress indicator removed - use tracing instead
                 }
             })
             .build();
@@ -385,7 +386,7 @@ pub async fn scan_and_list_utxos_esplora(
                     });
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to derive address from script: {e}");
+                    warn!("Failed to derive address from script: {e}");
                 }
             }
         }

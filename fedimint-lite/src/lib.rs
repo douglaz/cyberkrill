@@ -26,6 +26,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::{debug, warn};
 
 // Re-export main functions with simpler names
 pub use crate::{
@@ -88,7 +89,7 @@ fn decode_invite_bytes(bytes: &[u8], encoding_format: &str) -> Result<FedimintIn
     match parse_consensus_encoding(bytes, encoding_format) {
         Ok(result) => Ok(result),
         Err(e) => {
-            eprintln!("Consensus parsing failed: {e}, falling back to simple parser");
+            debug!("Consensus parsing failed: {e}, falling back to simple parser");
             parse_as_simple_format(bytes, encoding_format)
         }
     }
@@ -190,7 +191,7 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
             _ => {
                 // Unknown variant - we need to skip it properly
                 // Since we don't know the structure, this is tricky
-                eprintln!("Warning: Unknown variant {variant} at position {pos}, stopping parsing");
+                warn!("Unknown variant {variant} at position {pos}, stopping parsing");
                 break;
             }
         }
@@ -359,7 +360,7 @@ fn encode_invite_to_bytes(invite: &FedimintInviteOutput) -> Result<Vec<u8>> {
     // Write API secret part (variant 2) - Only if fedimint-cli compatibility is not required
     if let Some(api_secret) = &invite.api_secret {
         // Note: API secrets may not be compatible with older fedimint-cli versions
-        eprintln!("Warning: API secret in invite code may not be compatible with all fedimint-cli versions");
+        warn!("API secret in invite code may not be compatible with all fedimint-cli versions");
 
         // Variant 2 (ApiSecret)
         bytes.extend_from_slice(&write_varint(2));
@@ -486,7 +487,7 @@ pub async fn fetch_fedimint_config(invite_code: &str) -> Result<FederationConfig
                 return parse_federation_config(config, &invite);
             }
             Err(e) => {
-                eprintln!("Failed to fetch config from {}: {e}", guardian.url);
+                debug!("Failed to fetch config from {}: {e}", guardian.url);
                 last_error = Some(e);
                 continue;
             }
@@ -559,7 +560,7 @@ fn validate_federation_id(config: &serde_json::Value, expected_federation_id: &s
     } else {
         // If federation_id is not directly in config, we trust the invite code for now
         // A full implementation would calculate the hash of api_endpoints
-        eprintln!("Warning: Could not verify federation ID from config");
+        warn!("Could not verify federation ID from config");
     }
 
     Ok(())
