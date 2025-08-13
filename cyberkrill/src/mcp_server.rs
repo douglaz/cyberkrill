@@ -13,6 +13,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -32,6 +33,14 @@ pub struct McpServerConfig {
 pub enum Transport {
     Stdio,
     Sse,
+}
+
+/// Bitcoin backend configuration
+#[derive(Debug, Clone)]
+enum BitcoinBackend {
+    Bitcoind { dir: String },
+    Electrum { url: String },
+    Esplora { url: String },
 }
 
 impl Default for McpServerConfig {
@@ -256,6 +265,66 @@ impl CyberkrillMcpServer {
 
 // Implement the tool methods
 impl CyberkrillMcpServer {
+    // Helper method for backend selection with fallback
+    fn select_backend(
+        backend: Option<&str>,
+        backend_url: Option<String>,
+        bitcoin_dir: Option<String>,
+        network: cyberkrill_core::Network,
+    ) -> Result<BitcoinBackend, String> {
+        match backend {
+            Some("electrum") => backend_url
+                .map(|url| BitcoinBackend::Electrum { url })
+                .ok_or_else(|| "backend_url required for electrum".to_string()),
+            Some("esplora") => backend_url
+                .map(|url| BitcoinBackend::Esplora { url })
+                .ok_or_else(|| "backend_url required for esplora".to_string()),
+            Some("bitcoind") => Ok(BitcoinBackend::Bitcoind {
+                dir: bitcoin_dir.unwrap_or_else(|| "~/.bitcoin".to_string()),
+            }),
+            None => {
+                // No backend specified - try bitcoind first, then fallback
+                let dir = bitcoin_dir.unwrap_or_else(|| {
+                    // Expand ~ to home directory
+                    if let Ok(home) = std::env::var("HOME") {
+                        format!("{home}/.bitcoin")
+                    } else {
+                        "~/.bitcoin".to_string()
+                    }
+                });
+
+                // Quick check if bitcoind is available (check if cookie file exists)
+                let cookie_path = Path::new(&dir).join(".cookie");
+                if cookie_path.exists() {
+                    Ok(BitcoinBackend::Bitcoind { dir })
+                } else {
+                    // Fallback to public service based on network
+                    match network {
+                        cyberkrill_core::Network::Bitcoin => Ok(BitcoinBackend::Esplora {
+                            url: "https://blockstream.info/api".to_string(),
+                        }),
+                        cyberkrill_core::Network::Testnet => Ok(BitcoinBackend::Esplora {
+                            url: "https://blockstream.info/testnet/api".to_string(),
+                        }),
+                        cyberkrill_core::Network::Signet => Ok(BitcoinBackend::Esplora {
+                            url: "https://mutinynet.com/api".to_string(),
+                        }),
+                        cyberkrill_core::Network::Regtest => {
+                            // For regtest, still try bitcoind even if cookie doesn't exist
+                            // as it might be configured differently
+                            Ok(BitcoinBackend::Bitcoind { dir })
+                        }
+                        _ => {
+                            // For any future/unknown networks, try local bitcoind
+                            Ok(BitcoinBackend::Bitcoind { dir })
+                        }
+                    }
+                }
+            }
+            Some(other) => Err(format!("Unknown backend: {other}")),
+        }
+    }
+
     // Lightning Network tools
     #[tool(description = "Decode a BOLT11 Lightning Network invoice")]
     async fn decode_invoice(
@@ -383,54 +452,47 @@ impl CyberkrillMcpServer {
             }
         };
 
-        let backend_type = backend.as_deref().unwrap_or("bitcoind");
-
         let result = if let Some(desc) = descriptor {
-            match backend_type {
-                "electrum" => {
-                    if let Some(url) = backend_url {
-                        match cyberkrill_core::scan_and_list_utxos_electrum(
-                            &desc, network, &url, 200,
-                        )
-                        .await
-                        {
-                            Ok(r) => r,
-                            Err(e) => {
-                                return CallToolResult::error(vec![Content::text(format!(
-                                    "Error: {e}"
-                                ))])
-                            }
-                        }
-                    } else {
-                        return CallToolResult::error(vec![Content::text(
-                            "Error: backend_url required for electrum".to_string(),
-                        )]);
-                    }
-                }
-                "esplora" => {
-                    if let Some(url) = backend_url {
-                        match cyberkrill_core::scan_and_list_utxos_esplora(
-                            &desc, network, &url, 200,
-                        )
-                        .await
-                        {
-                            Ok(r) => r,
-                            Err(e) => {
-                                return CallToolResult::error(vec![Content::text(format!(
-                                    "Error: {e}"
-                                ))])
-                            }
-                        }
-                    } else {
-                        return CallToolResult::error(vec![Content::text(
-                            "Error: backend_url required for esplora".to_string(),
-                        )]);
-                    }
-                }
-                _ => {
-                    let dir = bitcoin_dir.as_deref().unwrap_or("~/.bitcoin");
-                    let path = std::path::Path::new(dir);
+            // Select backend with fallback
+            let backend_config = match Self::select_backend(
+                backend.as_deref(),
+                backend_url,
+                bitcoin_dir.clone(),
+                network,
+            ) {
+                Ok(b) => b,
+                Err(e) => return CallToolResult::error(vec![Content::text(e)]),
+            };
+
+            // Execute with selected backend
+            match backend_config {
+                BitcoinBackend::Bitcoind { dir } => {
+                    let path = Path::new(&dir);
                     match cyberkrill_core::scan_and_list_utxos_bitcoind(&desc, network, path).await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            return CallToolResult::error(vec![Content::text(format!(
+                                "Error: {e}"
+                            ))])
+                        }
+                    }
+                }
+                BitcoinBackend::Electrum { url } => {
+                    match cyberkrill_core::scan_and_list_utxos_electrum(&desc, network, &url, 200)
+                        .await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            return CallToolResult::error(vec![Content::text(format!(
+                                "Error: {e}"
+                            ))])
+                        }
+                    }
+                }
+                BitcoinBackend::Esplora { url } => {
+                    match cyberkrill_core::scan_and_list_utxos_esplora(&desc, network, &url, 200)
+                        .await
                     {
                         Ok(r) => r,
                         Err(e) => {
@@ -561,7 +623,6 @@ impl CyberkrillMcpServer {
             }
         };
 
-        let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
@@ -576,30 +637,22 @@ impl CyberkrillMcpServer {
         };
 
         let result = if let Some(desc) = descriptor {
-            // BDK path
-            let backend_url_str = match backend_type {
-                "electrum" => {
-                    if let Some(url) = backend_url {
-                        format!("electrum://{url}")
-                    } else {
-                        return CallToolResult::error(vec![Content::text(
-                            "Error: backend_url required for electrum".to_string(),
-                        )]);
-                    }
-                }
-                "esplora" => {
-                    if let Some(url) = backend_url {
-                        format!("esplora://{url}")
-                    } else {
-                        return CallToolResult::error(vec![Content::text(
-                            "Error: backend_url required for esplora".to_string(),
-                        )]);
-                    }
-                }
-                _ => {
-                    let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
-                    format!("bitcoind://{dir}")
-                }
+            // BDK path - select backend with fallback
+            let backend_config = match Self::select_backend(
+                backend.as_deref(),
+                backend_url.clone(),
+                bitcoin_dir.clone(),
+                network,
+            ) {
+                Ok(b) => b,
+                Err(e) => return CallToolResult::error(vec![Content::text(e)]),
+            };
+
+            // Convert backend config to BDK URL format
+            let backend_url_str = match backend_config {
+                BitcoinBackend::Bitcoind { dir } => format!("bitcoind://{dir}"),
+                BitcoinBackend::Electrum { url } => format!("electrum://{url}"),
+                BitcoinBackend::Esplora { url } => format!("esplora://{url}"),
             };
 
             // Parse outputs into proper format for BDK
@@ -700,7 +753,6 @@ impl CyberkrillMcpServer {
             }
         };
 
-        let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
@@ -715,30 +767,22 @@ impl CyberkrillMcpServer {
         };
 
         let result = if let Some(desc) = descriptor {
-            // BDK path
-            let backend_url_str = match backend_type {
-                "electrum" => {
-                    if let Some(url) = backend_url {
-                        format!("electrum://{url}")
-                    } else {
-                        return CallToolResult::error(vec![Content::text(
-                            "Error: backend_url required for electrum".to_string(),
-                        )]);
-                    }
-                }
-                "esplora" => {
-                    if let Some(url) = backend_url {
-                        format!("esplora://{url}")
-                    } else {
-                        return CallToolResult::error(vec![Content::text(
-                            "Error: backend_url required for esplora".to_string(),
-                        )]);
-                    }
-                }
-                _ => {
-                    let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
-                    format!("bitcoind://{dir}")
-                }
+            // BDK path - select backend with fallback
+            let backend_config = match Self::select_backend(
+                backend.as_deref(),
+                backend_url.clone(),
+                bitcoin_dir.clone(),
+                network,
+            ) {
+                Ok(b) => b,
+                Err(e) => return CallToolResult::error(vec![Content::text(e)]),
+            };
+
+            // Convert backend config to BDK URL format
+            let backend_url_str = match backend_config {
+                BitcoinBackend::Bitcoind { dir } => format!("bitcoind://{dir}"),
+                BitcoinBackend::Electrum { url } => format!("electrum://{url}"),
+                BitcoinBackend::Esplora { url } => format!("esplora://{url}"),
             };
 
             // Parse outputs into proper format for BDK
@@ -867,7 +911,6 @@ impl CyberkrillMcpServer {
             }
         };
 
-        let backend_type = backend.as_deref().unwrap_or("bitcoind");
         let fee_rate_input = if let Some(rate) = fee_rate {
             match cyberkrill_core::AmountInput::from_btc(rate) {
                 Ok(amt) => Some(amt),
@@ -895,30 +938,22 @@ impl CyberkrillMcpServer {
         };
 
         let result = if let Some(desc) = descriptor {
-            // BDK path
-            let backend_url_str = match backend_type {
-                "electrum" => {
-                    if let Some(url) = backend_url {
-                        format!("electrum://{url}")
-                    } else {
-                        return CallToolResult::error(vec![Content::text(
-                            "Error: backend_url required for electrum".to_string(),
-                        )]);
-                    }
-                }
-                "esplora" => {
-                    if let Some(url) = backend_url {
-                        format!("esplora://{url}")
-                    } else {
-                        return CallToolResult::error(vec![Content::text(
-                            "Error: backend_url required for esplora".to_string(),
-                        )]);
-                    }
-                }
-                _ => {
-                    let dir = backend_url.as_deref().unwrap_or("~/.bitcoin");
-                    format!("bitcoind://{dir}")
-                }
+            // BDK path - select backend with fallback
+            let backend_config = match Self::select_backend(
+                backend.as_deref(),
+                backend_url.clone(),
+                bitcoin_dir.clone(),
+                network,
+            ) {
+                Ok(b) => b,
+                Err(e) => return CallToolResult::error(vec![Content::text(e)]),
+            };
+
+            // Convert backend config to BDK URL format
+            let backend_url_str = match backend_config {
+                BitcoinBackend::Bitcoind { dir } => format!("bitcoind://{dir}"),
+                BitcoinBackend::Electrum { url } => format!("electrum://{url}"),
+                BitcoinBackend::Esplora { url } => format!("esplora://{url}"),
             };
 
             match cyberkrill_core::move_utxos_bdk(
@@ -988,33 +1023,25 @@ impl CyberkrillMcpServer {
         }: DcaReportRequest,
     ) -> CallToolResult {
         let currency_str = currency.as_deref().unwrap_or("USD");
-        let backend_type = backend.as_deref().unwrap_or("bitcoind");
 
-        let backend_enum = match backend_type {
-            "electrum" => {
-                if let Some(url) = backend_url {
-                    cyberkrill_core::Backend::Electrum { url }
-                } else {
-                    return CallToolResult::error(vec![Content::text(
-                        "Error: backend_url required for electrum".to_string(),
-                    )]);
-                }
-            }
-            "esplora" => {
-                if let Some(url) = backend_url {
-                    cyberkrill_core::Backend::Esplora { url }
-                } else {
-                    return CallToolResult::error(vec![Content::text(
-                        "Error: backend_url required for esplora".to_string(),
-                    )]);
-                }
-            }
-            _ => {
-                let dir = bitcoin_dir.as_deref().unwrap_or("~/.bitcoin");
-                cyberkrill_core::Backend::BitcoinCore {
-                    bitcoin_dir: std::path::PathBuf::from(dir),
-                }
-            }
+        // For DCA report, we need to determine network from descriptor
+        // This is a simplified approach - in production you might want to parse the descriptor properly
+        let network = cyberkrill_core::Network::Bitcoin; // Default to mainnet for DCA reports
+
+        // Select backend with fallback
+        let backend_config =
+            match Self::select_backend(backend.as_deref(), backend_url, bitcoin_dir, network) {
+                Ok(b) => b,
+                Err(e) => return CallToolResult::error(vec![Content::text(e)]),
+            };
+
+        // Convert our backend config to cyberkrill_core's Backend enum
+        let backend_enum = match backend_config {
+            BitcoinBackend::Bitcoind { dir } => cyberkrill_core::Backend::BitcoinCore {
+                bitcoin_dir: PathBuf::from(dir),
+            },
+            BitcoinBackend::Electrum { url } => cyberkrill_core::Backend::Electrum { url },
+            BitcoinBackend::Esplora { url } => cyberkrill_core::Backend::Esplora { url },
         };
 
         let cache_path = cache_dir.map(|d| std::path::Path::new(&d).to_path_buf());

@@ -64,7 +64,7 @@ pub fn list_utxos_bdk(descriptor: &str, network: Network) -> Result<Vec<BdkUtxo>
     let descriptors = expand_multipath_descriptor(descriptor);
     let mut all_utxos = Vec::new();
 
-    for desc in descriptors {
+    for desc in &descriptors {
         // Create a new in-memory wallet with only external descriptor
         match Wallet::create_single(desc.clone())
             .network(network)
@@ -138,19 +138,12 @@ pub async fn scan_and_list_utxos_electrum(
         electrum_client::Client::new(electrum_url).context("Failed to create Electrum client")?,
     );
 
-    for desc in descriptors {
-        // Create wallet with only external descriptor
-        let wallet_result = Wallet::create_single(desc.clone())
+    for desc in &descriptors {
+        // Create wallet with only external descriptor - fail fast on invalid descriptor
+        let mut wallet = Wallet::create_single(desc.clone())
             .network(network)
-            .create_wallet_no_persist();
-
-        let mut wallet = match wallet_result {
-            Ok(w) => w,
-            Err(e) => {
-                eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
-                continue;
-            }
-        };
+            .create_wallet_no_persist()
+            .with_context(|| format!("Failed to create wallet for descriptor '{desc}'"))?;
 
         // Create a full scan request
         let request = wallet
@@ -163,66 +156,62 @@ pub async fn scan_and_list_utxos_electrum(
             })
             .build();
 
-        // Perform the scan
-        match client.full_scan(request, stop_gap as usize, 10, false) {
-            Ok(update) => {
-                // Apply the update to the wallet
-                if let Err(e) = wallet.apply_update(update) {
-                    eprintln!("Warning: Failed to apply update for descriptor '{desc}': {e}");
-                    continue;
-                }
+        // Perform the scan - fail fast on scan errors
+        let update = client
+            .full_scan(request, stop_gap as usize, 10, false)
+            .with_context(|| format!("Failed to scan with Electrum for descriptor '{desc}'"))?;
 
-                // Get current tip height for confirmation calculations
-                let tip_height = wallet.latest_checkpoint().height();
+        // Apply the update to the wallet - fail fast on update errors
+        wallet
+            .apply_update(update)
+            .with_context(|| format!("Failed to apply update for descriptor '{desc}'"))?;
 
-                // List unspent outputs
-                let utxos = wallet.list_unspent();
+        // Get current tip height for confirmation calculations
+        let tip_height = wallet.latest_checkpoint().height();
 
-                for utxo in utxos {
-                    // Get the address for this output
-                    let script = &utxo.txout.script_pubkey;
-                    match bitcoin::Address::from_script(script, network) {
-                        Ok(address) => {
-                            // Determine keychain type
-                            let keychain = match utxo.keychain {
-                                KeychainKind::External => "external",
-                                KeychainKind::Internal => "internal",
-                            };
-                            let is_change = utxo.keychain == KeychainKind::Internal;
+        // List unspent outputs
+        let utxos = wallet.list_unspent();
 
-                            // Calculate confirmations based on chain position
-                            let confirmations = match &utxo.chain_position {
-                                bdk_wallet::chain::ChainPosition::Confirmed { anchor, .. } => {
-                                    let block_height = anchor.block_id.height;
-                                    if tip_height >= block_height {
-                                        tip_height - block_height + 1
-                                    } else {
-                                        0
-                                    }
-                                }
-                                bdk_wallet::chain::ChainPosition::Unconfirmed { .. } => 0,
-                            };
+        for utxo in utxos {
+            // Get the address for this output
+            let script = &utxo.txout.script_pubkey;
+            match bitcoin::Address::from_script(script, network) {
+                Ok(address) => {
+                    // Determine keychain type
+                    let keychain = match utxo.keychain {
+                        KeychainKind::External => "external",
+                        KeychainKind::Internal => "internal",
+                    };
+                    let is_change = utxo.keychain == KeychainKind::Internal;
 
-                            all_utxos.push(BdkUtxo {
-                                txid: utxo.outpoint.txid.to_string(),
-                                vout: utxo.outpoint.vout,
-                                address: address.to_string(),
-                                amount: utxo.txout.value.to_sat(),
-                                amount_btc: utxo.txout.value.to_btc(),
-                                confirmations,
-                                is_change,
-                                keychain: keychain.to_string(),
-                                derivation_index: None,
-                            });
+                    // Calculate confirmations based on chain position
+                    let confirmations = match &utxo.chain_position {
+                        bdk_wallet::chain::ChainPosition::Confirmed { anchor, .. } => {
+                            let block_height = anchor.block_id.height;
+                            if tip_height >= block_height {
+                                tip_height - block_height + 1
+                            } else {
+                                0
+                            }
                         }
-                        Err(e) => {
-                            eprintln!("Warning: Failed to derive address from script: {e}");
-                        }
-                    }
+                        bdk_wallet::chain::ChainPosition::Unconfirmed { .. } => 0,
+                    };
+
+                    all_utxos.push(BdkUtxo {
+                        txid: utxo.outpoint.txid.to_string(),
+                        vout: utxo.outpoint.vout,
+                        address: address.to_string(),
+                        amount: utxo.txout.value.to_sat(),
+                        amount_btc: utxo.txout.value.to_btc(),
+                        confirmations,
+                        is_change,
+                        keychain: keychain.to_string(),
+                        derivation_index: None,
+                    });
                 }
-            }
-            Err(e) => {
-                eprintln!("Warning: Failed to scan with Electrum for descriptor '{desc}': {e}");
+                Err(e) => {
+                    eprintln!("Warning: Failed to derive address from script: {e}");
+                }
             }
         }
     }
@@ -324,19 +313,12 @@ pub async fn scan_and_list_utxos_esplora(
     // Create Esplora client once for all descriptors
     let client = esplora_client::Builder::new(esplora_url).build_blocking();
 
-    for desc in descriptors {
-        // Create wallet with only external descriptor
-        let wallet_result = Wallet::create_single(desc.clone())
+    for desc in &descriptors {
+        // Create wallet with only external descriptor - fail fast on invalid descriptor
+        let mut wallet = Wallet::create_single(desc.clone())
             .network(network)
-            .create_wallet_no_persist();
-
-        let mut wallet = match wallet_result {
-            Ok(w) => w,
-            Err(e) => {
-                eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
-                continue;
-            }
-        };
+            .create_wallet_no_persist()
+            .with_context(|| format!("Failed to create wallet for descriptor '{desc}'"))?;
 
         // Create a full scan request
         let request = wallet
@@ -349,66 +331,62 @@ pub async fn scan_and_list_utxos_esplora(
             })
             .build();
 
-        // Perform the scan with Esplora
-        match client.full_scan(request, stop_gap as usize, 10) {
-            Ok(update) => {
-                // Apply the update to the wallet
-                if let Err(e) = wallet.apply_update(update) {
-                    eprintln!("Warning: Failed to apply update for descriptor '{desc}': {e}");
-                    continue;
-                }
+        // Perform the scan with Esplora - fail fast on scan errors
+        let update = client
+            .full_scan(request, stop_gap as usize, 10)
+            .with_context(|| format!("Failed to scan with Esplora for descriptor '{desc}'"))?;
 
-                // Get current tip height for confirmation calculations
-                let tip_height = wallet.latest_checkpoint().height();
+        // Apply the update to the wallet - fail fast on update errors
+        wallet
+            .apply_update(update)
+            .with_context(|| format!("Failed to apply update for descriptor '{desc}'"))?;
 
-                // List unspent outputs
-                let utxos = wallet.list_unspent();
+        // Get current tip height for confirmation calculations
+        let tip_height = wallet.latest_checkpoint().height();
 
-                for utxo in utxos {
-                    // Get the address for this output
-                    let script = &utxo.txout.script_pubkey;
-                    match bitcoin::Address::from_script(script, network) {
-                        Ok(address) => {
-                            // Determine keychain type
-                            let keychain = match utxo.keychain {
-                                KeychainKind::External => "external",
-                                KeychainKind::Internal => "internal",
-                            };
-                            let is_change = utxo.keychain == KeychainKind::Internal;
+        // List unspent outputs
+        let utxos = wallet.list_unspent();
 
-                            // Calculate confirmations based on chain position
-                            let confirmations = match &utxo.chain_position {
-                                bdk_wallet::chain::ChainPosition::Confirmed { anchor, .. } => {
-                                    let block_height = anchor.block_id.height;
-                                    if tip_height >= block_height {
-                                        tip_height - block_height + 1
-                                    } else {
-                                        0
-                                    }
-                                }
-                                bdk_wallet::chain::ChainPosition::Unconfirmed { .. } => 0,
-                            };
+        for utxo in utxos {
+            // Get the address for this output
+            let script = &utxo.txout.script_pubkey;
+            match bitcoin::Address::from_script(script, network) {
+                Ok(address) => {
+                    // Determine keychain type
+                    let keychain = match utxo.keychain {
+                        KeychainKind::External => "external",
+                        KeychainKind::Internal => "internal",
+                    };
+                    let is_change = utxo.keychain == KeychainKind::Internal;
 
-                            all_utxos.push(BdkUtxo {
-                                txid: utxo.outpoint.txid.to_string(),
-                                vout: utxo.outpoint.vout,
-                                address: address.to_string(),
-                                amount: utxo.txout.value.to_sat(),
-                                amount_btc: utxo.txout.value.to_btc(),
-                                confirmations,
-                                is_change,
-                                keychain: keychain.to_string(),
-                                derivation_index: None,
-                            });
+                    // Calculate confirmations based on chain position
+                    let confirmations = match &utxo.chain_position {
+                        bdk_wallet::chain::ChainPosition::Confirmed { anchor, .. } => {
+                            let block_height = anchor.block_id.height;
+                            if tip_height >= block_height {
+                                tip_height - block_height + 1
+                            } else {
+                                0
+                            }
                         }
-                        Err(e) => {
-                            eprintln!("Warning: Failed to derive address from script: {e}");
-                        }
-                    }
+                        bdk_wallet::chain::ChainPosition::Unconfirmed { .. } => 0,
+                    };
+
+                    all_utxos.push(BdkUtxo {
+                        txid: utxo.outpoint.txid.to_string(),
+                        vout: utxo.outpoint.vout,
+                        address: address.to_string(),
+                        amount: utxo.txout.value.to_sat(),
+                        amount_btc: utxo.txout.value.to_btc(),
+                        confirmations,
+                        is_change,
+                        keychain: keychain.to_string(),
+                        derivation_index: None,
+                    });
                 }
-            }
-            Err(e) => {
-                eprintln!("Warning: Failed to scan with Esplora for descriptor '{desc}': {e}");
+                Err(e) => {
+                    eprintln!("Warning: Failed to derive address from script: {e}");
+                }
             }
         }
     }
