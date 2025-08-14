@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Check if we're in a nix environment
+if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
+    # Use nix develop for consistent environment
+    if ! nix develop -c cargo fmt --check 2>/dev/null; then
+        echo "❌ Code is not formatted. Please run 'nix develop -c cargo fmt' before committing."
+        echo ""
+        echo "To see what needs formatting:"
+        echo "  nix develop -c cargo fmt --check --verbose"
+        exit 1
+    fi
+else
+    # Fallback to regular cargo
+    if ! cargo fmt --check 2>/dev/null; then
+        echo "❌ Code is not formatted. Please run 'cargo fmt' before committing."
+        echo ""
+        echo "To see what needs formatting:"
+        echo "  cargo fmt --check --verbose"
+        exit 1
+    fi
+fi
+
+echo "✅ Code formatting check passed"

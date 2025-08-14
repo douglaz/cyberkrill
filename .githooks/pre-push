@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "🔍 Running pre-push checks..."
+echo ""
+
+# Check if we're in a nix environment
+if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
+    # Check formatting
+    echo "📝 Checking code formatting..."
+    if ! nix develop -c cargo fmt --check 2>/dev/null; then
+        echo ""
+        echo "❌ Code is not formatted. Please run 'nix develop -c cargo fmt' before pushing."
+        echo ""
+        echo "To see what needs formatting:"
+        echo "  nix develop -c cargo fmt --check --verbose"
+        exit 1
+    fi
+    echo "✅ Formatting check passed"
+    echo ""
+    
+    # Run clippy
+    echo "🔎 Running clippy linting..."
+    if ! nix develop -c cargo clippy -- -D warnings 2>&1; then
+        echo ""
+        echo "❌ Clippy found issues. Please fix them before pushing."
+        echo ""
+        echo "To see all issues:"
+        echo "  nix develop -c cargo clippy"
+        echo ""
+        echo "To attempt automatic fixes:"
+        echo "  nix develop -c cargo clippy --fix --allow-dirty"
+        exit 1
+    fi
+    echo "✅ Clippy check passed"
+else
+    # Fallback to regular cargo
+    echo "📝 Checking code formatting..."
+    if ! cargo fmt --check 2>/dev/null; then
+        echo ""
+        echo "❌ Code is not formatted. Please run 'cargo fmt' before pushing."
+        echo ""
+        echo "To see what needs formatting:"
+        echo "  cargo fmt --check --verbose"
+        exit 1
+    fi
+    echo "✅ Formatting check passed"
+    echo ""
+    
+    # Run clippy
+    echo "🔎 Running clippy linting..."
+    if ! cargo clippy -- -D warnings 2>&1; then
+        echo ""
+        echo "❌ Clippy found issues. Please fix them before pushing."
+        echo ""
+        echo "To see all issues:"
+        echo "  cargo clippy"
+        echo ""
+        echo "To attempt automatic fixes:"
+        echo "  cargo clippy --fix --allow-dirty"
+        exit 1
+    fi
+    echo "✅ Clippy check passed"
+fi
+
+echo ""
+echo "✅ All pre-push checks passed! Proceeding with push..."
+echo ""

@@ -386,6 +386,8 @@ cyberkrill is organized as a Rust workspace with three main crates:
 
 ## Development
 
+### Setup
+
 ```bash
 # Enter development environment
 nix develop
@@ -399,6 +401,44 @@ cargo test
 # Format and lint
 cargo fmt
 cargo clippy
+```
+
+### Git Hooks
+
+This project includes Git hooks for code quality checks that are **automatically configured** when you enter the development environment:
+
+```bash
+# Hooks are set up automatically when you run:
+nix develop
+```
+
+The hooks will be configured on first entry to the nix shell. You'll see a message confirming the setup.
+
+#### Manual Installation (for non-nix users)
+
+If you're not using nix, you can manually install the hooks:
+
+```bash
+# Configure git to use the project's hooks
+git config core.hooksPath .githooks
+```
+
+#### Available Hooks
+
+- **pre-commit**: Runs `cargo fmt --check` to ensure code is formatted
+- **pre-push**: Runs both `cargo fmt --check` and `cargo clippy` to catch issues before CI
+
+#### Managing Hooks
+
+To bypass hooks temporarily (not recommended):
+```bash
+git commit --no-verify
+git push --no-verify
+```
+
+To disable hooks completely:
+```bash
+git config --unset core.hooksPath
 ```
 
 ## Contributing
