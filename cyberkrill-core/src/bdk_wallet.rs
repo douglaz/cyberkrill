@@ -5,7 +5,7 @@ use bitcoin::{Amount, FeeRate, Network, OutPoint, Txid};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::str::FromStr;
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// UTXO information returned by BDK wallet
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,9 +150,9 @@ pub async fn scan_and_list_utxos_electrum(
         let request = wallet
             .start_full_scan()
             .inspect({
-                move |_keychain, _spk_i, _| {
+                move |keychain, spk_i, _| {
                     // Progress output to stderr to keep stdout clean for JSON
-                    // Progress indicator removed - use tracing instead
+                    debug!("Scanning {:?} at index {}", keychain, spk_i);
                 }
             })
             .build();
@@ -325,9 +325,9 @@ pub async fn scan_and_list_utxos_esplora(
         let request = wallet
             .start_full_scan()
             .inspect({
-                move |_keychain, _spk_i, _| {
+                move |keychain, spk_i, _| {
                     // Progress output to stderr to keep stdout clean for JSON
-                    // Progress indicator removed - use tracing instead
+                    debug!("Scanning {:?} at index {}", keychain, spk_i);
                 }
             })
             .build();
