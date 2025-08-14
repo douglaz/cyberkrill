@@ -41,14 +41,18 @@ detect_platform() {
 # Get latest release version from GitHub
 get_latest_version() {
     # Get the latest release (including pre-releases since they pass CI)
-    local releases=$(curl -s "https://api.github.com/repos/$REPO/releases")
+    local releases=$(curl -s "https://api.github.com/repos/$REPO/releases" 2>/dev/null)
     
     # Check if jq is available for proper JSON parsing
     if command -v jq >/dev/null 2>&1; then
-        local latest_version=$(echo "$releases" | jq -r '.[0].tag_name // empty')
-        if [[ -n "$latest_version" ]]; then
-            echo "$latest_version"
-            return
+        # Check if the response is an array (successful) or an object (error/rate limit)
+        local is_array=$(echo "$releases" | jq -r 'if type == "array" then "yes" else "no" end' 2>/dev/null)
+        if [[ "$is_array" == "yes" ]]; then
+            local latest_version=$(echo "$releases" | jq -r '.[0].tag_name // empty' 2>/dev/null)
+            if [[ -n "$latest_version" ]]; then
+                echo "$latest_version"
+                return
+            fi
         fi
     else
         # Fallback to grep-based parsing (less reliable but works without jq)
@@ -94,7 +98,7 @@ install_binary() {
     
     # Download to temporary file
     local temp_file=$(mktemp)
-    if ! curl -L -o "$temp_file" "$url"; then
+    if ! curl -sL -o "$temp_file" "$url"; then
         rm -f "$temp_file"
         echo "Failed to download ${BINARY_NAME}" >&2
         exit 1
