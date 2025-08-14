@@ -579,7 +579,7 @@ pub async fn create_psbt_bdk(
                 let utxo = utxos
                     .iter()
                     .find(|u| u.txid == txid.to_string() && u.vout == vout)
-                    .ok_or_else(|| anyhow::anyhow!("UTXO {}:{} not found in wallet", txid, vout))?;
+                    .ok_or_else(|| anyhow::anyhow!("UTXO {txid}:{vout} not found in wallet"))?;
                 selected_utxos.push(utxo.clone());
             }
             InputSpec::Descriptor(_desc) => {
@@ -841,7 +841,7 @@ pub async fn move_utxos_bdk(
                 let utxo = utxos
                     .iter()
                     .find(|u| u.txid == txid.to_string() && u.vout == vout)
-                    .ok_or_else(|| anyhow::anyhow!("UTXO {}:{} not found", txid, vout))?;
+                    .ok_or_else(|| anyhow::anyhow!("UTXO {txid}:{vout} not found"))?;
                 selected_utxos.push(utxo.clone());
             }
             InputSpec::Descriptor(_desc) => {

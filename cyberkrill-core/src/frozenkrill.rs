@@ -79,8 +79,9 @@ impl FrozenkrillWallet {
     /// Load a frozenkrill wallet from a JSON export file
     pub fn from_file(path: &Path) -> Result<Self> {
         // First pass: detect wallet type
-        let file = std::fs::File::open(path)
-            .with_context(|| format!("Failed to open wallet file: {}", path.display()))?;
+        let file = std::fs::File::open(path).with_context(|| {
+            format!("Failed to open wallet file: {path}", path = path.display())
+        })?;
         let reader = BufReader::new(file);
 
         let generic = GenericOutputExportJson::deserialize(reader)?;

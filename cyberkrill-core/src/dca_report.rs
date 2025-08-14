@@ -71,31 +71,38 @@ pub async fn generate_dca_report(
     cache_dir: Option<&Path>,
 ) -> Result<DcaReport> {
     info!("Starting DCA report generation");
-    debug!("Descriptor: {}", descriptor);
-    debug!("Backend: {:?}", backend);
-    debug!("Currency: {}", currency);
-    debug!("Cache dir: {:?}", cache_dir);
+    debug!("Descriptor: {descriptor}");
+    debug!("Backend: {backend:?}");
+    debug!("Currency: {currency}");
+    debug!("Cache dir: {cache_dir:?}");
 
     // 1. Fetch UTXOs with timestamps based on backend
     info!("Fetching UTXOs from backend...");
     let mut utxos = fetch_utxos_with_timestamps(descriptor, &backend).await?;
-    info!("Found {} UTXOs", utxos.len());
+    info!("Found {count} UTXOs", count = utxos.len());
 
     // 2. Fetch current Bitcoin price
     info!("Fetching current Bitcoin price...");
     let current_price = fetch_current_price(currency, cache_dir).await?;
 
     // 3. For each UTXO, fetch historical price
-    info!("Fetching historical prices for {} UTXOs...", utxos.len());
+    info!(
+        "Fetching historical prices for {count} UTXOs...",
+        count = utxos.len()
+    );
     let mut prices_found = 0;
     for utxo in &mut utxos {
-        debug!("Fetching price for UTXO {} on {}", utxo.txid, utxo.date);
+        debug!(
+            "Fetching price for UTXO {txid} on {date}",
+            txid = utxo.txid,
+            date = utxo.date
+        );
         if let Some(price) = fetch_historical_price(&utxo.date, currency, cache_dir).await? {
             utxo.price_at_purchase = Some(price);
             utxo.cost_basis = Some(utxo.amount_btc * price);
             prices_found += 1;
         } else {
-            warn!("No historical price found for {}", utxo.date);
+            warn!("No historical price found for {date}", date = utxo.date);
         }
     }
     info!(
@@ -167,9 +174,9 @@ async fn fetch_utxos_bitcoind(descriptor: &str, bitcoin_dir: &Path) -> Result<Ve
     )?;
 
     // Get UTXOs from descriptor
-    debug!("Scanning tx out set for descriptor: {}", descriptor);
+    debug!("Scanning tx out set for descriptor: {descriptor}");
     let utxos = client.scan_tx_out_set(descriptor).await?;
-    info!("Bitcoin Core returned {} UTXOs", utxos.len());
+    info!("Bitcoin Core returned {count} UTXOs", count = utxos.len());
 
     let mut dca_utxos = Vec::new();
 
@@ -317,7 +324,7 @@ async fn fetch_utxos_esplora(descriptor: &str, esplora_url: &str) -> Result<Vec<
         }
 
         // Get transaction details from Esplora
-        let tx_url = format!("{}/tx/{}", esplora_url, utxo.txid);
+        let tx_url = format!("{esplora_url}/tx/{txid}", txid = utxo.txid);
         let tx_resp = client.get(&tx_url).send().await?;
         let tx_json: serde_json::Value = tx_resp.json().await?;
 
@@ -368,7 +375,11 @@ async fn fetch_current_price(currency: &str, cache_dir: Option<&Path>) -> Result
 
     match price {
         Some(p) => {
-            info!("Current BTC price: {} {}", p, currency.to_uppercase());
+            info!(
+                "Current BTC price: {price} {currency}",
+                price = p,
+                currency = currency.to_uppercase()
+            );
             Ok(p)
         }
         None => {
@@ -389,9 +400,12 @@ async fn fetch_historical_price(
 ) -> Result<Option<f64>> {
     // Check cache first
     if let Some(dir) = cache_dir {
-        let cache_file = dir.join(format!("btc_{}_{}.json", currency.to_lowercase(), date));
+        let cache_file = dir.join(format!(
+            "btc_{currency}_{date}.json",
+            currency = currency.to_lowercase()
+        ));
         if cache_file.exists() {
-            debug!("Cache hit for {} on {}", currency, date);
+            debug!("Cache hit for {currency} on {date}");
             let contents = std::fs::read_to_string(&cache_file)?;
             let price_data: PriceData = serde_json::from_str(&contents)?;
             debug!(
@@ -416,15 +430,20 @@ async fn fetch_historical_price(
     // Convert date format from YYYY-MM-DD to DD-MM-YYYY for CoinGecko
     let parts: Vec<&str> = date.split('-').collect();
     if parts.len() != 3 {
-        warn!("Invalid date format: {}", date);
+        warn!("Invalid date format: {date}");
         return Ok(None);
     }
-    let coingecko_date = format!("{}-{}-{}", parts[2], parts[1], parts[0]);
+    let coingecko_date = format!(
+        "{day}-{month}-{year}",
+        day = parts[2],
+        month = parts[1],
+        year = parts[0]
+    );
 
     let url =
         format!("https://api.coingecko.com/api/v3/coins/bitcoin/history?date={coingecko_date}");
 
-    debug!("Fetching price from CoinGecko API: {}", url);
+    debug!("Fetching price from CoinGecko API: {url}");
 
     // Add delay to respect rate limits
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
@@ -432,30 +451,27 @@ async fn fetch_historical_price(
     let response = match client.get(&url).send().await {
         Ok(resp) => resp,
         Err(e) => {
-            error!("Failed to fetch from CoinGecko: {}", e);
-            return Err(anyhow::anyhow!(
-                "Failed to fetch price from CoinGecko: {}",
-                e
-            ));
+            error!("Failed to fetch from CoinGecko: {e}");
+            return Err(anyhow::anyhow!("Failed to fetch price from CoinGecko: {e}"));
         }
     };
 
     let status = response.status();
     if !status.is_success() {
-        error!("CoinGecko API returned status: {}", status);
+        error!("CoinGecko API returned status: {status}");
         let error_text = response
             .text()
             .await
             .unwrap_or_else(|_| "No error body".to_string());
-        error!("Error response: {}", error_text);
+        error!("Error response: {error_text}");
         return Ok(None);
     }
 
     let json: serde_json::Value = match response.json().await {
         Ok(j) => j,
         Err(e) => {
-            error!("Failed to parse CoinGecko response as JSON: {}", e);
-            return Err(anyhow::anyhow!("Failed to parse CoinGecko response: {}", e));
+            error!("Failed to parse CoinGecko response as JSON: {e}");
+            return Err(anyhow::anyhow!("Failed to parse CoinGecko response: {e}"));
         }
     };
 
@@ -484,7 +500,10 @@ async fn fetch_historical_price(
             if let Err(e) = std::fs::create_dir_all(dir) {
                 warn!("Failed to create cache directory: {}", e);
             } else {
-                let cache_file = dir.join(format!("btc_{}_{}.json", currency.to_lowercase(), date));
+                let cache_file = dir.join(format!(
+                    "btc_{currency}_{date}.json",
+                    currency = currency.to_lowercase()
+                ));
                 let price_data = PriceData {
                     date: date.to_string(),
                     currency: currency.to_string(),
@@ -708,7 +727,12 @@ mod tests {
         for (input, expected) in test_cases {
             let parts: Vec<&str> = input.split('-').collect();
             assert_eq!(parts.len(), 3);
-            let coingecko_date = format!("{}-{}-{}", parts[2], parts[1], parts[0]);
+            let coingecko_date = format!(
+                "{day}-{month}-{year}",
+                day = parts[2],
+                month = parts[1],
+                year = parts[0]
+            );
             assert_eq!(coingecko_date, expected);
         }
 
