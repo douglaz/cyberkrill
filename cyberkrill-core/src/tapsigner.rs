@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use tracing::info;
 
 #[cfg(test)]
 use crate::satscard::{SatscardAddressOutput, SatscardInfo};
@@ -119,13 +120,11 @@ pub async fn initialize_tapsigner(chain_code: Option<String>) -> Result<Tapsigne
         }
     };
 
-    eprintln!(
-        "⚠️  WARNING: Tapsigner initialization is a ONE-TIME operation that cannot be undone."
-    );
-    eprintln!("   The card will be permanently configured with the provided/generated entropy.");
-    eprintln!("   Make sure to backup the card after initialization!");
-    eprintln!(
-        "   Chain code: {chain_code}",
+    info!("⚠️  WARNING: Tapsigner initialization is a ONE-TIME operation that cannot be undone.");
+    info!("The card will be permanently configured with the provided/generated entropy.");
+    info!("Make sure to backup the card after initialization!");
+    info!(
+        "Chain code: {chain_code}",
         chain_code = hex::encode(chain_code_bytes)
     );
 
@@ -142,10 +141,10 @@ pub async fn initialize_tapsigner(chain_code: Option<String>) -> Result<Tapsigne
         anyhow::bail!("Initialization appeared to succeed but card still shows uninitialized state. Please try again.");
     }
 
-    eprintln!("✅ Tapsigner initialization successful!");
-    eprintln!("   Default derivation path: m/84'/0'/0' (BIP-84 native segwit)");
-    eprintln!("   Birth block: {birth}", birth = new_status.birth);
-    eprintln!("   Remember to backup your card for recovery purposes!");
+    info!("✅ Tapsigner initialization successful!");
+    info!("Default derivation path: m/84'/0'/0' (BIP-84 native segwit)");
+    info!("Birth block: {birth}", birth = new_status.birth);
+    info!("Remember to backup your card for recovery purposes!");
 
     Ok(TapsignerInitOutput {
         success: true,

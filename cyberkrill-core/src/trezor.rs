@@ -3,6 +3,7 @@ use bitcoin::bip32::{ChildNumber, DerivationPath, Xpub};
 use bitcoin::Network;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use tracing::warn;
 use trezor_client::client::common::handle_interaction;
 use trezor_client::protos;
 use trezor_client::{InputScriptType, Trezor as TrezorClient};
@@ -96,7 +97,7 @@ impl TrezorWallet {
             ),
             Err(e) => {
                 // Log the error for debugging but don't fail
-                eprintln!("Warning: Could not extract xpub: {e}");
+                warn!("Could not extract xpub: {e}");
                 (None, String::new())
             }
         };
@@ -149,7 +150,10 @@ impl TrezorWallet {
         // Get chain code (32 bytes)
         let chain_code_bytes = node.chain_code();
         if chain_code_bytes.len() != 32 {
-            bail!("Invalid chain code length: {}", chain_code_bytes.len());
+            bail!(
+                "Invalid chain code length: {len}",
+                len = chain_code_bytes.len()
+            );
         }
         let mut chain_code_array = [0u8; 32];
         chain_code_array.copy_from_slice(chain_code_bytes);
@@ -158,7 +162,7 @@ impl TrezorWallet {
         // Get public key (33 bytes compressed)
         let pubkey_bytes = node.public_key();
         if pubkey_bytes.len() != 33 {
-            bail!("Invalid public key length: {}", pubkey_bytes.len());
+            bail!("Invalid public key length: {len}", len = pubkey_bytes.len());
         }
         let public_key = secp256k1::PublicKey::from_slice(pubkey_bytes)?;
 

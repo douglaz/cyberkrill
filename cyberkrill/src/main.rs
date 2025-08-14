@@ -662,6 +662,12 @@ struct DcaReportArgs {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize tracing subscriber with RUST_LOG environment variable, output to stderr
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
+
     // Initialize rustls crypto provider for TLS connections (required for Electrum)
     if rustls::crypto::ring::default_provider()
         .install_default()
@@ -720,7 +726,11 @@ async fn main() -> anyhow::Result<()> {
 
         // Utility Commands
         Commands::Version => {
-            println!("cyberkrill {}", env!("CARGO_PKG_VERSION"));
+            // Version output should be JSON for consistency
+            let version = serde_json::json!({
+                "version": env!("CARGO_PKG_VERSION")
+            });
+            println!("{}", serde_json::to_string_pretty(&version)?);
         }
 
         // MCP Server
@@ -1646,7 +1656,12 @@ async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()
 
     let message = export_psbt_to_coldcard(&psbt_data, &args.filename).await?;
 
-    println!("{message}");
+    // Output as JSON for consistency
+    let result = serde_json::json!({
+        "message": message,
+        "filename": args.filename
+    });
+    println!("{}", serde_json::to_string_pretty(&result)?);
 
     Ok(())
 }

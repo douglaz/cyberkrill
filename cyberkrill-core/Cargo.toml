@@ -31,6 +31,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 tokio = { version = "1.0", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 fedimint-lite = { path = "../fedimint-lite" }
+tracing = "0.1"
 # Tapsigner/Satscard support via USB (optional feature)
 cktap-direct = { git = "https://github.com/douglaz/cktap-direct", optional = true }
 rusb = { version = "0.9", optional = true }

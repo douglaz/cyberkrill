@@ -5,6 +5,7 @@ use bitcoin::{Amount, FeeRate, Network, OutPoint, Txid};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::str::FromStr;
+use tracing::{debug, warn};
 
 /// UTXO information returned by BDK wallet
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,7 +111,7 @@ pub fn list_utxos_bdk(descriptor: &str, network: Network) -> Result<Vec<BdkUtxo>
             }
             Err(e) => {
                 // If this descriptor fails, log it but continue with others
-                eprintln!("Warning: Failed to create wallet for descriptor '{desc}': {e}");
+                warn!("Failed to create wallet for descriptor '{desc}': {e}");
             }
         }
     }
@@ -151,7 +152,7 @@ pub async fn scan_and_list_utxos_electrum(
             .inspect({
                 move |keychain, spk_i, _| {
                     // Progress output to stderr to keep stdout clean for JSON
-                    eprint!("\rScanning {keychain:?} {spk_i}...");
+                    debug!("Scanning {:?} at index {}", keychain, spk_i);
                 }
             })
             .build();
@@ -210,7 +211,7 @@ pub async fn scan_and_list_utxos_electrum(
                     });
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to derive address from script: {e}");
+                    warn!("Failed to derive address from script: {e}");
                 }
             }
         }
@@ -326,7 +327,7 @@ pub async fn scan_and_list_utxos_esplora(
             .inspect({
                 move |keychain, spk_i, _| {
                     // Progress output to stderr to keep stdout clean for JSON
-                    eprint!("\rScanning {keychain:?} {spk_i}...");
+                    debug!("Scanning {:?} at index {}", keychain, spk_i);
                 }
             })
             .build();
@@ -385,7 +386,7 @@ pub async fn scan_and_list_utxos_esplora(
                     });
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to derive address from script: {e}");
+                    warn!("Failed to derive address from script: {e}");
                 }
             }
         }
@@ -578,7 +579,7 @@ pub async fn create_psbt_bdk(
                 let utxo = utxos
                     .iter()
                     .find(|u| u.txid == txid.to_string() && u.vout == vout)
-                    .ok_or_else(|| anyhow::anyhow!("UTXO {}:{} not found in wallet", txid, vout))?;
+                    .ok_or_else(|| anyhow::anyhow!("UTXO {txid}:{vout} not found in wallet"))?;
                 selected_utxos.push(utxo.clone());
             }
             InputSpec::Descriptor(_desc) => {
@@ -840,7 +841,7 @@ pub async fn move_utxos_bdk(
                 let utxo = utxos
                     .iter()
                     .find(|u| u.txid == txid.to_string() && u.vout == vout)
-                    .ok_or_else(|| anyhow::anyhow!("UTXO {}:{} not found", txid, vout))?;
+                    .ok_or_else(|| anyhow::anyhow!("UTXO {txid}:{vout} not found"))?;
                 selected_utxos.push(utxo.clone());
             }
             InputSpec::Descriptor(_desc) => {
