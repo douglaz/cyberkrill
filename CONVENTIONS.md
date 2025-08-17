@@ -130,12 +130,12 @@ let tx_size = base + inputs * 68 + outputs * 31; // Use predict_weight instead
 ### Before Committing
 Always run the complete check sequence:
 ```bash
-cargo clippy --fix --allow-dirty && cargo fmt && cargo test && cargo clippy && cargo fmt --check
+cargo clippy --all-targets --all-features --fix --allow-dirty && cargo fmt && cargo test && cargo clippy --all-targets --all-features -- -D warnings && cargo fmt --check
 ```
 
 ### Required Quality Checks
 1. **All tests must pass**: `cargo test`
-2. **No clippy warnings**: `cargo clippy`
+2. **No clippy warnings**: `cargo clippy --all-targets --all-features -- -D warnings`
 3. **Code must be formatted**: `cargo fmt`
 
 ### Running Tests
@@ -240,5 +240,5 @@ Before submitting code:
 - [ ] Add appropriate error handling using `anyhow`
 - [ ] Add unit tests for new functionality with proper error handling
 - [ ] Ensure tests return `Result<()>` and use `?` operator instead of `.unwrap()`
-- [ ] Run quality checks: `cargo test && cargo clippy && cargo fmt --check`
+- [ ] Run quality checks: `cargo test && cargo clippy --all-targets --all-features -- -D warnings && cargo fmt --check`
 - [ ] Update relevant documentation (README.md for new commands)

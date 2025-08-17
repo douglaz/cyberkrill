@@ -19,7 +19,7 @@ mod integration_tests {
         let mut jade = match JadeClient::connect().await {
             Ok(j) => j,
             Err(e) => {
-                eprintln!("Skipping test - no Jade device found: {}", e);
+                eprintln!("Skipping test - no Jade device found: {e}");
                 return;
             }
         };
@@ -37,7 +37,7 @@ mod integration_tests {
         let mut jade = match JadeClient::connect().await {
             Ok(j) => j,
             Err(e) => {
-                eprintln!("Skipping test - no Jade device found: {}", e);
+                eprintln!("Skipping test - no Jade device found: {e}");
                 return;
             }
         };
@@ -54,7 +54,7 @@ mod integration_tests {
 
         // Testnet bech32 addresses start with "tb1"
         assert!(address.starts_with("tb1"));
-        println!("Testnet address: {}", address);
+        println!("Testnet address: {address}");
 
         jade.logout().await.expect("Failed to logout");
     }
@@ -64,7 +64,7 @@ mod integration_tests {
         let mut jade = match JadeClient::connect().await {
             Ok(j) => j,
             Err(e) => {
-                eprintln!("Skipping test - no Jade device found: {}", e);
+                eprintln!("Skipping test - no Jade device found: {e}");
                 return;
             }
         };
@@ -80,7 +80,7 @@ mod integration_tests {
 
         // Testnet xpubs start with "tpub"
         assert!(xpub.starts_with("tpub") || xpub.starts_with("vpub"));
-        println!("xpub: {}", xpub);
+        println!("xpub: {xpub}");
 
         jade.logout().await.expect("Failed to logout");
     }

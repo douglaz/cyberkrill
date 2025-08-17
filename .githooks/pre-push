@@ -20,16 +20,16 @@ if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
     echo ""
     
     # Run clippy
-    echo "🔎 Running clippy linting..."
-    if ! nix develop -c cargo clippy -- -D warnings 2>&1; then
+    echo "🔎 Running clippy linting (all targets, all features)..."
+    if ! nix develop -c cargo clippy --all-targets --all-features -- -D warnings 2>&1; then
         echo ""
         echo "❌ Clippy found issues. Please fix them before pushing."
         echo ""
         echo "To see all issues:"
-        echo "  nix develop -c cargo clippy"
+        echo "  nix develop -c cargo clippy --all-targets --all-features"
         echo ""
         echo "To attempt automatic fixes:"
-        echo "  nix develop -c cargo clippy --fix --allow-dirty"
+        echo "  nix develop -c cargo clippy --all-targets --all-features --fix --allow-dirty"
         exit 1
     fi
     echo "✅ Clippy check passed"
@@ -48,16 +48,16 @@ else
     echo ""
     
     # Run clippy
-    echo "🔎 Running clippy linting..."
-    if ! cargo clippy -- -D warnings 2>&1; then
+    echo "🔎 Running clippy linting (all targets, all features)..."
+    if ! cargo clippy --all-targets --all-features -- -D warnings 2>&1; then
         echo ""
         echo "❌ Clippy found issues. Please fix them before pushing."
         echo ""
         echo "To see all issues:"
-        echo "  cargo clippy"
+        echo "  cargo clippy --all-targets --all-features"
         echo ""
         echo "To attempt automatic fixes:"
-        echo "  cargo clippy --fix --allow-dirty"
+        echo "  cargo clippy --all-targets --all-features --fix --allow-dirty"
         exit 1
     fi
     echo "✅ Clippy check passed"
