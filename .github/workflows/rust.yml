@@ -43,7 +43,7 @@ jobs:
       run: nix develop -c cargo fmt --check
     
     - name: Run linting
-      run: nix develop -c cargo clippy -- -D warnings
+      run: nix develop -c cargo clippy --all-targets --all-features -- -D warnings
     
     - name: Build default (all features)
       run: nix develop -c cargo build

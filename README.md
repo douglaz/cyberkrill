@@ -400,7 +400,7 @@ cargo test
 
 # Format and lint
 cargo fmt
-cargo clippy
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 ### Git Hooks
@@ -426,7 +426,7 @@ git config core.hooksPath .githooks
 #### Available Hooks
 
 - **pre-commit**: Runs `cargo fmt --check` to ensure code is formatted
-- **pre-push**: Runs both `cargo fmt --check` and `cargo clippy` to catch issues before CI
+- **pre-push**: Runs both `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` to catch issues before CI
 
 #### Managing Hooks
 
