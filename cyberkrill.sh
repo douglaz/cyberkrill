@@ -6,7 +6,12 @@ REPO="douglaz/cyberkrill"
 BINARY_NAME="cyberkrill"
 INSTALL_DIR="${HOME}/.local/bin"
 INSTALLED_VERSION_FILE="${INSTALL_DIR}/.${BINARY_NAME}.version"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Determine script directory (only available when run as a file, not via stdin)
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    SCRIPT_DIR=""
+fi
 
 # Platform detection
 detect_platform() {
@@ -166,7 +171,7 @@ should_check_update() {
 # Main logic
 main() {
     # First, check if we're in the repository and can run locally
-    if [[ -d "${SCRIPT_DIR}/.git" ]]; then
+    if [[ -n "$SCRIPT_DIR" && -d "${SCRIPT_DIR}/.git" ]]; then
         # Check if we have a local build
         local local_binary="${SCRIPT_DIR}/target/release/${BINARY_NAME}"
         if [[ ! -f "$local_binary" ]]; then
