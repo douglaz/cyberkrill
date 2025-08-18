@@ -18,7 +18,7 @@ jade = ["dep:jade-bitcoin"]
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
-thiserror = "1.0"
+thiserror = "2.0"
 async-trait = "0.1"
 hex = { version = "0.4.3", features = ["serde"] }
 lightning-invoice = { version = "0.33.1", features = ["serde"] }
