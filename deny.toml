@@ -20,6 +20,10 @@ version = 2
 ignore = [
     # slab v0.4.10 vulnerability - will be fixed with cargo update
     "RUSTSEC-2025-0047",
+    # paste - unmaintained but still widely used, no alternative
+    "RUSTSEC-2024-0436",
+    # serde_cbor - unmaintained but required by dependencies
+    "RUSTSEC-2021-0127",
 ]
 
 [licenses]
@@ -42,6 +46,7 @@ allow = [
     "OpenSSL",
     "MITNFA",
     "GPL-3.0-or-later",
+    "CDLA-Permissive-2.0",  # Required by webpki-roots
 ]
 confidence-threshold = 0.8
 # Ignore unlicensed crates from git dependencies
@@ -75,8 +80,6 @@ highlight = "all"
 deny = [
     # Prefer rustls over openssl for better security
     { name = "openssl" },
-    # Avoid C dependencies when possible
-    { name = "cmake" },
 ]
 
 [sources]
