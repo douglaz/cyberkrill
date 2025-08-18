@@ -24,11 +24,11 @@ hex = { version = "0.4.3", features = ["serde"] }
 lightning-invoice = { version = "0.33.1", features = ["serde"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
-bech32 = "0.9.1"
+bech32 = "0.11.0"
 base64 = "0.22"
 url = "2.5.0"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.47", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 fedimint-lite = { path = "../fedimint-lite" }
 tracing = "0.1"
@@ -36,11 +36,11 @@ tracing = "0.1"
 cktap-direct = { git = "https://github.com/douglaz/cktap-direct", optional = true }
 rusb = { version = "0.9", optional = true }
 bitcoin = "0.32"
-secp256k1 = "0.29"
-rand = "0.8"
+secp256k1 = "0.31"
+rand = "0.9"
 sha2 = "0.10"
 # BDK wallet support
-bdk_wallet = "2.0.0"
+bdk_wallet = "2.1.0"
 bdk_electrum = { version = "0.23.0", default-features = false, features = ["use-rustls"] }
 bdk_esplora = { version = "0.22.0", default-features = false, features = ["blocking", "blocking-https-rustls"] }
 # frozenkrill support

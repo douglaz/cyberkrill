@@ -11,12 +11,12 @@ categories = ["cryptography::cryptocurrencies", "encoding"]
 
 [dependencies]
 anyhow = "1.0"
-bech32 = "0.9"
+bech32 = "0.11"
 hex = "0.4"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.0", features = ["rt", "macros"] }
+tokio = { version = "1.47", features = ["rt", "macros"] }
 tracing = "0.1"
 
 [dev-dependencies]
