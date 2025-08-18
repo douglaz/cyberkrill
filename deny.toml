@@ -41,7 +41,7 @@ allow = [
     "Zlib",
     "OpenSSL",
     "MITNFA",
-    "GPL-3.0",
+    "GPL-3.0-or-later",
 ]
 confidence-threshold = 0.8
 # Ignore unlicensed crates from git dependencies
@@ -59,7 +59,7 @@ license-files = [
 
 [[licenses.clarify]]
 name = "unescaper"
-expression = "GPL-3.0 OR MIT"
+expression = "GPL-3.0-or-later OR MIT"
 license-files = [
     { path = "LICENSE", hash = 0xbd0eed23 },
 ]
