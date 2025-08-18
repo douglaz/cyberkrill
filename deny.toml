@@ -11,25 +11,16 @@ targets = [
 ]
 
 [advisories]
-# Path to the advisory database
 db-path = "~/.cargo/advisory-db"
-# The URL(s) of the advisory databases to use
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# How to handle crates with security vulnerabilities
-version = 2
 ignore = [
-    # slab v0.4.10 vulnerability - will be fixed with cargo update
-    "RUSTSEC-2025-0047",
-    # paste - unmaintained but still widely used, no alternative
+    # paste - unmaintained but still widely used
     "RUSTSEC-2024-0436",
-    # serde_cbor - unmaintained but required by dependencies
+    # serde_cbor - unmaintained but required by dependencies  
     "RUSTSEC-2021-0127",
 ]
 
 [licenses]
-# How to handle various licenses
-version = 2
-# Allow common open source licenses
 allow = [
     "MIT",
     "Apache-2.0",
@@ -37,7 +28,6 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "CC0-1.0",
     "MPL-2.0",
@@ -46,14 +36,19 @@ allow = [
     "OpenSSL",
     "MITNFA",
     "GPL-3.0-or-later",
-    "CDLA-Permissive-2.0",  # Required by webpki-roots
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
-# Ignore unlicensed crates from git dependencies
-exceptions = [
-    { allow = ["MIT"], name = "cktap-direct" },
-    { allow = ["MIT"], name = "frozenkrill-core" },
-]
+private = { ignore = true }
+
+# Handle specific unlicensed crates
+[[licenses.exceptions]]
+allow = ["Unlicense", "MIT", "Apache-2.0"]
+crate = "cktap-direct"
+
+[[licenses.exceptions]]
+allow = ["Unlicense", "MIT", "Apache-2.0"]
+crate = "frozenkrill-core"
 
 [[licenses.clarify]]
 name = "ring"
@@ -70,26 +65,17 @@ license-files = [
 ]
 
 [bans]
-# Multiple versions of the same crate allowed during transition periods
 multiple-versions = "warn"
-# Allow wildcard dependencies during development
 wildcards = "allow"
 highlight = "all"
-
-# Deny specific crates
 deny = [
-    # Prefer rustls over openssl for better security
     { name = "openssl" },
 ]
 
 [sources]
-# Warn about crates from unknown registries
 unknown-registry = "warn"
-# Warn about git dependencies
 unknown-git = "warn"
-# Allow crates.io
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# Allow our git dependencies
 allow-git = [
     "https://github.com/rust-bitcoin/rust-bip39",
     "https://github.com/douglaz/cktap-direct",
