@@ -44,7 +44,7 @@ bdk_wallet = "2.0.0"
 bdk_electrum = { version = "0.23.0", default-features = false, features = ["use-rustls"] }
 bdk_esplora = { version = "0.22.0", default-features = false, features = ["blocking", "blocking-https-rustls"] }
 # frozenkrill support
-frozenkrill-core = { git = "https://github.com/douglaz/frozenkrill", rev = "b51420f", optional = true }
+frozenkrill-core = { git = "https://github.com/planktonlabs/frozenkrill", optional = true }
 # Coldcard hardware wallet support
 coldcard = { git = "https://github.com/douglaz/rust-coldcard", branch = "hidraw", optional = true, default-features = false, features = ["hidraw-backend"] }
 # Trezor hardware wallet support (using master branch with bitcoin 0.32 support)
