@@ -619,7 +619,7 @@ dependencies = [
 [[package]]
 name = "cktap-direct"
 version = "0.1.0"
-source = "git+https://github.com/douglaz/cktap-direct#a4cd91e84ea2c3d75d5bd16088cfb1e02d0628de"
+source = "git+https://github.com/douglaz/cktap-direct?rev=6feb5f0#6feb5f017229c21bc5ccf0c9a55b92a445e0ecb3"
 dependencies = [
  "bitcoin",
  "ciborium",
@@ -1204,7 +1204,7 @@ dependencies = [
 [[package]]
 name = "frozenkrill-core"
 version = "0.0.0"
-source = "git+https://github.com/planktonlabs/frozenkrill#3ca103892e3ec0d591eda5256b17a5986c798e1c"
+source = "git+https://github.com/douglaz/frozenkrill?rev=b51420f#b51420f733646013ad05f75d9e2447a682083f1b"
 dependencies = [
  "alkali",
  "anyhow",
