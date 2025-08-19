@@ -41,15 +41,6 @@ allow = [
 confidence-threshold = 0.8
 private = { ignore = true }
 
-# Handle specific unlicensed crates
-[[licenses.exceptions]]
-allow = ["Unlicense", "MIT", "Apache-2.0"]
-crate = "cktap-direct"
-
-[[licenses.exceptions]]
-allow = ["Unlicense", "MIT", "Apache-2.0"]
-crate = "frozenkrill-core"
-
 [[licenses.clarify]]
 name = "ring"
 expression = "MIT AND ISC AND OpenSSL"
