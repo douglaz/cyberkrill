@@ -36,12 +36,12 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
-              "cktap-direct-0.1.0" = "sha256-ddQhghrmtwXKr750bTzjolSDLwyNZFUskNhJrR2vyBo=";
+              "cktap-direct-0.1.0" = "sha256-yX9sFHWsisEXYBjYo2TrpC/vj58JO/b+Bb+phubkJNA=";
               "bip39-2.2.0" = "sha256-gtUvFo0A8mPdBfqp5jwMzS/tpNc1YRHWliIc27FYioA=";
-              "frozenkrill-core-0.0.0" = "sha256-awlbxP38IvzRRMorKa/tZNY9cXJ3EokAIkt/9J2MuRs=";
+              "frozenkrill-core-0.0.0" = "sha256-NK4ghVnX9hp6GX1V9arWlEZ+6U/DR5jaZsOPxTTyhw4=";
               "coldcard-0.12.2" = "sha256-S+MARrWsdGCsfe4A3cUqaKSijo81MfH6KLIeuBpMckc=";
-              "hidapi-compat-0.1.0" = "sha256-OfODFjoA0Ub2vcug5xpbt+3+VZxyN6DUfKJfdHrFr+g=";
-              "trezor-client-0.1.5" = "sha256-xBzQtiwXJlhC07Ei7YwtaajMIMyUIQPIfYAHC2dawQ4=";
+              "hidapi-compat-0.1.0" = "sha256-t9It+7iaBar3uMVsCfyPwtLjOq8Kp4qZnYkz9rEhs04=";
+              "trezor-client-0.1.5" = "sha256-PK7tfg94PFbfFEmR2polUNVq5yhwrfS1iF8Wm71HpfE=";
             };
           };
           
@@ -118,12 +118,12 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
-              "cktap-direct-0.1.0" = "sha256-ddQhghrmtwXKr750bTzjolSDLwyNZFUskNhJrR2vyBo=";
+              "cktap-direct-0.1.0" = "sha256-yX9sFHWsisEXYBjYo2TrpC/vj58JO/b+Bb+phubkJNA=";
               "bip39-2.2.0" = "sha256-gtUvFo0A8mPdBfqp5jwMzS/tpNc1YRHWliIc27FYioA=";
-              "frozenkrill-core-0.0.0" = "sha256-awlbxP38IvzRRMorKa/tZNY9cXJ3EokAIkt/9J2MuRs=";
+              "frozenkrill-core-0.0.0" = "sha256-NK4ghVnX9hp6GX1V9arWlEZ+6U/DR5jaZsOPxTTyhw4=";
               "coldcard-0.12.2" = "sha256-S+MARrWsdGCsfe4A3cUqaKSijo81MfH6KLIeuBpMckc=";
-              "hidapi-compat-0.1.0" = "sha256-OfODFjoA0Ub2vcug5xpbt+3+VZxyN6DUfKJfdHrFr+g=";
-              "trezor-client-0.1.5" = "sha256-xBzQtiwXJlhC07Ei7YwtaajMIMyUIQPIfYAHC2dawQ4=";
+              "hidapi-compat-0.1.0" = "sha256-t9It+7iaBar3uMVsCfyPwtLjOq8Kp4qZnYkz9rEhs04=";
+              "trezor-client-0.1.5" = "sha256-PK7tfg94PFbfFEmR2polUNVq5yhwrfS1iF8Wm71HpfE=";
             };
           };
           
