@@ -1117,7 +1117,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1505,7 +1505,7 @@ checksum = "3011d1213f159867b13cfd6ac92d2cd5f1345762c63be3554e84092d85a50bbd"
 [[package]]
 name = "hidapi-compat"
 version = "0.1.0"
-source = "git+https://github.com/douglaz/hidraw-rs.git#23d86b2d2a40f26348c230a5fbc31c0f70c4d907"
+source = "git+https://github.com/douglaz/hidraw-rs.git#59823f8be03aa21c82fdaadd4ed045661cd769f6"
 dependencies = [
  "hidraw-rs",
  "libc",
@@ -1515,7 +1515,7 @@ dependencies = [
 [[package]]
 name = "hidraw-rs"
 version = "0.1.0"
-source = "git+https://github.com/douglaz/hidraw-rs.git#23d86b2d2a40f26348c230a5fbc31c0f70c4d907"
+source = "git+https://github.com/douglaz/hidraw-rs.git#59823f8be03aa21c82fdaadd4ed045661cd769f6"
 dependencies = [
  "libc",
  "rustix 1.0.8",
@@ -2076,7 +2076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -2964,7 +2964,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
