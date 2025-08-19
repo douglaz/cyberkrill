@@ -7,21 +7,21 @@
 //! # Examples
 //!
 //! ```no_run
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use jade_bitcoin::{JadeClient, Network};
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Connect to Jade device
-//! let mut jade = JadeClient::connect()?;
+//! let mut jade = JadeClient::connect().await?;
 //!
 //! // Unlock the device
-//! jade.unlock(Network::Bitcoin)?;
+//! jade.unlock(Network::Bitcoin).await?;
 //!
 //! // Get a Bitcoin address
-//! let address = jade.get_address("m/84'/0'/0'/0/0", Network::Bitcoin)?;
+//! let address = jade.get_address("m/84'/0'/0'/0/0", Network::Bitcoin).await?;
 //! println!("Address: {}", address);
 //!
 //! // Get extended public key
-//! let xpub = jade.get_xpub("m/84'/0'/0'")?;
+//! let xpub = jade.get_xpub("m/84'/0'/0'").await?;
 //! println!("xpub: {}", xpub);
 //! # Ok(())
 //! # }

@@ -33,7 +33,7 @@ chrono = { version = "0.4", features = ["serde"] }
 fedimint-lite = { path = "../fedimint-lite" }
 tracing = "0.1"
 # Tapsigner/Satscard support via USB (optional feature)
-cktap-direct = { git = "https://github.com/douglaz/cktap-direct", optional = true }
+cktap-direct = { git = "https://github.com/douglaz/cktap-direct", rev = "6feb5f0", optional = true }
 rusb = { version = "0.9", optional = true }
 bitcoin = "0.32"
 secp256k1 = "0.29"

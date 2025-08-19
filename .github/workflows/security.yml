@@ -21,25 +21,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v5
 
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache cargo dependencies
-      uses: actions/cache@v4
+    - name: Install Nix
+      uses: cachix/install-nix-action@v30
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: audit-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Install cargo-audit
-      run: cargo install cargo-audit
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Run cargo audit
-      run: cargo audit
+      run: nix run nixpkgs#cargo-audit -- audit
 
     - name: Run cargo audit (JSON output)
-      run: cargo audit --json > audit-results.json
+      run: nix run nixpkgs#cargo-audit -- audit --json > audit-results.json
       continue-on-error: true
 
     - name: Upload audit results
@@ -57,22 +48,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v5
 
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache cargo dependencies
-      uses: actions/cache@v4
+    - name: Install Nix
+      uses: cachix/install-nix-action@v30
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: supply-chain-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Install cargo-deny
-      run: cargo install cargo-deny
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Run cargo deny
-      run: cargo deny check
+      run: nix run nixpkgs#cargo-deny -- check
 
   codeql-analysis:
     name: CodeQL Analysis
