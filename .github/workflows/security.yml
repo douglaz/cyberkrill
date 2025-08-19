@@ -33,7 +33,10 @@ jobs:
         key: audit-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Install cargo-audit
-      run: cargo install cargo-audit
+      run: |
+        wget -q https://github.com/rustsec/rustsec/releases/latest/download/cargo-audit-x86_64-unknown-linux-musl.tar.gz
+        tar xzf cargo-audit-x86_64-unknown-linux-musl.tar.gz
+        sudo mv cargo-audit /usr/local/bin/
 
     - name: Run cargo audit
       run: cargo audit
@@ -69,7 +72,10 @@ jobs:
         key: supply-chain-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Install cargo-deny
-      run: cargo install cargo-deny
+      run: |
+        wget -q https://github.com/EmbarkStudios/cargo-deny/releases/latest/download/cargo-deny-x86_64-unknown-linux-musl.tar.gz
+        tar xzf cargo-deny-x86_64-unknown-linux-musl.tar.gz
+        sudo mv cargo-deny /usr/local/bin/
 
     - name: Run cargo deny
       run: cargo deny check
