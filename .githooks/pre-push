@@ -39,13 +39,15 @@ if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
     echo "📦 Checking for outdated dependencies..."
     if ! nix develop -c cargo outdated --exit-code 1 --root-deps-only 2>/dev/null; then
         echo ""
-        echo "❌ Outdated dependencies found. Please update them before pushing."
+        echo "❌ Outdated dependencies found. Please review and update them."
         echo ""
         echo "To update compatible versions:"
         echo "  nix develop -c cargo upgrade"
         echo ""
-        echo "To see all outdated dependencies (including sub-dependencies):"
-        echo "  nix develop -c cargo outdated"
+        echo "For incompatible updates (major versions), review changelog and update manually."
+        echo ""
+        echo "To bypass this check in special circumstances:"
+        echo "  git push --no-verify"
         exit 1
     fi
     echo "✅ All dependencies are up to date"
