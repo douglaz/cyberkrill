@@ -20,7 +20,7 @@ if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
     echo ""
     
     # Run clippy
-    echo "🔎 Running clippy linting (all targets, all features)..."
+    echo "🔎 Running clippy linting..."
     if ! nix develop -c cargo clippy --all-targets --all-features -- -D warnings 2>&1; then
         echo ""
         echo "❌ Clippy found issues. Please fix them before pushing."
@@ -33,6 +33,23 @@ if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
         exit 1
     fi
     echo "✅ Clippy check passed"
+    echo ""
+    
+    # Check for outdated dependencies (warning only)
+    echo "📦 Checking for outdated dependencies..."
+    if ! nix develop -c cargo outdated --exit-code 1 --root-deps-only 2>/dev/null; then
+        echo ""
+        echo "⚠️  Warning: Outdated dependencies detected:"
+        nix develop -c cargo outdated --root-deps-only 2>/dev/null | head -30
+        echo ""
+        echo "To update compatible versions:"
+        echo "  nix develop -c cargo upgrade"
+        echo ""
+        echo "For incompatible updates (major versions), review changelog and update manually."
+        echo "Consider updating dependencies when appropriate."
+    else
+        echo "✅ All dependencies are up to date"
+    fi
 else
     # Fallback to regular cargo
     echo "📝 Checking code formatting..."
@@ -48,7 +65,7 @@ else
     echo ""
     
     # Run clippy
-    echo "🔎 Running clippy linting (all targets, all features)..."
+    echo "🔎 Running clippy linting..."
     if ! cargo clippy --all-targets --all-features -- -D warnings 2>&1; then
         echo ""
         echo "❌ Clippy found issues. Please fix them before pushing."
@@ -61,6 +78,28 @@ else
         exit 1
     fi
     echo "✅ Clippy check passed"
+    echo ""
+    
+    # Check for outdated dependencies (non-nix fallback, warning only)
+    echo "📦 Checking for outdated dependencies..."
+    if command -v cargo-outdated >/dev/null 2>&1; then
+        if ! cargo outdated --exit-code 1 --root-deps-only 2>/dev/null; then
+            echo ""
+            echo "⚠️  Warning: Outdated dependencies detected:"
+            cargo outdated --root-deps-only 2>/dev/null | head -30
+            echo ""
+            echo "To update compatible versions:"
+            echo "  cargo upgrade"
+            echo ""
+            echo "For incompatible updates (major versions), review changelog and update manually."
+            echo "Consider updating dependencies when appropriate."
+        else
+            echo "✅ All dependencies are up to date"
+        fi
+    else
+        echo "⚠️  cargo-outdated not found. Skipping dependency check."
+        echo "   Install with: cargo install cargo-outdated"
+    fi
 fi
 
 echo ""
