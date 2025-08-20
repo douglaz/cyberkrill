@@ -38,7 +38,7 @@
             outputHashes = {
               "cktap-direct-0.1.0" = "sha256-yX9sFHWsisEXYBjYo2TrpC/vj58JO/b+Bb+phubkJNA=";
               "bip39-2.2.0" = "sha256-gtUvFo0A8mPdBfqp5jwMzS/tpNc1YRHWliIc27FYioA=";
-              "frozenkrill-core-0.0.0" = "sha256-NK4ghVnX9hp6GX1V9arWlEZ+6U/DR5jaZsOPxTTyhw4=";
+              "frozenkrill-core-0.0.0" = "sha256-JVLXTnzFDsgLMJ9vQkkFONq3qeu2Gr5WfZFjQy1lQiQ=";
               "coldcard-0.12.2" = "sha256-S+MARrWsdGCsfe4A3cUqaKSijo81MfH6KLIeuBpMckc=";
               "hidapi-compat-0.1.0" = "sha256-wq7/X9HjwzUNSA9xNRBWXVMI9sRxEXQsHa5qMSAn+OA=";
               "trezor-client-0.1.5" = "sha256-lZkB53ykCTlUue2J1jICKky58LpaSFc+fSNzRYOMPFw=";
@@ -120,7 +120,7 @@
             outputHashes = {
               "cktap-direct-0.1.0" = "sha256-yX9sFHWsisEXYBjYo2TrpC/vj58JO/b+Bb+phubkJNA=";
               "bip39-2.2.0" = "sha256-gtUvFo0A8mPdBfqp5jwMzS/tpNc1YRHWliIc27FYioA=";
-              "frozenkrill-core-0.0.0" = "sha256-NK4ghVnX9hp6GX1V9arWlEZ+6U/DR5jaZsOPxTTyhw4=";
+              "frozenkrill-core-0.0.0" = "sha256-JVLXTnzFDsgLMJ9vQkkFONq3qeu2Gr5WfZFjQy1lQiQ=";
               "coldcard-0.12.2" = "sha256-S+MARrWsdGCsfe4A3cUqaKSijo81MfH6KLIeuBpMckc=";
               "hidapi-compat-0.1.0" = "sha256-wq7/X9HjwzUNSA9xNRBWXVMI9sRxEXQsHa5qMSAn+OA=";
               "trezor-client-0.1.5" = "sha256-lZkB53ykCTlUue2J1jICKky58LpaSFc+fSNzRYOMPFw=";
