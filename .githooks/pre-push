@@ -37,7 +37,7 @@ if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
     
     # Check for outdated dependencies
     echo "📦 Checking for outdated dependencies..."
-    if ! nix shell nixpkgs#cargo-outdated -c cargo outdated --exit-code 1 --root-deps-only 2>/dev/null; then
+    if ! nix develop -c cargo outdated --exit-code 1 --root-deps-only 2>/dev/null; then
         echo ""
         echo "❌ Outdated dependencies found. Please update them before pushing."
         echo ""
@@ -45,7 +45,7 @@ if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
         echo "  nix develop -c cargo upgrade"
         echo ""
         echo "To see all outdated dependencies (including sub-dependencies):"
-        echo "  nix shell nixpkgs#cargo-outdated -c cargo outdated"
+        echo "  nix develop -c cargo outdated"
         exit 1
     fi
     echo "✅ All dependencies are up to date"
