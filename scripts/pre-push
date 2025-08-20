@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "🔍 Running pre-push checks..."
+echo ""
+
+# Check if we're in a nix environment
+if command -v nix >/dev/null 2>&1 && [ -f "flake.nix" ]; then
+    # Check formatting
+    echo "📝 Checking code formatting..."
+    if ! nix develop -c cargo fmt --check 2>/dev/null; then
+        echo ""
+        echo "❌ Code is not formatted. Please run 'nix develop -c cargo fmt' before pushing."
+        echo ""
+        echo "To see what needs formatting:"
+        echo "  nix develop -c cargo fmt --check --verbose"
+        exit 1
+    fi
+    echo "✅ Formatting check passed"
+    echo ""
+    
+    # Run clippy
+    echo "🔎 Running clippy linting..."
+    if ! nix develop -c cargo clippy --all-targets --all-features -- -D warnings 2>&1; then
+        echo ""
+        echo "❌ Clippy found issues. Please fix them before pushing."
+        echo ""
+        echo "To see all issues:"
+        echo "  nix develop -c cargo clippy --all-targets --all-features"
+        echo ""
+        echo "To attempt automatic fixes:"
+        echo "  nix develop -c cargo clippy --all-targets --all-features --fix --allow-dirty"
+        exit 1
+    fi
+    echo "✅ Clippy check passed"
+    echo ""
+    
+    # Check for outdated dependencies
+    echo "📦 Checking for outdated dependencies..."
+    if ! nix shell nixpkgs#cargo-outdated -c cargo outdated --exit-code 1 --root-deps-only 2>/dev/null; then
+        echo ""
+        echo "❌ Outdated dependencies found. Please update them before pushing."
+        echo ""
+        echo "To update compatible versions:"
+        echo "  nix develop -c cargo upgrade"
+        echo ""
+        echo "To see all outdated dependencies (including sub-dependencies):"
+        echo "  nix shell nixpkgs#cargo-outdated -c cargo outdated"
+        exit 1
+    fi
+    echo "✅ All dependencies are up to date"
+else
+    # Fallback to regular cargo
+    echo "📝 Checking code formatting..."
+    if ! cargo fmt --check 2>/dev/null; then
+        echo ""
+        echo "❌ Code is not formatted. Please run 'cargo fmt' before pushing."
+        echo ""
+        echo "To see what needs formatting:"
+        echo "  cargo fmt --check --verbose"
+        exit 1
+    fi
+    echo "✅ Formatting check passed"
+    echo ""
+    
+    # Run clippy
+    echo "🔎 Running clippy linting..."
+    if ! cargo clippy --all-targets --all-features -- -D warnings 2>&1; then
+        echo ""
+        echo "❌ Clippy found issues. Please fix them before pushing."
+        echo ""
+        echo "To see all issues:"
+        echo "  cargo clippy --all-targets --all-features"
+        echo ""
+        echo "To attempt automatic fixes:"
+        echo "  cargo clippy --all-targets --all-features --fix --allow-dirty"
+        exit 1
+    fi
+    echo "✅ Clippy check passed"
+    echo ""
+    
+    # Check for outdated dependencies (non-nix fallback)
+    echo "📦 Checking for outdated dependencies..."
+    if command -v cargo-outdated >/dev/null 2>&1; then
+        if ! cargo outdated --exit-code 1 --root-deps-only 2>/dev/null; then
+            echo ""
+            echo "❌ Outdated dependencies found. Please update them before pushing."
+            echo ""
+            echo "To update compatible versions:"
+            echo "  cargo upgrade"
+            echo ""
+            echo "To see all outdated dependencies (including sub-dependencies):"
+            echo "  cargo outdated"
+            exit 1
+        fi
+        echo "✅ All dependencies are up to date"
+    else
+        echo "⚠️  cargo-outdated not found. Skipping dependency check."
+        echo "   Install with: cargo install cargo-outdated"
+    fi
+fi
+
+echo ""
+echo "✅ All pre-push checks passed! Proceeding with push..."
+echo ""
