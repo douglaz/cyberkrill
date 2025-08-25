@@ -65,21 +65,23 @@ pub fn decode_fedimint_invite(input: &str) -> Result<FedimintInviteOutput> {
 }
 
 fn decode_bech32m_invite(input: &str) -> Result<FedimintInviteOutput> {
-    // Decode bech32m
-    let (hrp, data, variant) = bech32::decode(input)?;
+    // Decode and validate bech32m checksum
+    use bech32::primitives::decode::CheckedHrpstring;
+    use bech32::Bech32m;
+
+    let checked = CheckedHrpstring::new::<Bech32m>(input)
+        .map_err(|e| anyhow::anyhow!("Invalid bech32m string: {e}"))?;
+
+    // Verify HRP
+    let hrp = checked.hrp();
     anyhow::ensure!(
-        hrp == "fed1",
-        "Invalid HRP (human-readable part): expected 'fed1', got '{hrp}'"
+        hrp.as_str() == "fed1",
+        "Invalid HRP (human-readable part): expected 'fed1', got '{}'",
+        hrp.as_str()
     );
 
-    // For bech32m, we expect variant 1
-    anyhow::ensure!(
-        variant == bech32::Variant::Bech32m,
-        "Expected bech32m variant, got {variant:?}"
-    );
-
-    // Convert from 5-bit to 8-bit
-    let decoded_bytes = bech32::convert_bits(&data, 5, 8, false)?;
+    // Convert from 5-bit field elements to 8-bit bytes
+    let decoded_bytes: Vec<u8> = checked.byte_iter().collect();
 
     decode_invite_bytes(&decoded_bytes, "bech32m")
 }
@@ -377,16 +379,12 @@ fn encode_invite_to_bytes(invite: &FedimintInviteOutput) -> Result<Vec<u8>> {
 }
 
 fn encode_to_bech32m(bytes: &[u8]) -> Result<String> {
-    // Convert 8-bit to 5-bit for bech32
-    let data_vec = bech32::convert_bits(bytes, 8, 5, true)?;
+    use bech32::{Bech32m, Hrp};
 
-    // Convert to u5 values for bech32 encoding
-    let data_u5: Vec<bech32::u5> = data_vec
-        .into_iter()
-        .map(|b| bech32::u5::try_from_u8(b).expect("convert_bits output should be valid 5-bit"))
-        .collect();
+    let hrp = Hrp::parse("fed1").map_err(|e| anyhow::anyhow!("Failed to parse HRP: {e}"))?;
 
-    let encoded = bech32::encode("fed1", &data_u5, bech32::Variant::Bech32m)?;
+    let encoded = bech32::encode::<Bech32m>(hrp, bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to encode bech32m: {e}"))?;
     Ok(encoded)
 }
 
