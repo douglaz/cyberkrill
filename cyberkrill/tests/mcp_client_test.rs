@@ -94,11 +94,11 @@ async fn test_decode_invoice_tool() -> Result<()> {
         .await?;
 
     // Verify the response contains expected fields
-    if let Some(content) = &result.content {
-        assert!(!content.is_empty(), "Tool should return content");
+    if !result.content.is_empty() {
+        assert!(!result.content.is_empty(), "Tool should return content");
 
         // The result should contain text with the decoded invoice
-        let content_text = content[0].as_text();
+        let content_text = result.content[0].as_text();
         assert!(content_text.is_some(), "Content should be text");
 
         let text = &content_text.unwrap().text;
@@ -142,8 +142,8 @@ async fn test_decode_lnurl_tool() -> Result<()> {
         .await?;
 
     // Verify the response
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         let text = &content_text.text;
 
         // Check if it's an error response
@@ -183,8 +183,8 @@ async fn test_decode_fedimint_invite_tool() -> Result<()> {
         .await?;
 
     // Verify the response
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         let decoded: serde_json::Value = serde_json::from_str(&content_text.text)?;
 
         assert!(decoded.get("federation_id").is_some());
@@ -216,8 +216,8 @@ async fn test_encode_fedimint_invite_tool() -> Result<()> {
         .await?;
 
     // Verify we got an invite code back
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         let decoded: serde_json::Value = serde_json::from_str(&content_text.text)?;
 
         assert!(decoded.get("invite_code").is_some());
@@ -251,8 +251,8 @@ async fn test_decode_psbt_tool() -> Result<()> {
         .await?;
 
     // Verify the response
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         let decoded: serde_json::Value = serde_json::from_str(&content_text.text)?;
 
         assert!(decoded.get("version").is_some() || decoded.get("unsigned_tx").is_some());
@@ -276,15 +276,15 @@ async fn test_list_utxos_tool_error_case() -> Result<()> {
         .await?;
 
     // The result should contain an error message
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         assert!(
             content_text.text.contains("Error"),
             "Expected error message but got: {}",
             content_text.text
         );
     } else {
-        panic!("Expected content but got none");
+        panic!("Expected content but got empty content");
     }
 
     Ok(())
@@ -312,15 +312,15 @@ async fn test_create_psbt_tool_error_case() -> Result<()> {
         .await?;
 
     // Should return an error without real backend
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         assert!(
             content_text.text.contains("Error"),
             "Expected error message but got: {}",
             content_text.text
         );
     } else {
-        panic!("Expected content but got none");
+        panic!("Expected content but got empty content");
     }
 
     Ok(())
@@ -348,15 +348,15 @@ async fn test_create_funded_psbt_tool_error_case() -> Result<()> {
         .await?;
 
     // Should return an error without real backend
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         assert!(
             content_text.text.contains("Error"),
             "Expected error message but got: {}",
             content_text.text
         );
     } else {
-        panic!("Expected content but got none");
+        panic!("Expected content but got empty content");
     }
 
     Ok(())
@@ -384,15 +384,15 @@ async fn test_move_utxos_tool_error_case() -> Result<()> {
         .await?;
 
     // Should return an error without real backend
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         assert!(
             content_text.text.contains("Error"),
             "Expected error message but got: {}",
             content_text.text
         );
     } else {
-        panic!("Expected content but got none");
+        panic!("Expected content but got empty content");
     }
 
     Ok(())
@@ -420,8 +420,8 @@ async fn test_generate_invoice_tool_error_case() -> Result<()> {
         .await?;
 
     // Should return an error without real Lightning address server
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         assert!(content_text.text.contains("Error"));
     }
 
@@ -449,15 +449,15 @@ async fn test_dca_report_tool_error_case() -> Result<()> {
         .await?;
 
     // Should return an error without real backend
-    if let Some(content) = &result.content {
-        let content_text = content[0].as_text().unwrap();
+    if !result.content.is_empty() {
+        let content_text = result.content[0].as_text().unwrap();
         assert!(
             content_text.text.contains("Error"),
             "Expected error message but got: {}",
             content_text.text
         );
     } else {
-        panic!("Expected content but got none");
+        panic!("Expected content but got empty content");
     }
 
     Ok(())
