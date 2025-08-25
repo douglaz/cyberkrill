@@ -75,7 +75,7 @@ fn decode_bech32m_invite(input: &str) -> Result<FedimintInviteOutput> {
     // Verify HRP
     let hrp = checked.hrp();
     anyhow::ensure!(
-        hrp.as_str() == "fed1",
+        hrp == bech32::primitives::hrp::Hrp::parse("fed1")?,
         "Invalid HRP (human-readable part): expected 'fed1', got '{}'",
         hrp.as_str()
     );

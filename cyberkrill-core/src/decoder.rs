@@ -161,14 +161,12 @@ pub fn decode_lnurl(input: &str) -> Result<LnurlOutput> {
 
     let (hrp, data) = bech32::decode(input)?;
     anyhow::ensure!(
-        hrp.as_str().to_lowercase() == "lnurl",
+        hrp == bech32::primitives::hrp::Hrp::parse("lnurl")?,
         "Invalid HRP (human-readable part): expected 'lnurl', got '{}'",
         hrp.as_str()
     );
 
-    // The bech32::decode function now returns Vec<u8> directly
-    let decoded_bytes = data;
-    let url_str = String::from_utf8(decoded_bytes)?;
+    let url_str = String::from_utf8(data)?;
 
     let url = Url::parse(&url_str)?;
     let mut query_params = HashMap::new();
