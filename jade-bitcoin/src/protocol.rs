@@ -1,11 +1,11 @@
 //! Jade protocol implementation
 
 use crate::error::{Error, Result};
-use crate::messages::{error_codes, methods, Request, ResponseBody};
+use crate::messages::{Request, ResponseBody, error_codes, methods};
 use crate::serial::SerialConnection;
 use crate::types::Network;
 use log::{debug, info};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Low-level protocol handler for Jade communication
 pub struct JadeProtocol {

@@ -1,6 +1,6 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use bitcoin::psbt::Psbt;
-use bitcoin::transaction::{predict_weight, InputWeightPrediction};
+use bitcoin::transaction::{InputWeightPrediction, predict_weight};
 use bitcoin::{Amount, Weight};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -394,10 +394,10 @@ impl BitcoinRpcClient {
         password: Option<String>,
     ) -> Result<Self> {
         // Try cookie auth first if bitcoin_dir is provided
-        if let Some(dir) = bitcoin_dir {
-            if let Ok(client) = Self::new_with_cookie(url.clone(), dir) {
-                return Ok(client);
-            }
+        if let Some(dir) = bitcoin_dir
+            && let Ok(client) = Self::new_with_cookie(url.clone(), dir)
+        {
+            return Ok(client);
         }
 
         // Fall back to username/password
@@ -453,10 +453,10 @@ impl BitcoinRpcClient {
 
         let json: serde_json::Value = response.json().await?;
 
-        if let Some(error) = json.get("error") {
-            if !error.is_null() {
-                bail!("RPC error: {error}");
-            }
+        if let Some(error) = json.get("error")
+            && !error.is_null()
+        {
+            bail!("RPC error: {error}");
         }
 
         json.get("result")
@@ -783,12 +783,11 @@ impl BitcoinRpcClient {
         if let Ok(result) = self
             .rpc_call("deriveaddresses", serde_json::Value::Array(derive_params))
             .await
+            && let Some(addr_array) = result.as_array()
         {
-            if let Some(addr_array) = result.as_array() {
-                for addr in addr_array {
-                    if let Some(addr_str) = addr.as_str() {
-                        addresses.push(addr_str.to_string());
-                    }
+            for addr in addr_array {
+                if let Some(addr_str) = addr.as_str() {
+                    addresses.push(addr_str.to_string());
                 }
             }
         }
@@ -962,7 +961,7 @@ impl BitcoinRpcClient {
     /// Returns the parsed PSBT if valid, error if invalid
     fn validate_psbt(psbt_str: &str) -> Result<Psbt> {
         // Decode base64 string to bytes first
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
         let psbt_bytes = STANDARD
             .decode(psbt_str)
             .with_context(|| "Failed to decode base64 PSBT string")?;
@@ -1073,10 +1072,10 @@ impl BitcoinRpcClient {
             .rpc_call("deriveaddresses", serde_json::Value::Array(params))
             .await?;
 
-        if let Some(addresses) = result.as_array() {
-            if let Some(address) = addresses.first().and_then(|v| v.as_str()) {
-                return Ok(address.to_string());
-            }
+        if let Some(addresses) = result.as_array()
+            && let Some(address) = addresses.first().and_then(|v| v.as_str())
+        {
+            return Ok(address.to_string());
         }
 
         bail!("Failed to derive address from descriptor: {descriptor}");

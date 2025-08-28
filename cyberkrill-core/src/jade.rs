@@ -1,6 +1,6 @@
 //! Jade hardware wallet integration
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use jade_bitcoin::{JadeClient, Network as JadeNetwork};
 use serde::{Deserialize, Serialize};
 

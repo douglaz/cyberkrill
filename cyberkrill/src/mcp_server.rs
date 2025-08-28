@@ -1,5 +1,6 @@
 use anyhow::Result;
 use rmcp::{
+    ErrorData as McpError, RoleServer,
     handler::server::ServerHandler,
     model::{
         CallToolRequestParam, CallToolResult, Content, ListToolsResult, PaginatedRequestParam,
@@ -9,7 +10,6 @@ use rmcp::{
     service::{RequestContext, ServiceExt},
     tool,
     transport::stdio,
-    ErrorData as McpError, RoleServer,
 };
 use serde::Deserialize;
 use std::future::Future;
@@ -448,7 +448,7 @@ impl CyberkrillMcpServer {
             _ => {
                 return CallToolResult::error(vec![Content::text(format!(
                     "Invalid network: {network_str}"
-                ))])
+                ))]);
             }
         };
 
@@ -474,7 +474,7 @@ impl CyberkrillMcpServer {
                         Err(e) => {
                             return CallToolResult::error(vec![Content::text(format!(
                                 "Error: {e}"
-                            ))])
+                            ))]);
                         }
                     }
                 }
@@ -486,7 +486,7 @@ impl CyberkrillMcpServer {
                         Err(e) => {
                             return CallToolResult::error(vec![Content::text(format!(
                                 "Error: {e}"
-                            ))])
+                            ))]);
                         }
                     }
                 }
@@ -498,7 +498,7 @@ impl CyberkrillMcpServer {
                         Err(e) => {
                             return CallToolResult::error(vec![Content::text(format!(
                                 "Error: {e}"
-                            ))])
+                            ))]);
                         }
                     }
                 }
@@ -515,7 +515,7 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Error creating client: {e}"
-                    ))])
+                    ))]);
                 }
             };
 
@@ -564,7 +564,7 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Error decoding base64: {e}"
-                    ))])
+                    ))]);
                 }
             }
         } else {
@@ -573,7 +573,7 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Error decoding hex: {e}"
-                    ))])
+                    ))]);
                 }
             }
         };
@@ -619,7 +619,7 @@ impl CyberkrillMcpServer {
             _ => {
                 return CallToolResult::error(vec![Content::text(format!(
                     "Invalid network: {network_str}"
-                ))])
+                ))]);
             }
         };
 
@@ -629,14 +629,14 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Invalid fee rate: {e}"
-                    ))])
+                    ))]);
                 }
             }
         } else {
             None
         };
 
-        let result = if let Some(desc) = descriptor {
+        if let Some(desc) = descriptor {
             // BDK path - select backend with fallback
             let backend_config = match Self::select_backend(
                 backend.as_deref(),
@@ -671,7 +671,7 @@ impl CyberkrillMcpServer {
                         Err(e) => {
                             return CallToolResult::error(vec![Content::text(format!(
                                 "Invalid amount in output '{output}': {e}"
-                            ))])
+                            ))]);
                         }
                     }
                 } else {
@@ -709,7 +709,7 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Error creating client: {e}"
-                    ))])
+                    ))]);
                 }
             };
 
@@ -719,9 +719,7 @@ impl CyberkrillMcpServer {
                 )]),
                 Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
-        };
-
-        result
+        }
     }
 
     #[tool(description = "Create funded PSBT with automatic input selection")]
@@ -749,7 +747,7 @@ impl CyberkrillMcpServer {
             _ => {
                 return CallToolResult::error(vec![Content::text(format!(
                     "Invalid network: {network_str}"
-                ))])
+                ))]);
             }
         };
 
@@ -759,14 +757,14 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Invalid fee rate: {e}"
-                    ))])
+                    ))]);
                 }
             }
         } else {
             None
         };
 
-        let result = if let Some(desc) = descriptor {
+        if let Some(desc) = descriptor {
             // BDK path - select backend with fallback
             let backend_config = match Self::select_backend(
                 backend.as_deref(),
@@ -801,7 +799,7 @@ impl CyberkrillMcpServer {
                         Err(e) => {
                             return CallToolResult::error(vec![Content::text(format!(
                                 "Invalid amount in output '{output}': {e}"
-                            ))])
+                            ))]);
                         }
                     }
                 } else {
@@ -850,7 +848,7 @@ impl CyberkrillMcpServer {
                             Err(e) => {
                                 return CallToolResult::error(vec![Content::text(format!(
                                     "Invalid fee rate: {e}"
-                                ))])
+                                ))]);
                             }
                         }
                     } else {
@@ -877,9 +875,7 @@ impl CyberkrillMcpServer {
                     "Error creating Bitcoin RPC client: {e}"
                 ))]),
             }
-        };
-
-        result
+        }
     }
 
     #[tool(description = "Consolidate/move UTXOs to a single destination")]
@@ -907,7 +903,7 @@ impl CyberkrillMcpServer {
             _ => {
                 return CallToolResult::error(vec![Content::text(format!(
                     "Invalid network: {network_str}"
-                ))])
+                ))]);
             }
         };
 
@@ -917,7 +913,7 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Invalid fee rate: {e}"
-                    ))])
+                    ))]);
                 }
             }
         } else {
@@ -930,14 +926,14 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Invalid max_amount: {e}"
-                    ))])
+                    ))]);
                 }
             }
         } else {
             None
         };
 
-        let result = if let Some(desc) = descriptor {
+        if let Some(desc) = descriptor {
             // BDK path - select backend with fallback
             let backend_config = match Self::select_backend(
                 backend.as_deref(),
@@ -986,7 +982,7 @@ impl CyberkrillMcpServer {
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
                         "Error creating client: {e}"
-                    ))])
+                    ))]);
                 }
             };
 
@@ -1005,9 +1001,7 @@ impl CyberkrillMcpServer {
                 )]),
                 Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
-        };
-
-        result
+        }
     }
 
     #[tool(description = "Generate DCA (Dollar Cost Averaging) report for UTXOs")]

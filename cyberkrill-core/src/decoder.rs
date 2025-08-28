@@ -265,15 +265,14 @@ pub async fn generate_invoice_from_address(
     }
 
     // Validate comment length if provided
-    if let Some(comment) = comment {
-        if let Some(max_comment_len) = lnurl_pay_request.comment_allowed {
-            if comment.len() > max_comment_len as usize {
-                anyhow::bail!(
-                    "Comment length {comment_len} exceeds maximum allowed length: {max_comment_len}",
-                    comment_len = comment.len()
-                );
-            }
-        }
+    if let Some(comment) = comment
+        && let Some(max_comment_len) = lnurl_pay_request.comment_allowed
+        && comment.len() > max_comment_len as usize
+    {
+        anyhow::bail!(
+            "Comment length {comment_len} exceeds maximum allowed length: {max_comment_len}",
+            comment_len = comment.len()
+        );
     }
 
     // Build callback URL with parameters

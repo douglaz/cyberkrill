@@ -1,8 +1,8 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use bitcoin::bip32::Xpub;
 use coldcard::{
-    protocol::{AddressFormat, DerivationPath},
     Api, Coldcard as ColdcardDevice, SignMode,
+    protocol::{AddressFormat, DerivationPath},
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -254,7 +254,9 @@ pub async fn export_psbt_to_coldcard(psbt_data: &[u8], filename: &str) -> Result
         .sign_psbt(psbt_data, SignMode::Finalize)
         .context("Failed to prepare PSBT for Coldcard")?;
 
-    Ok(format!("PSBT has been sent to Coldcard. Please save it to SD card as '{filename}' using the device menu."))
+    Ok(format!(
+        "PSBT has been sent to Coldcard. Please save it to SD card as '{filename}' using the device menu."
+    ))
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 use cyberkrill_core::AmountInput;
 use std::io::{BufWriter, Read, Write};
@@ -1442,7 +1442,7 @@ async fn jade_sign_psbt(args: JadeSignPsbtArgs) -> anyhow::Result<()> {
 }
 
 fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
-    use cyberkrill_core::bitcoin::{psbt::Psbt, Network};
+    use cyberkrill_core::bitcoin::{Network, psbt::Psbt};
     use std::str::FromStr;
 
     // Parse network
@@ -1668,7 +1668,7 @@ async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()
 
 #[cfg(feature = "trezor")]
 async fn trezor_address(args: TrezorAddressArgs) -> anyhow::Result<()> {
-    use cyberkrill_core::{generate_trezor_address, Network};
+    use cyberkrill_core::{Network, generate_trezor_address};
 
     let network = args
         .network
@@ -1691,7 +1691,7 @@ async fn trezor_address(args: TrezorAddressArgs) -> anyhow::Result<()> {
 
 #[cfg(feature = "trezor")]
 async fn trezor_sign_psbt(args: TrezorSignPsbtArgs) -> anyhow::Result<()> {
-    use cyberkrill_core::{sign_psbt_with_trezor, Network};
+    use cyberkrill_core::{Network, sign_psbt_with_trezor};
 
     let network = args
         .network
@@ -1733,7 +1733,7 @@ async fn trezor_sign_psbt(args: TrezorSignPsbtArgs) -> anyhow::Result<()> {
 }
 
 async fn dca_report(args: DcaReportArgs) -> anyhow::Result<()> {
-    use cyberkrill_core::{generate_dca_report, Backend};
+    use cyberkrill_core::{Backend, generate_dca_report};
 
     // Determine backend based on arguments
     let backend = if let Some(bitcoin_dir) = args.bitcoin_dir {

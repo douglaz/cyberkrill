@@ -66,8 +66,8 @@ pub fn decode_fedimint_invite(input: &str) -> Result<FedimintInviteOutput> {
 
 fn decode_bech32m_invite(input: &str) -> Result<FedimintInviteOutput> {
     // Decode and validate bech32m checksum
-    use bech32::primitives::decode::CheckedHrpstring;
     use bech32::Bech32m;
+    use bech32::primitives::decode::CheckedHrpstring;
 
     let checked = CheckedHrpstring::new::<Bech32m>(input)
         .map_err(|e| anyhow::anyhow!("Invalid bech32m string: {e}"))?;
