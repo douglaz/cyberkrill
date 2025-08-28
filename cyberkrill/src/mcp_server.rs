@@ -636,7 +636,7 @@ impl CyberkrillMcpServer {
             None
         };
 
-        let result = if let Some(desc) = descriptor {
+        if let Some(desc) = descriptor {
             // BDK path - select backend with fallback
             let backend_config = match Self::select_backend(
                 backend.as_deref(),
@@ -719,9 +719,7 @@ impl CyberkrillMcpServer {
                 )]),
                 Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
-        };
-
-        result
+        }
     }
 
     #[tool(description = "Create funded PSBT with automatic input selection")]
@@ -766,7 +764,7 @@ impl CyberkrillMcpServer {
             None
         };
 
-        let result = if let Some(desc) = descriptor {
+        if let Some(desc) = descriptor {
             // BDK path - select backend with fallback
             let backend_config = match Self::select_backend(
                 backend.as_deref(),
@@ -877,9 +875,7 @@ impl CyberkrillMcpServer {
                     "Error creating Bitcoin RPC client: {e}"
                 ))]),
             }
-        };
-
-        result
+        }
     }
 
     #[tool(description = "Consolidate/move UTXOs to a single destination")]
@@ -937,7 +933,7 @@ impl CyberkrillMcpServer {
             None
         };
 
-        let result = if let Some(desc) = descriptor {
+        if let Some(desc) = descriptor {
             // BDK path - select backend with fallback
             let backend_config = match Self::select_backend(
                 backend.as_deref(),
@@ -1005,9 +1001,7 @@ impl CyberkrillMcpServer {
                 )]),
                 Err(e) => CallToolResult::error(vec![Content::text(format!("Error: {e}"))]),
             }
-        };
-
-        result
+        }
     }
 
     #[tool(description = "Generate DCA (Dollar Cost Averaging) report for UTXOs")]

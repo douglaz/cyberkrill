@@ -159,16 +159,16 @@ impl McpTestClient {
         // Extract the content from the response
         if let Some(result) = response.result {
             // The result should have a "content" field with an array of content items
-            if let Some(content_array) = result.get("content").and_then(|c| c.as_array()) {
-                if let Some(first_content) = content_array.first() {
-                    // Each content item has a "text" field with the actual response
-                    if let Some(text) = first_content.get("text").and_then(|t| t.as_str()) {
-                        // Try to parse the text as JSON, or return as string
-                        if let Ok(parsed) = serde_json::from_str::<Value>(text) {
-                            return Ok(parsed);
-                        } else {
-                            return Ok(Value::String(text.to_string()));
-                        }
+            if let Some(content_array) = result.get("content").and_then(|c| c.as_array())
+                && let Some(first_content) = content_array.first()
+            {
+                // Each content item has a "text" field with the actual response
+                if let Some(text) = first_content.get("text").and_then(|t| t.as_str()) {
+                    // Try to parse the text as JSON, or return as string
+                    if let Ok(parsed) = serde_json::from_str::<Value>(text) {
+                        return Ok(parsed);
+                    } else {
+                        return Ok(Value::String(text.to_string()));
                     }
                 }
             }
