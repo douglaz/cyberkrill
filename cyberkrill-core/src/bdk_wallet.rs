@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use base64::Engine;
 use bdk_wallet::{KeychainKind, Wallet};
 use bitcoin::{Amount, FeeRate, Network, OutPoint, Txid};
@@ -129,7 +129,7 @@ pub async fn scan_and_list_utxos_electrum(
     electrum_url: &str,
     stop_gap: u32,
 ) -> Result<Vec<BdkUtxo>> {
-    use bdk_electrum::{electrum_client, BdkElectrumClient};
+    use bdk_electrum::{BdkElectrumClient, electrum_client};
 
     let descriptors = expand_multipath_descriptor(descriptor);
     let mut all_utxos = Vec::new();
@@ -306,7 +306,7 @@ pub async fn scan_and_list_utxos_esplora(
     esplora_url: &str,
     stop_gap: u32,
 ) -> Result<Vec<BdkUtxo>> {
-    use bdk_esplora::{esplora_client, EsploraExt};
+    use bdk_esplora::{EsploraExt, esplora_client};
 
     let descriptors = expand_multipath_descriptor(descriptor);
     let mut all_utxos = Vec::new();
@@ -490,7 +490,7 @@ pub async fn create_psbt_bdk(
     // Sync wallet with blockchain and get UTXOs
     let utxos = if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
-        use bdk_electrum::{electrum_client, BdkElectrumClient};
+        use bdk_electrum::{BdkElectrumClient, electrum_client};
 
         let client = BdkElectrumClient::new(
             electrum_client::Client::new(url).context("Failed to create Electrum client")?,
@@ -524,7 +524,7 @@ pub async fn create_psbt_bdk(
         utxos
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
-        use bdk_esplora::{esplora_client, EsploraExt};
+        use bdk_esplora::{EsploraExt, esplora_client};
 
         let client = esplora_client::Builder::new(url).build_blocking();
         let request = wallet.start_full_scan().build();
@@ -656,7 +656,7 @@ pub async fn create_funded_psbt_bdk(
     // Sync wallet with blockchain
     if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
-        use bdk_electrum::{electrum_client, BdkElectrumClient};
+        use bdk_electrum::{BdkElectrumClient, electrum_client};
 
         let client = BdkElectrumClient::new(
             electrum_client::Client::new(url).context("Failed to create Electrum client")?,
@@ -667,7 +667,7 @@ pub async fn create_funded_psbt_bdk(
         wallet.apply_update(update)?;
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
-        use bdk_esplora::{esplora_client, EsploraExt};
+        use bdk_esplora::{EsploraExt, esplora_client};
 
         let client = esplora_client::Builder::new(url).build_blocking();
         let request = wallet.start_full_scan().build();
@@ -752,7 +752,7 @@ pub async fn move_utxos_bdk(
     // Sync wallet with blockchain and get UTXOs
     let utxos = if backend.starts_with("electrum://") {
         let url = backend.strip_prefix("electrum://").unwrap();
-        use bdk_electrum::{electrum_client, BdkElectrumClient};
+        use bdk_electrum::{BdkElectrumClient, electrum_client};
 
         let client = BdkElectrumClient::new(
             electrum_client::Client::new(url).context("Failed to create Electrum client")?,
@@ -786,7 +786,7 @@ pub async fn move_utxos_bdk(
         utxos
     } else if backend.starts_with("esplora://") {
         let url = backend.strip_prefix("esplora://").unwrap();
-        use bdk_esplora::{esplora_client, EsploraExt};
+        use bdk_esplora::{EsploraExt, esplora_client};
 
         let client = esplora_client::Builder::new(url).build_blocking();
         let request = wallet.start_full_scan().build();

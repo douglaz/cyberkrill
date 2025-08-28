@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 // Satscard imports - correct API usage
-use bitcoin::{key::CompressedPublicKey, network::Network, Address};
+use bitcoin::{Address, key::CompressedPublicKey, network::Network};
 use cktap_direct::commands::Read;
-use cktap_direct::{discovery::find_first, CkTapCard}; // Required trait import for read() method
+use cktap_direct::{CkTapCard, discovery::find_first}; // Required trait import for read() method
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SatscardAddressOutput {

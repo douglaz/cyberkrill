@@ -745,7 +745,7 @@ mod tests {
         // "not-a-date" splits into 3 parts: ["not", "a", "date"]
         let parts = "not-a-date".split('-').collect::<Vec<_>>();
         assert_eq!(parts.len(), 3); // Actually has 3 parts!
-                                    // But they're not valid numbers
+        // But they're not valid numbers
         assert!(parts[0].parse::<u32>().is_err());
 
         // "2024/06/15" has only 1 part when split by '-'

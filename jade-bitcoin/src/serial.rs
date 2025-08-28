@@ -5,7 +5,7 @@ use crate::messages::{Request, Response};
 use crate::types::{JADE_USB_IDS, SERIAL_BAUD_RATE, SERIAL_TIMEOUT_MS};
 use log::debug;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::time::{sleep, timeout, Duration};
+use tokio::time::{Duration, sleep, timeout};
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
 
 /// Async serial connection to Jade device

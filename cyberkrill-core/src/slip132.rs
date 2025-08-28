@@ -1,7 +1,7 @@
 // SLIP-0132 extended public key format support
 // Adapted from frozenkrill-core for Trezor compatibility
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use bitcoin::base58;
 use bitcoin::bip32::Xpub;
 

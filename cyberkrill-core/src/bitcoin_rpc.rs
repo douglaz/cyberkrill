@@ -1,6 +1,6 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use bitcoin::psbt::Psbt;
-use bitcoin::transaction::{predict_weight, InputWeightPrediction};
+use bitcoin::transaction::{InputWeightPrediction, predict_weight};
 use bitcoin::{Amount, Weight};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -962,7 +962,7 @@ impl BitcoinRpcClient {
     /// Returns the parsed PSBT if valid, error if invalid
     fn validate_psbt(psbt_str: &str) -> Result<Psbt> {
         // Decode base64 string to bytes first
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
         let psbt_bytes = STANDARD
             .decode(psbt_str)
             .with_context(|| "Failed to decode base64 PSBT string")?;

@@ -8,14 +8,14 @@ use crate::satscard::{SatscardAddressOutput, SatscardInfo};
 
 // Tapsigner imports
 use bitcoin::{
+    Address,
     bip32::{DerivationPath, Xpub},
-    hashes::{hash160, Hash},
+    hashes::{Hash, hash160},
     key::CompressedPublicKey,
     network::Network,
     secp256k1::{PublicKey, Secp256k1},
-    Address,
 };
-use cktap_direct::{discovery::find_first, CkTapCard, TapSigner};
+use cktap_direct::{CkTapCard, TapSigner, discovery::find_first};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,9 +95,9 @@ pub async fn initialize_tapsigner(chain_code: Option<String>) -> Result<Tapsigne
     // Generate or use provided chain code
     let chain_code_bytes = match chain_code {
         Some(hex_str) => {
-            let bytes = hex::decode(hex_str.trim()).with_context(|| {
-                "Invalid hex format for chain code. Must be 64 hex characters (32 bytes)."
-            })?;
+            let bytes = hex::decode(hex_str.trim()).with_context(
+                || "Invalid hex format for chain code. Must be 64 hex characters (32 bytes).",
+            )?;
             if bytes.len() != 32 {
                 anyhow::bail!(
                     "Chain code must be exactly 32 bytes (64 hex characters). Got {len} bytes.",
@@ -138,7 +138,9 @@ pub async fn initialize_tapsigner(chain_code: Option<String>) -> Result<Tapsigne
     // Verify initialization was successful by checking the status
     let new_status = tapsigner.status().await?;
     if new_status.path.is_none() {
-        anyhow::bail!("Initialization appeared to succeed but card still shows uninitialized state. Please try again.");
+        anyhow::bail!(
+            "Initialization appeared to succeed but card still shows uninitialized state. Please try again."
+        );
     }
 
     info!("✅ Tapsigner initialization successful!");
@@ -250,7 +252,9 @@ async fn connect_tapsigner() -> Result<TapsignerDevice<cktap_direct::usb_transpo
         CkTapCard::TapSigner(tapsigner) => Ok(TapsignerDevice::TapSigner(Box::new(tapsigner))),
         CkTapCard::SatsChip(tapsigner) => Ok(TapsignerDevice::TapSigner(Box::new(tapsigner))), // SatsChip is also a TapSigner
         _ => {
-            anyhow::bail!("Found CkTap card but it's not a TapSigner. Make sure you're using a TapSigner card.")
+            anyhow::bail!(
+                "Found CkTap card but it's not a TapSigner. Make sure you're using a TapSigner card."
+            )
         }
     }
 }
@@ -266,7 +270,9 @@ async fn connect_tapsigner_direct() -> Result<TapSigner<cktap_direct::usb_transp
         CkTapCard::TapSigner(tapsigner) => Ok(tapsigner),
         CkTapCard::SatsChip(tapsigner) => Ok(tapsigner), // SatsChip is also a TapSigner
         _ => {
-            anyhow::bail!("Found CkTap card but it's not a TapSigner. Make sure you're using a TapSigner card.")
+            anyhow::bail!(
+                "Found CkTap card but it's not a TapSigner. Make sure you're using a TapSigner card."
+            )
         }
     }
 }

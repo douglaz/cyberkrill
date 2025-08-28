@@ -356,8 +356,10 @@ mod tests {
 
         assert_eq!(wallet.network(), Network::Bitcoin);
         assert_eq!(wallet.wallet_type(), "2-of-3");
-        assert!(wallet
-            .contains_address("bc1q9h4r8pk4p6ufsaaqpk5w09h7fr983nf9pcef6vfqcujawge2m3ssaqs7dp"));
+        assert!(
+            wallet
+                .contains_address("bc1q9h4r8pk4p6ufsaaqpk5w09h7fr983nf9pcef6vfqcujawge2m3ssaqs7dp")
+        );
         assert_eq!(wallet.master_fingerprint(), None); // No fingerprint for multisig
 
         Ok(())
@@ -379,12 +381,16 @@ mod tests {
 
         let wallet = FrozenkrillWallet::from_file(temp_file.path())?;
 
-        assert!(wallet
-            .receiving_descriptor()
-            .starts_with("wpkh([84577e03/84'/0'/0']"));
-        assert!(wallet
-            .change_descriptor()
-            .starts_with("wpkh([84577e03/84'/0'/0']"));
+        assert!(
+            wallet
+                .receiving_descriptor()
+                .starts_with("wpkh([84577e03/84'/0'/0']")
+        );
+        assert!(
+            wallet
+                .change_descriptor()
+                .starts_with("wpkh([84577e03/84'/0'/0']")
+        );
         assert!(wallet.receiving_descriptor().ends_with("/0/*)#x703tmpk"));
         assert!(wallet.change_descriptor().ends_with("/1/*)#h22skw3w"));
 
