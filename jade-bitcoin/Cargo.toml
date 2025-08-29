@@ -16,7 +16,7 @@ serde_json = "1.0"
 tokio-serial = "5.4"
 bitcoin = "0.32"
 hex = "0.4"
-thiserror = "2.0"
+thiserror = "2.0.16"
 log = "0.4"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }

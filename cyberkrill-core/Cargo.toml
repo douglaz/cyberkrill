@@ -18,7 +18,7 @@ jade = ["dep:jade-bitcoin"]
 
 [dependencies]
 anyhow = { version = "1.0.99", features = ["backtrace"] }
-thiserror = "2.0"
+thiserror = "2.0.16"
 async-trait = "0.1"
 hex = { version = "0.4.3", features = ["serde"] }
 lightning-invoice = { version = "0.33.2", features = ["serde"] }
@@ -44,7 +44,7 @@ bdk_wallet = "2.1.0"
 bdk_electrum = { version = "0.23.1", default-features = false, features = ["use-rustls"] }
 bdk_esplora = { version = "0.22.1", default-features = false, features = ["blocking", "blocking-https-rustls"] }
 # frozenkrill support
-frozenkrill-core = { git = "https://github.com/planktonlabs/frozenkrill", optional = true }
+frozenkrill-core = { git = "https://github.com/planktonlabs/frozenkrill", rev = "c6883ec2daf9886f96106815528b7052eecaf5b4", optional = true }
 # Coldcard hardware wallet support
 coldcard = { git = "https://github.com/douglaz/rust-coldcard", branch = "hidraw", optional = true, default-features = false, features = ["hidraw-backend"] }
 # Trezor hardware wallet support (using master branch with bitcoin 0.32 support)
