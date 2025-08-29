@@ -41,7 +41,7 @@
               "frozenkrill-core-0.0.0" = "sha256-JVLXTnzFDsgLMJ9vQkkFONq3qeu2Gr5WfZFjQy1lQiQ=";
               "coldcard-0.12.2" = "sha256-S+MARrWsdGCsfe4A3cUqaKSijo81MfH6KLIeuBpMckc=";
               "hidapi-compat-0.1.0" = "sha256-wq7/X9HjwzUNSA9xNRBWXVMI9sRxEXQsHa5qMSAn+OA=";
-              "trezor-client-0.1.5" = "sha256-nDeDEBOgYwrqPDS3Q8RkgTwIYFyOWvLwQ9g2BPNEYLA=";
+              "trezor-client-0.1.5" = "sha256-3XtfgKeHh6Ncen04IgUUC2bsBbKH2y5GMTzBW1D7WTY=";
             };
           };
           
@@ -123,7 +123,7 @@
               "frozenkrill-core-0.0.0" = "sha256-JVLXTnzFDsgLMJ9vQkkFONq3qeu2Gr5WfZFjQy1lQiQ=";
               "coldcard-0.12.2" = "sha256-S+MARrWsdGCsfe4A3cUqaKSijo81MfH6KLIeuBpMckc=";
               "hidapi-compat-0.1.0" = "sha256-wq7/X9HjwzUNSA9xNRBWXVMI9sRxEXQsHa5qMSAn+OA=";
-              "trezor-client-0.1.5" = "sha256-nDeDEBOgYwrqPDS3Q8RkgTwIYFyOWvLwQ9g2BPNEYLA=";
+              "trezor-client-0.1.5" = "sha256-3XtfgKeHh6Ncen04IgUUC2bsBbKH2y5GMTzBW1D7WTY=";
             };
           };
           
