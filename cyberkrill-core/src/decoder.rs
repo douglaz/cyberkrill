@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use lightning_invoice::Bolt11Invoice;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
@@ -8,6 +9,7 @@ use url::Url;
 pub struct InvoiceOutput {
     pub network: String,
     pub amount_msats: Option<u64>,
+    pub timestamp: String,
     pub timestamp_millis: u128,
     pub payment_hash: String,
     pub payment_secret: String,
@@ -97,10 +99,19 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
                 features.push(("any_optional_bits".to_owned(), "optional".to_owned()));
             }
         }
+
+        // Convert timestamp to human-readable format
+        let timestamp_millis = invoice.duration_since_epoch().as_millis();
+        let timestamp_secs = (timestamp_millis / 1000) as i64;
+        let timestamp_nanos = ((timestamp_millis % 1000) * 1_000_000) as u32;
+        let datetime = DateTime::<Utc>::from_timestamp(timestamp_secs, timestamp_nanos)
+            .unwrap_or_else(Utc::now);
+
         Self {
             network: invoice.network().to_string(),
             amount_msats: invoice.amount_milli_satoshis(),
-            timestamp_millis: invoice.duration_since_epoch().as_millis(),
+            timestamp: datetime.to_rfc3339(),
+            timestamp_millis,
             payment_hash: invoice.payment_hash().to_string(),
             payment_secret: hex::encode(invoice.payment_secret().0),
             features,
