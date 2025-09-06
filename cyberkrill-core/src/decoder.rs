@@ -3,11 +3,49 @@ use chrono::{DateTime, Utc};
 use lightning_invoice::{Bolt11Invoice, Currency, InvoiceBuilder, PaymentSecret};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr, time::Duration};
+use strum::{Display, EnumString};
 use url::Url;
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Display, EnumString)]
+#[strum(serialize_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum Network {
+    #[strum(serialize = "bitcoin", serialize = "mainnet")]
+    #[serde(rename = "bitcoin", alias = "mainnet")]
+    Bitcoin,
+    Testnet,
+    Regtest,
+    Signet,
+    Simnet,
+}
+
+impl Network {
+    /// Convert to lightning-invoice Currency
+    pub fn to_currency(&self) -> Currency {
+        match self {
+            Network::Bitcoin => Currency::Bitcoin,
+            Network::Testnet => Currency::BitcoinTestnet,
+            Network::Regtest => Currency::Regtest,
+            Network::Signet => Currency::Signet,
+            Network::Simnet => Currency::Simnet,
+        }
+    }
+
+    /// Convert from lightning-invoice Currency
+    pub fn from_currency(currency: &Currency) -> Self {
+        match currency {
+            Currency::Bitcoin => Network::Bitcoin,
+            Currency::BitcoinTestnet => Network::Testnet,
+            Currency::Regtest => Network::Regtest,
+            Currency::Signet => Network::Signet,
+            Currency::Simnet => Network::Simnet,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct InvoiceOutput {
-    pub network: String,
+    pub network: Network,
     pub amount_msats: Option<u64>,
     pub timestamp: String,
     pub timestamp_millis: u128,
@@ -108,7 +146,7 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
             .unwrap_or_else(Utc::now);
 
         Self {
-            network: invoice.network().to_string(),
+            network: Network::from_currency(&invoice.currency()),
             amount_msats: invoice.amount_milli_satoshis(),
             timestamp: datetime.to_rfc3339(),
             timestamp_millis,
@@ -340,14 +378,7 @@ pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Re
         SecretKey::from_slice(&private_key_bytes).context("Invalid private key format")?;
 
     // Determine network/currency
-    let currency = match invoice_data.network.to_lowercase().as_str() {
-        "bitcoin" | "mainnet" => Currency::Bitcoin,
-        "testnet" => Currency::BitcoinTestnet,
-        "regtest" => Currency::Regtest,
-        "signet" => Currency::Signet,
-        "simnet" => Currency::Simnet,
-        _ => bail!("Unsupported network: {}", invoice_data.network),
-    };
+    let currency = invoice_data.network.to_currency();
 
     // Parse payment hash
     let payment_hash_bytes =
@@ -548,7 +579,7 @@ mod tests {
         let output = decode_invoice(invoice)?;
 
         // Basic invoice properties
-        assert_eq!(output.network, "bitcoin");
+        assert_eq!(output.network, Network::Bitcoin);
         assert_eq!(output.amount_msats, Some(9981031000));
         assert_eq!(output.timestamp_millis, 1707589790000);
 
@@ -676,7 +707,7 @@ mod tests {
 
         // Create a test invoice data structure with matching destination
         let invoice_data = InvoiceOutput {
-            network: "bitcoin".to_string(),
+            network: Network::Bitcoin,
             amount_msats: Some(1000000),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             timestamp_millis: 1704067200000,
@@ -733,7 +764,7 @@ mod tests {
         let destination = hex::encode(public_key.serialize());
 
         let invoice_data = InvoiceOutput {
-            network: "testnet".to_string(),
+            network: Network::Testnet,
             amount_msats: None, // No amount
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             timestamp_millis: 1704067200000,
@@ -760,7 +791,7 @@ mod tests {
 
         // Decode and verify
         let decoded = decode_invoice(&encoded)?;
-        assert_eq!(decoded.network, "testnet");
+        assert_eq!(decoded.network, Network::Testnet);
         assert_eq!(decoded.amount_msats, None);
         assert_eq!(decoded.description_hash, invoice_data.description_hash);
 
