@@ -1,8 +1,9 @@
 use anyhow::{Context, Result, bail};
+use bitcoin::hashes::Hash;
 use chrono::{DateTime, Utc};
-use lightning_invoice::{Bolt11Invoice, Currency, InvoiceBuilder, PaymentSecret};
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, str::FromStr, time::Duration};
+use lightning_invoice::{Bolt11Invoice, Currency, InvoiceBuilder};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::{collections::HashMap, fmt, str::FromStr, time::Duration};
 use strum::{Display, EnumString};
 use url::Url;
 
@@ -43,18 +44,218 @@ impl Network {
     }
 }
 
+/// Strongly typed wrapper for payment hash (32 bytes)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PaymentHash([u8; 32]);
+
+impl PaymentHash {
+    pub fn from_slice(slice: &[u8]) -> Result<Self> {
+        if slice.len() != 32 {
+            bail!("Payment hash must be exactly 32 bytes");
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(slice);
+        Ok(Self(arr))
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    pub fn to_hex(&self) -> String {
+        hex::encode(&self.0)
+    }
+}
+
+impl Serialize for PaymentHash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for PaymentHash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        Self::from_slice(&bytes).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Strongly typed wrapper for payment secret (32 bytes)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentSecret([u8; 32]);
+
+impl PaymentSecret {
+    pub fn from_slice(slice: &[u8]) -> Result<Self> {
+        if slice.len() != 32 {
+            bail!("Payment secret must be exactly 32 bytes");
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(slice);
+        Ok(Self(arr))
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    pub fn to_hex(&self) -> String {
+        hex::encode(&self.0)
+    }
+}
+
+impl Serialize for PaymentSecret {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for PaymentSecret {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        Self::from_slice(&bytes).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Strongly typed wrapper for public key
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicKey(bitcoin::secp256k1::PublicKey);
+
+impl PublicKey {
+    pub fn from_slice(slice: &[u8]) -> Result<Self> {
+        let key =
+            bitcoin::secp256k1::PublicKey::from_slice(slice).context("Invalid public key bytes")?;
+        Ok(Self(key))
+    }
+
+    pub fn from_hex(hex_str: &str) -> Result<Self> {
+        let bytes = hex::decode(hex_str).context("Invalid hex string")?;
+        Self::from_slice(&bytes)
+    }
+
+    pub fn to_hex(&self) -> String {
+        hex::encode(self.0.serialize())
+    }
+
+    pub fn inner(&self) -> &bitcoin::secp256k1::PublicKey {
+        &self.0
+    }
+}
+
+impl Serialize for PublicKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::from_hex(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_hex())
+    }
+}
+
+/// SHA256 hash wrapper for description hash
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sha256Hash([u8; 32]);
+
+impl Sha256Hash {
+    pub fn from_slice(slice: &[u8]) -> Result<Self> {
+        if slice.len() != 32 {
+            bail!("SHA256 hash must be exactly 32 bytes");
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(slice);
+        Ok(Self(arr))
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    pub fn to_hex(&self) -> String {
+        hex::encode(&self.0)
+    }
+}
+
+impl Serialize for Sha256Hash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for Sha256Hash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        Self::from_slice(&bytes).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Feature status in Lightning invoice
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FeatureStatus {
+    Required,
+    Optional,
+}
+
+/// Lightning invoice features
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Feature {
+    BasicMpp(FeatureStatus),
+    PaymentMetadata(FeatureStatus),
+    PaymentSecret(FeatureStatus),
+    TrampolineRouting(FeatureStatus),
+    UnknownBits(FeatureStatus),
+    VariableLengthOnion(FeatureStatus),
+    AnyOptionalBits,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct InvoiceOutput {
     pub network: Network,
     pub amount_msats: Option<u64>,
-    pub timestamp: String,
+    pub timestamp: DateTime<Utc>,
     pub timestamp_millis: u128,
-    pub payment_hash: String,
-    pub payment_secret: String,
-    pub features: Vec<(String, String)>,
+    pub payment_hash: PaymentHash,
+    pub payment_secret: PaymentSecret,
+    pub features: Vec<Feature>,
     pub description: Option<String>,
-    pub description_hash: Option<String>,
-    pub destination: String,
+    pub description_hash: Option<Sha256Hash>,
+    pub destination: PublicKey,
     pub expiry_seconds: u64,
     pub min_final_cltv_expiry: u64,
     pub fallback_addresses: Vec<String>,
@@ -63,7 +264,7 @@ pub struct InvoiceOutput {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct RouteHintHopOutput {
-    pub src_node_id: String,
+    pub src_node_id: PublicKey,
     pub short_channel_id: u64,
     pub fees: RoutingFeesOutput,
     pub cltv_expiry_delta: u16,
@@ -79,8 +280,10 @@ pub struct RoutingFeesOutput {
 
 impl From<&lightning_invoice::RouteHintHop> for RouteHintHopOutput {
     fn from(hop: &lightning_invoice::RouteHintHop) -> Self {
+        // Convert lightning-invoice PublicKey to our PublicKey wrapper
+        let src_node_id = PublicKey::from_slice(&hop.src_node_id.serialize()).unwrap();
         Self {
-            src_node_id: hop.src_node_id.to_string(),
+            src_node_id,
             short_channel_id: hop.short_channel_id,
             fees: (&hop.fees).into(),
             cltv_expiry_delta: hop.cltv_expiry_delta,
@@ -104,37 +307,37 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
         let mut features = vec![];
         if let Some(f) = invoice.features() {
             if f.requires_basic_mpp() {
-                features.push(("basic_mpp".to_owned(), "required".to_owned()));
+                features.push(Feature::BasicMpp(FeatureStatus::Required));
             } else if f.supports_basic_mpp() {
-                features.push(("basic_mpp".to_owned(), "optional".to_owned()));
+                features.push(Feature::BasicMpp(FeatureStatus::Optional));
             }
             if f.requires_payment_metadata() {
-                features.push(("payment_metadata".to_owned(), "required".to_owned()));
+                features.push(Feature::PaymentMetadata(FeatureStatus::Required));
             } else if f.supports_payment_metadata() {
-                features.push(("payment_metadata".to_owned(), "optional".to_owned()));
+                features.push(Feature::PaymentMetadata(FeatureStatus::Optional));
             }
             if f.requires_payment_secret() {
-                features.push(("payment_secret".to_owned(), "required".to_owned()));
+                features.push(Feature::PaymentSecret(FeatureStatus::Required));
             } else if f.supports_payment_secret() {
-                features.push(("payment_secret".to_owned(), "optional".to_owned()));
+                features.push(Feature::PaymentSecret(FeatureStatus::Optional));
             }
             if f.requires_trampoline_routing() {
-                features.push(("trampoline_routing".to_owned(), "required".to_owned()));
+                features.push(Feature::TrampolineRouting(FeatureStatus::Required));
             } else if f.supports_trampoline_routing() {
-                features.push(("trampoline_routing".to_owned(), "optional".to_owned()));
+                features.push(Feature::TrampolineRouting(FeatureStatus::Optional));
             }
             if f.requires_unknown_bits() {
-                features.push(("unknown_bits".to_owned(), "required".to_owned()));
+                features.push(Feature::UnknownBits(FeatureStatus::Required));
             } else if f.supports_unknown_bits() {
-                features.push(("unknown_bits".to_owned(), "optional".to_owned()));
+                features.push(Feature::UnknownBits(FeatureStatus::Optional));
             }
             if f.requires_variable_length_onion() {
-                features.push(("variable_length_onion".to_owned(), "required".to_owned()));
+                features.push(Feature::VariableLengthOnion(FeatureStatus::Required));
             } else if f.supports_variable_length_onion() {
-                features.push(("variable_length_onion".to_owned(), "optional".to_owned()));
+                features.push(Feature::VariableLengthOnion(FeatureStatus::Optional));
             }
             if f.supports_any_optional_bits() {
-                features.push(("any_optional_bits".to_owned(), "optional".to_owned()));
+                features.push(Feature::AnyOptionalBits);
             }
         }
 
@@ -145,30 +348,49 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
         let datetime = DateTime::<Utc>::from_timestamp(timestamp_secs, timestamp_nanos)
             .unwrap_or_else(Utc::now);
 
+        // Convert payment hash
+        let payment_hash = {
+            let hash_bytes = invoice.payment_hash().as_byte_array();
+            PaymentHash::from_slice(hash_bytes).unwrap()
+        };
+
+        // Convert payment secret
+        let payment_secret = PaymentSecret::from_slice(&invoice.payment_secret().0).unwrap();
+
+        // Convert destination public key
+        let destination = {
+            let pubkey = if let Some(pk) = invoice.payee_pub_key() {
+                pk.clone()
+            } else {
+                invoice.recover_payee_pub_key()
+            };
+            PublicKey::from_slice(&pubkey.serialize()).unwrap()
+        };
+
+        // Convert description hash if present
+        let description_hash = match invoice.description() {
+            lightning_invoice::Bolt11InvoiceDescriptionRef::Hash(sha256) => {
+                Some(Sha256Hash::from_slice(sha256.0.as_byte_array()).unwrap())
+            }
+            _ => None,
+        };
+
         Self {
             network: Network::from_currency(&invoice.currency()),
             amount_msats: invoice.amount_milli_satoshis(),
-            timestamp: datetime.to_rfc3339(),
+            timestamp: datetime,
             timestamp_millis,
-            payment_hash: invoice.payment_hash().to_string(),
-            payment_secret: hex::encode(invoice.payment_secret().0),
+            payment_hash,
+            payment_secret,
             features,
             description: match invoice.description() {
                 lightning_invoice::Bolt11InvoiceDescriptionRef::Direct(description) => {
                     Some(description.to_string())
                 }
-                lightning_invoice::Bolt11InvoiceDescriptionRef::Hash(_sha256) => None,
+                lightning_invoice::Bolt11InvoiceDescriptionRef::Hash(_) => None,
             },
-            description_hash: match invoice.description() {
-                lightning_invoice::Bolt11InvoiceDescriptionRef::Direct(_description) => None,
-                lightning_invoice::Bolt11InvoiceDescriptionRef::Hash(sha256) => {
-                    Some(sha256.0.to_string())
-                }
-            },
-            destination: invoice
-                .payee_pub_key()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| invoice.recover_payee_pub_key().to_string()),
+            description_hash,
+            destination,
             expiry_seconds: invoice.expiry_time().as_secs(),
             min_final_cltv_expiry: invoice.min_final_cltv_expiry_delta(),
             fallback_addresses: invoice
@@ -380,26 +602,13 @@ pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Re
     // Determine network/currency
     let currency = invoice_data.network.to_currency();
 
-    // Parse payment hash
-    let payment_hash_bytes =
-        hex::decode(&invoice_data.payment_hash).context("Invalid payment hash hex")?;
-    if payment_hash_bytes.len() != 32 {
-        bail!("Payment hash must be 32 bytes");
-    }
-    let mut hash_array = [0u8; 32];
-    hash_array.copy_from_slice(&payment_hash_bytes);
+    // Convert payment hash to bitcoin hash
     let payment_hash =
-        bitcoin::hashes::sha256::Hash::from_slice(&hash_array).context("Invalid payment hash")?;
+        bitcoin::hashes::sha256::Hash::from_slice(invoice_data.payment_hash.as_bytes())
+            .context("Invalid payment hash")?;
 
-    // Parse payment secret
-    let payment_secret_bytes =
-        hex::decode(&invoice_data.payment_secret).context("Invalid payment secret hex")?;
-    if payment_secret_bytes.len() != 32 {
-        bail!("Payment secret must be 32 bytes");
-    }
-    let mut secret_array = [0u8; 32];
-    secret_array.copy_from_slice(&payment_secret_bytes);
-    let payment_secret = PaymentSecret(secret_array);
+    // Convert payment secret to lightning-invoice type
+    let payment_secret = lightning_invoice::PaymentSecret(*invoice_data.payment_secret.as_bytes());
 
     // Set timestamp
     let timestamp_secs = (invoice_data.timestamp_millis / 1000) as u64;
@@ -409,11 +618,7 @@ pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Re
     let builder = if let Some(ref description) = invoice_data.description {
         InvoiceBuilder::new(currency.clone()).description(description.clone())
     } else if let Some(ref description_hash) = invoice_data.description_hash {
-        let hash_bytes = hex::decode(description_hash).context("Invalid description hash hex")?;
-        if hash_bytes.len() != 32 {
-            bail!("Description hash must be 32 bytes");
-        }
-        let sha256 = bitcoin::hashes::sha256::Hash::from_slice(&hash_bytes)
+        let sha256 = bitcoin::hashes::sha256::Hash::from_slice(description_hash.as_bytes())
             .context("Invalid description hash")?;
         InvoiceBuilder::new(currency.clone()).description_hash(sha256)
     } else {
@@ -435,11 +640,8 @@ pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Re
     // Set expiry time
     builder = builder.expiry_time(Duration::from_secs(invoice_data.expiry_seconds));
 
-    // Set payee public key if it differs from the node that will sign
-    let destination_pubkey_bytes =
-        hex::decode(&invoice_data.destination).context("Invalid destination pubkey hex")?;
-    let destination_pubkey = bitcoin::secp256k1::PublicKey::from_slice(&destination_pubkey_bytes)
-        .context("Invalid destination pubkey")?;
+    // Set payee public key
+    let destination_pubkey = invoice_data.destination.inner().clone();
     builder = builder.payee_pub_key(destination_pubkey);
 
     // Add fallback addresses
@@ -532,10 +734,7 @@ pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Re
 
         let mut hints = Vec::new();
         for hop in route {
-            let src_node_bytes =
-                hex::decode(&hop.src_node_id).context("Invalid route hop node ID")?;
-            let src_node_id = bitcoin::secp256k1::PublicKey::from_slice(&src_node_bytes)
-                .context("Invalid route hop public key")?;
+            let src_node_id = hop.src_node_id.inner().clone();
 
             let route_hop = RouteHintHop {
                 src_node_id,
@@ -585,15 +784,15 @@ mod tests {
 
         // Payment details
         assert_eq!(
-            output.payment_hash,
+            output.payment_hash.to_hex(),
             "a520342d184697590eb2a31f224119cd444d4c75dc09f9930996446dd1da5c71"
         );
         assert_eq!(
-            output.payment_secret,
+            output.payment_secret.to_hex(),
             "2a334f966d764998566b48dd08f62b85c3602cf9243869ae81df3042dd865df6"
         );
         assert_eq!(
-            output.destination,
+            output.destination.to_hex(),
             "03fb2a0ca79c005f493f1faa83071d3a937cf220d4051dc48b8fe3a087879cf14a"
         );
 
@@ -609,7 +808,7 @@ mod tests {
         assert_eq!(output.routes.len(), 1);
         let route = &output.routes[0][0];
         assert_eq!(
-            route.src_node_id,
+            route.src_node_id.to_hex(),
             "021c97a90a411ff2b10dc2a8e32de2f29d2fa49d41bfbb52bd416e460db0747d0d"
         );
         assert_eq!(route.short_channel_id, 17592186044416000080);
@@ -705,16 +904,28 @@ mod tests {
         let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &private_key);
         let destination = hex::encode(public_key.serialize());
 
+        // Create payment hash and secret
+        let payment_hash = PaymentHash::from_slice(&hex::decode(
+            "0001020304050607080910111213141516171819202122232425262728293031",
+        )?)?;
+        let payment_secret = PaymentSecret::from_slice(&hex::decode(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )?)?;
+
+        // Create timestamp
+        let timestamp = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")?.with_timezone(&Utc);
+
+        // Convert destination to PublicKey
+        let destination = PublicKey::from_hex(&destination)?;
+
         // Create a test invoice data structure with matching destination
         let invoice_data = InvoiceOutput {
             network: Network::Bitcoin,
             amount_msats: Some(1000000),
-            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            timestamp,
             timestamp_millis: 1704067200000,
-            payment_hash: "0001020304050607080910111213141516171819202122232425262728293031"
-                .to_string(),
-            payment_secret: "1111111111111111111111111111111111111111111111111111111111111111"
-                .to_string(),
+            payment_hash,
+            payment_secret,
             features: vec![],
             description: Some("Test invoice".to_string()),
             description_hash: None,
@@ -761,22 +972,34 @@ mod tests {
         // Derive the public key from the private key
         let secp = Secp256k1::new();
         let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &private_key);
-        let destination = hex::encode(public_key.serialize());
+        let destination = PublicKey::from_slice(&public_key.serialize())?;
+
+        // Create payment hash and secret
+        let payment_hash = PaymentHash::from_slice(&hex::decode(
+            "0001020304050607080910111213141516171819202122232425262728293031",
+        )?)?;
+        let payment_secret = PaymentSecret::from_slice(&hex::decode(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )?)?;
+
+        // Create description hash
+        let description_hash = Some(Sha256Hash::from_slice(&hex::decode(
+            "3132333435363738393031323334353637383930313233343536373839303132",
+        )?)?);
+
+        // Create timestamp
+        let timestamp = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")?.with_timezone(&Utc);
 
         let invoice_data = InvoiceOutput {
             network: Network::Testnet,
             amount_msats: None, // No amount
-            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            timestamp,
             timestamp_millis: 1704067200000,
-            payment_hash: "0001020304050607080910111213141516171819202122232425262728293031"
-                .to_string(),
-            payment_secret: "1111111111111111111111111111111111111111111111111111111111111111"
-                .to_string(),
+            payment_hash,
+            payment_secret,
             features: vec![],
             description: None,
-            description_hash: Some(
-                "3132333435363738393031323334353637383930313233343536373839303132".to_string(),
-            ),
+            description_hash,
             destination,
             expiry_seconds: 7200,
             min_final_cltv_expiry: 144,
