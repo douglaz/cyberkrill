@@ -272,18 +272,21 @@ pub struct RoutingFeesOutput {
     pub proportional_millionths: u32,
 }
 
-impl From<&lightning_invoice::RouteHintHop> for RouteHintHopOutput {
-    fn from(hop: &lightning_invoice::RouteHintHop) -> Self {
+impl TryFrom<&lightning_invoice::RouteHintHop> for RouteHintHopOutput {
+    type Error = anyhow::Error;
+
+    fn try_from(hop: &lightning_invoice::RouteHintHop) -> Result<Self> {
         // Convert lightning-invoice PublicKey to our PublicKey wrapper
-        let src_node_id = PublicKey::from_slice(&hop.src_node_id.serialize()).unwrap();
-        Self {
+        let src_node_id = PublicKey::from_slice(&hop.src_node_id.serialize())
+            .context("Failed to convert route hint hop public key")?;
+        Ok(Self {
             src_node_id,
             short_channel_id: hop.short_channel_id,
             fees: (&hop.fees).into(),
             cltv_expiry_delta: hop.cltv_expiry_delta,
             htlc_minimum_msat: hop.htlc_minimum_msat,
             htlc_maximum_msat: hop.htlc_maximum_msat,
-        }
+        })
     }
 }
 
@@ -296,8 +299,10 @@ impl From<&lightning_invoice::RoutingFees> for RoutingFeesOutput {
     }
 }
 
-impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
-    fn from(invoice: lightning_invoice::Bolt11Invoice) -> Self {
+impl TryFrom<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
+    type Error = anyhow::Error;
+
+    fn try_from(invoice: lightning_invoice::Bolt11Invoice) -> Result<Self> {
         let mut features = vec![];
         if let Some(f) = invoice.features() {
             if f.requires_basic_mpp() {
@@ -345,11 +350,12 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
         // Convert payment hash
         let payment_hash = {
             let hash_bytes = invoice.payment_hash().as_byte_array();
-            PaymentHash::from_slice(hash_bytes).unwrap()
+            PaymentHash::from_slice(hash_bytes).context("Failed to convert payment hash")?
         };
 
         // Convert payment secret
-        let payment_secret = PaymentSecret::from_slice(&invoice.payment_secret().0).unwrap();
+        let payment_secret = PaymentSecret::from_slice(&invoice.payment_secret().0)
+            .context("Failed to convert payment secret")?;
 
         // Convert destination public key
         let destination = {
@@ -358,18 +364,20 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
             } else {
                 invoice.recover_payee_pub_key()
             };
-            PublicKey::from_slice(&pubkey.serialize()).unwrap()
+            PublicKey::from_slice(&pubkey.serialize())
+                .context("Failed to convert destination public key")?
         };
 
         // Convert description hash if present
         let description_hash = match invoice.description() {
-            lightning_invoice::Bolt11InvoiceDescriptionRef::Hash(sha256) => {
-                Some(Sha256Hash::from_slice(sha256.0.as_byte_array()).unwrap())
-            }
+            lightning_invoice::Bolt11InvoiceDescriptionRef::Hash(sha256) => Some(
+                Sha256Hash::from_slice(sha256.0.as_byte_array())
+                    .context("Failed to convert description hash")?,
+            ),
             _ => None,
         };
 
-        Self {
+        let result = Self {
             network: Network::from_currency(&invoice.currency()),
             amount_msats: invoice.amount_milli_satoshis(),
             timestamp: datetime,
@@ -395,9 +403,16 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
             routes: invoice
                 .route_hints()
                 .iter()
-                .map(|hints| hints.0.iter().map(|hop| hop.into()).collect())
-                .collect(),
-        }
+                .map(|hints| {
+                    hints
+                        .0
+                        .iter()
+                        .map(RouteHintHopOutput::try_from)
+                        .collect::<Result<Vec<_>>>()
+                })
+                .collect::<Result<Vec<_>>>()?,
+        };
+        Ok(result)
     }
 }
 
@@ -414,7 +429,7 @@ pub struct LnurlOutput {
 pub fn decode_invoice(input: &str) -> Result<InvoiceOutput> {
     let invoice = Bolt11Invoice::from_str(input)
         .map_err(|e| anyhow::anyhow!("Failed to parse invoice: {e:?}"))?;
-    Ok(InvoiceOutput::from(invoice))
+    InvoiceOutput::try_from(invoice)
 }
 
 pub fn decode_lnurl(input: &str) -> Result<LnurlOutput> {
@@ -425,10 +440,10 @@ pub fn decode_lnurl(input: &str) -> Result<LnurlOutput> {
     );
 
     let (hrp, data) = bech32::decode(input)?;
+    let hrp_str = hrp.as_str();
     anyhow::ensure!(
         hrp == bech32::primitives::hrp::Hrp::parse("lnurl")?,
-        "Invalid HRP (human-readable part): expected 'lnurl', got '{}'",
-        hrp.as_str()
+        "Invalid HRP (human-readable part): expected 'lnurl', got '{hrp_str}'"
     );
 
     let url_str = String::from_utf8(data)?;
@@ -442,7 +457,8 @@ pub fn decode_lnurl(input: &str) -> Result<LnurlOutput> {
     let host = url
         .host_str()
         .with_context(|| format!("Failed to get host from URL: {url_str}"))?;
-    let base = format!("{scheme}://{host}/", scheme = url.scheme());
+    let scheme = url.scheme();
+    let base = format!("{scheme}://{host}/");
 
     Ok(LnurlOutput {
         bech32: input.to_string(),
@@ -661,11 +677,10 @@ pub fn encode_invoice(
         };
 
         // Verify the address is for the correct network
+        let network_str = &invoice_data.network;
         let address = address.require_network(network).map_err(|_| {
             anyhow::anyhow!(
-                "Fallback address {} is not valid for network {}",
-                fallback_str,
-                invoice_data.network
+                "Fallback address {fallback_str} is not valid for network {network_str}"
             )
         })?;
 
