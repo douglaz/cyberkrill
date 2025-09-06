@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use base64::Engine;
 use bdk_wallet::{KeychainKind, Wallet};
 use bitcoin::{Amount, FeeRate, Network, OutPoint, Txid};
@@ -460,12 +460,11 @@ impl FromStr for InputSpec {
         } else {
             // Try to parse as txid:vout
             let parts: Vec<&str> = s.split(':').collect();
-            if parts.len() != 2 {
-                bail!(
-                    "Invalid input format: '{}'. Expected 'txid:vout' or a descriptor",
-                    s
-                );
-            }
+            ensure!(
+                parts.len() == 2,
+                "Invalid input format: '{}'. Expected 'txid:vout' or a descriptor",
+                s
+            );
             let txid = Txid::from_str(parts[0]).context("Invalid transaction ID")?;
             let vout: u32 = parts[1].parse().context("Invalid output index")?;
             Ok(InputSpec::Utxo { txid, vout })
@@ -900,9 +899,7 @@ pub async fn move_utxos_bdk(
 
     // Add single output (total - fee)
     let output_amount = total_input.saturating_sub(fee);
-    if output_amount == 0 {
-        bail!("Output amount would be zero after fees");
-    }
+    ensure!(output_amount != 0, "Output amount would be zero after fees");
 
     let dest_script = bitcoin::Address::from_str(destination)?
         .require_network(network)?

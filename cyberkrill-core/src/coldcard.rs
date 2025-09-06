@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, ensure};
 use bitcoin::bip32::Xpub;
 use coldcard::{
     Api, Coldcard as ColdcardDevice, SignMode,
@@ -60,9 +60,10 @@ impl ColdcardWallet {
             "Failed to detect Coldcard devices. Make sure your Coldcard is connected via USB.",
         )?;
 
-        if serials.is_empty() {
-            bail!("No Coldcard devices found. Please connect your Coldcard via USB.");
-        }
+        ensure!(
+            !serials.is_empty(),
+            "No Coldcard devices found. Please connect your Coldcard via USB."
+        );
 
         // Connect to the first detected device
         let (device, xpub_info) = api

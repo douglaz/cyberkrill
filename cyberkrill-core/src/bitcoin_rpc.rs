@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use bitcoin::psbt::Psbt;
 use bitcoin::transaction::{InputWeightPrediction, predict_weight};
 use bitcoin::{Amount, Weight};
@@ -447,9 +447,11 @@ impl BitcoinRpcClient {
 
         let response = request.send().await?;
 
-        if !response.status().is_success() {
-            bail!("HTTP error: {status}", status = response.status());
-        }
+        ensure!(
+            response.status().is_success(),
+            "HTTP error: {status}",
+            status = response.status()
+        );
 
         let json: serde_json::Value = response.json().await?;
 
@@ -824,12 +826,11 @@ impl BitcoinRpcClient {
             } else {
                 // Standard txid:vout format
                 let parts: Vec<&str> = input.split(':').collect();
-                if parts.len() != 2 {
-                    bail!(
-                        "Invalid input format: '{}'. Expected 'txid:vout' or a descriptor",
-                        input
-                    );
-                }
+                ensure!(
+                    parts.len() == 2,
+                    "Invalid input format: '{}'. Expected 'txid:vout' or a descriptor",
+                    input
+                );
                 let txid = parts[0];
                 let vout: u32 = parts[1].parse().map_err(|_| {
                     anyhow!("Invalid vout '{vout}' in input '{input}'", vout = parts[1])
@@ -862,12 +863,11 @@ impl BitcoinRpcClient {
         let mut output_object = serde_json::Map::new();
         for output in outputs.split(',') {
             let parts: Vec<&str> = output.trim().split(':').collect();
-            if parts.len() != 2 {
-                bail!(
-                    "Invalid output format: '{}'. Expected 'address:amount'",
-                    output
-                );
-            }
+            ensure!(
+                parts.len() == 2,
+                "Invalid output format: '{}'. Expected 'address:amount'",
+                output
+            );
             let address = parts[0];
             let amount_str = parts[1];
 
@@ -1146,12 +1146,11 @@ impl BitcoinRpcClient {
         let mut output_object = serde_json::Map::new();
         for output in outputs.split(',') {
             let parts: Vec<&str> = output.trim().split(':').collect();
-            if parts.len() != 2 {
-                bail!(
-                    "Invalid output format: '{}'. Expected 'address:amount'",
-                    output
-                );
-            }
+            ensure!(
+                parts.len() == 2,
+                "Invalid output format: '{}'. Expected 'address:amount'",
+                output
+            );
             let address = parts[0];
             let amount_str = parts[1];
 
@@ -1745,12 +1744,11 @@ mod tests {
 
         for output in outputs.split(',') {
             let parts: Vec<&str> = output.trim().split(':').collect();
-            if parts.len() != 2 {
-                bail!(
-                    "Invalid output format: '{}'. Expected 'address:amount'",
-                    output
-                );
-            }
+            ensure!(
+                parts.len() == 2,
+                "Invalid output format: '{}'. Expected 'address:amount'",
+                output
+            );
             let address = parts[0];
             let amount_str = parts[1];
 

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use bitcoin::hashes::Hash;
 use chrono::{DateTime, Utc};
 use lightning_invoice::{Bolt11Invoice, Currency, InvoiceBuilder};
@@ -50,9 +50,7 @@ pub struct PaymentHash([u8; 32]);
 
 impl PaymentHash {
     pub fn from_slice(slice: &[u8]) -> Result<Self> {
-        if slice.len() != 32 {
-            bail!("Payment hash must be exactly 32 bytes");
-        }
+        ensure!(slice.len() == 32, "Payment hash must be exactly 32 bytes");
         let mut arr = [0u8; 32];
         arr.copy_from_slice(slice);
         Ok(Self(arr))
@@ -93,9 +91,7 @@ pub struct PaymentSecret([u8; 32]);
 
 impl PaymentSecret {
     pub fn from_slice(slice: &[u8]) -> Result<Self> {
-        if slice.len() != 32 {
-            bail!("Payment secret must be exactly 32 bytes");
-        }
+        ensure!(slice.len() == 32, "Payment secret must be exactly 32 bytes");
         let mut arr = [0u8; 32];
         arr.copy_from_slice(slice);
         Ok(Self(arr))
@@ -186,9 +182,7 @@ pub struct Sha256Hash([u8; 32]);
 
 impl Sha256Hash {
     pub fn from_slice(slice: &[u8]) -> Result<Self> {
-        if slice.len() != 32 {
-            bail!("SHA256 hash must be exactly 32 bytes");
-        }
+        ensure!(slice.len() == 32, "SHA256 hash must be exactly 32 bytes");
         let mut arr = [0u8; 32];
         arr.copy_from_slice(slice);
         Ok(Self(arr))
@@ -510,9 +504,10 @@ pub async fn generate_invoice_from_address(
     let amount_msats = amount.as_millisats();
     // Parse lightning address
     let parts: Vec<&str> = address.split('@').collect();
-    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-        anyhow::bail!("Invalid Lightning address format. Expected: user@domain.com");
-    }
+    ensure!(
+        parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty(),
+        "Invalid Lightning address format. Expected: user@domain.com"
+    );
 
     let (user, domain) = (parts[0], parts[1]);
 
