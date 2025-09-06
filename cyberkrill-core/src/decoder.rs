@@ -1,8 +1,8 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
-use lightning_invoice::Bolt11Invoice;
+use lightning_invoice::{Bolt11Invoice, Currency, InvoiceBuilder, PaymentSecret};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, str::FromStr, time::Duration};
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -318,6 +318,226 @@ pub async fn generate_invoice_from_address(
     })
 }
 
+/// Encode a Lightning invoice from JSON output structure back to BOLT11 string.
+///
+/// This function takes an InvoiceOutput structure (typically from decoding)
+/// and reconstructs a valid BOLT11 invoice string. The invoice must be signed
+/// with a private key to be valid.
+///
+/// # Arguments
+/// * `invoice_data` - The invoice data structure to encode
+/// * `private_key_hex` - The private key in hex format for signing the invoice
+///
+/// # Returns
+/// * A BOLT11 invoice string
+pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Result<String> {
+    use bitcoin::hashes::Hash as BitcoinHash;
+    use bitcoin::secp256k1::{Message, Secp256k1, SecretKey};
+
+    // Parse the private key
+    let private_key_bytes = hex::decode(private_key_hex).context("Invalid private key hex")?;
+    let private_key =
+        SecretKey::from_slice(&private_key_bytes).context("Invalid private key format")?;
+
+    // Determine network/currency
+    let currency = match invoice_data.network.to_lowercase().as_str() {
+        "bitcoin" | "mainnet" => Currency::Bitcoin,
+        "testnet" => Currency::BitcoinTestnet,
+        "regtest" => Currency::Regtest,
+        "signet" => Currency::Signet,
+        "simnet" => Currency::Simnet,
+        _ => bail!("Unsupported network: {}", invoice_data.network),
+    };
+
+    // Parse payment hash
+    let payment_hash_bytes =
+        hex::decode(&invoice_data.payment_hash).context("Invalid payment hash hex")?;
+    if payment_hash_bytes.len() != 32 {
+        bail!("Payment hash must be 32 bytes");
+    }
+    let mut hash_array = [0u8; 32];
+    hash_array.copy_from_slice(&payment_hash_bytes);
+    let payment_hash =
+        bitcoin::hashes::sha256::Hash::from_slice(&hash_array).context("Invalid payment hash")?;
+
+    // Parse payment secret
+    let payment_secret_bytes =
+        hex::decode(&invoice_data.payment_secret).context("Invalid payment secret hex")?;
+    if payment_secret_bytes.len() != 32 {
+        bail!("Payment secret must be 32 bytes");
+    }
+    let mut secret_array = [0u8; 32];
+    secret_array.copy_from_slice(&payment_secret_bytes);
+    let payment_secret = PaymentSecret(secret_array);
+
+    // Set timestamp
+    let timestamp_secs = (invoice_data.timestamp_millis / 1000) as u64;
+    let duration = Duration::from_secs(timestamp_secs);
+
+    // Build the invoice with required fields - set description first
+    let builder = if let Some(ref description) = invoice_data.description {
+        InvoiceBuilder::new(currency.clone()).description(description.clone())
+    } else if let Some(ref description_hash) = invoice_data.description_hash {
+        let hash_bytes = hex::decode(description_hash).context("Invalid description hash hex")?;
+        if hash_bytes.len() != 32 {
+            bail!("Description hash must be 32 bytes");
+        }
+        let sha256 = bitcoin::hashes::sha256::Hash::from_slice(&hash_bytes)
+            .context("Invalid description hash")?;
+        InvoiceBuilder::new(currency.clone()).description_hash(sha256)
+    } else {
+        // Lightning invoices require either description or description_hash
+        InvoiceBuilder::new(currency.clone()).description("".to_string())
+    };
+
+    let mut builder = builder
+        .payment_hash(payment_hash)
+        .payment_secret(payment_secret)
+        .duration_since_epoch(duration)
+        .min_final_cltv_expiry_delta(invoice_data.min_final_cltv_expiry);
+
+    // Set amount if present
+    if let Some(amount_msats) = invoice_data.amount_msats {
+        builder = builder.amount_milli_satoshis(amount_msats);
+    }
+
+    // Set expiry time
+    builder = builder.expiry_time(Duration::from_secs(invoice_data.expiry_seconds));
+
+    // Set payee public key if it differs from the node that will sign
+    let destination_pubkey_bytes =
+        hex::decode(&invoice_data.destination).context("Invalid destination pubkey hex")?;
+    let destination_pubkey = bitcoin::secp256k1::PublicKey::from_slice(&destination_pubkey_bytes)
+        .context("Invalid destination pubkey")?;
+    builder = builder.payee_pub_key(destination_pubkey);
+
+    // Add fallback addresses
+    for fallback_str in &invoice_data.fallback_addresses {
+        use bitcoin::address::NetworkUnchecked;
+        use bitcoin::{Address, PubkeyHash, ScriptHash};
+        use lightning_invoice::Fallback;
+
+        // Parse address without requiring network
+        let address: Address<NetworkUnchecked> =
+            fallback_str.parse().context("Invalid fallback address")?;
+
+        // Convert bitcoin::Address to lightning_invoice::Fallback
+        // This is network-specific conversion
+        let network = match currency {
+            Currency::Bitcoin => bitcoin::Network::Bitcoin,
+            Currency::BitcoinTestnet => bitcoin::Network::Testnet,
+            Currency::Regtest => bitcoin::Network::Regtest,
+            Currency::Signet => bitcoin::Network::Signet,
+            Currency::Simnet => {
+                // Simnet is not supported in bitcoin crate, treat as testnet
+                bitcoin::Network::Testnet
+            }
+        };
+
+        // Verify the address is for the correct network
+        let address = address.require_network(network).map_err(|_| {
+            anyhow::anyhow!(
+                "Fallback address {} is not valid for network {}",
+                fallback_str,
+                invoice_data.network
+            )
+        })?;
+
+        // Convert to Fallback based on address type
+        use bitcoin::address::AddressType;
+        let fallback = match address.address_type() {
+            Some(AddressType::P2pkh) => {
+                // Extract pubkey hash from the script
+                let script = address.script_pubkey();
+                let bytes = script.as_bytes();
+                if bytes.len() >= 23 && bytes[0] == 0x76 && bytes[1] == 0xa9 && bytes[2] == 0x14 {
+                    let mut hash = [0u8; 20];
+                    hash.copy_from_slice(&bytes[3..23]);
+                    Fallback::PubKeyHash(PubkeyHash::from_byte_array(hash))
+                } else {
+                    bail!("Invalid P2PKH script")
+                }
+            }
+            Some(AddressType::P2sh) => {
+                // Extract script hash from the script
+                let script = address.script_pubkey();
+                let bytes = script.as_bytes();
+                if bytes.len() >= 23 && bytes[0] == 0xa9 && bytes[1] == 0x14 {
+                    let mut hash = [0u8; 20];
+                    hash.copy_from_slice(&bytes[2..22]);
+                    Fallback::ScriptHash(ScriptHash::from_byte_array(hash))
+                } else {
+                    bail!("Invalid P2SH script")
+                }
+            }
+            Some(AddressType::P2wpkh) | Some(AddressType::P2wsh) | Some(AddressType::P2tr) => {
+                // SegWit addresses
+                let script = address.script_pubkey();
+                let bytes = script.as_bytes();
+                if bytes.len() >= 2 {
+                    use bitcoin::WitnessVersion;
+                    let version = if bytes[0] == 0 {
+                        WitnessVersion::V0
+                    } else if bytes[0] == 0x51 {
+                        WitnessVersion::V1
+                    } else {
+                        bail!("Unsupported witness version")
+                    };
+                    let program = bytes[2..].to_vec();
+                    Fallback::SegWitProgram { version, program }
+                } else {
+                    bail!("Invalid SegWit script")
+                }
+            }
+            _ => bail!("Unsupported fallback address type"),
+        };
+
+        builder = builder.fallback(fallback);
+    }
+
+    // Add route hints
+    for route in &invoice_data.routes {
+        use lightning_invoice::{RouteHint, RouteHintHop, RoutingFees};
+
+        let mut hints = Vec::new();
+        for hop in route {
+            let src_node_bytes =
+                hex::decode(&hop.src_node_id).context("Invalid route hop node ID")?;
+            let src_node_id = bitcoin::secp256k1::PublicKey::from_slice(&src_node_bytes)
+                .context("Invalid route hop public key")?;
+
+            let route_hop = RouteHintHop {
+                src_node_id,
+                short_channel_id: hop.short_channel_id,
+                fees: RoutingFees {
+                    base_msat: hop.fees.base_msat,
+                    proportional_millionths: hop.fees.proportional_millionths,
+                },
+                cltv_expiry_delta: hop.cltv_expiry_delta,
+                htlc_minimum_msat: hop.htlc_minimum_msat,
+                htlc_maximum_msat: hop.htlc_maximum_msat,
+            };
+            hints.push(route_hop);
+        }
+
+        if !hints.is_empty() {
+            // Create RouteHint from the hops
+            let route_hint = RouteHint(hints);
+            builder = builder.private_route(route_hint);
+        }
+    }
+
+    // Build and sign the invoice
+    let secp = Secp256k1::new();
+    let signed_invoice = builder
+        .build_signed(|hash| {
+            secp.sign_ecdsa_recoverable(&Message::from_digest(*hash.as_ref()), &private_key)
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to build and sign invoice: {:?}", e))?;
+
+    Ok(signed_invoice.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,6 +657,96 @@ mod tests {
                 "Address '{address}' should have empty part"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_encode_decode_invoice_roundtrip() -> Result<()> {
+        // Create a test invoice data structure
+        let invoice_data = InvoiceOutput {
+            network: "bitcoin".to_string(),
+            amount_msats: Some(1000000),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            timestamp_millis: 1704067200000,
+            payment_hash: "0001020304050607080910111213141516171819202122232425262728293031"
+                .to_string(),
+            payment_secret: "1111111111111111111111111111111111111111111111111111111111111111"
+                .to_string(),
+            features: vec![],
+            description: Some("Test invoice".to_string()),
+            description_hash: None,
+            destination: "02e89ca086e2dc8eb787b1e05b78e17e0cf25f33b78767e1f1c17446fb19c84bb2"
+                .to_string(),
+            expiry_seconds: 3600,
+            min_final_cltv_expiry: 18,
+            fallback_addresses: vec![],
+            routes: vec![],
+        };
+
+        // Test private key (32 bytes in hex)
+        let private_key = "0101010101010101010101010101010101010101010101010101010101010101";
+
+        // Encode the invoice
+        let encoded = encode_invoice(&invoice_data, private_key)?;
+
+        // Verify it starts with lnbc (bitcoin mainnet)
+        assert!(encoded.starts_with("lnbc"));
+
+        // Decode it back
+        let decoded = decode_invoice(&encoded)?;
+
+        // Check key fields match
+        assert_eq!(decoded.network, invoice_data.network);
+        assert_eq!(decoded.amount_msats, invoice_data.amount_msats);
+        assert_eq!(decoded.payment_hash, invoice_data.payment_hash);
+        assert_eq!(decoded.payment_secret, invoice_data.payment_secret);
+        assert_eq!(decoded.description, invoice_data.description);
+        assert_eq!(decoded.expiry_seconds, invoice_data.expiry_seconds);
+        assert_eq!(
+            decoded.min_final_cltv_expiry,
+            invoice_data.min_final_cltv_expiry
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_encode_invoice_testnet() -> Result<()> {
+        let invoice_data = InvoiceOutput {
+            network: "testnet".to_string(),
+            amount_msats: None, // No amount
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            timestamp_millis: 1704067200000,
+            payment_hash: "0001020304050607080910111213141516171819202122232425262728293031"
+                .to_string(),
+            payment_secret: "1111111111111111111111111111111111111111111111111111111111111111"
+                .to_string(),
+            features: vec![],
+            description: None,
+            description_hash: Some(
+                "3132333435363738393031323334353637383930313233343536373839303132".to_string(),
+            ),
+            destination: "02e89ca086e2dc8eb787b1e05b78e17e0cf25f33b78767e1f1c17446fb19c84bb2"
+                .to_string(),
+            expiry_seconds: 7200,
+            min_final_cltv_expiry: 144,
+            fallback_addresses: vec![],
+            routes: vec![],
+        };
+
+        let private_key = "0202020202020202020202020202020202020202020202020202020202020202";
+
+        let encoded = encode_invoice(&invoice_data, private_key)?;
+
+        // Verify it starts with lntb (bitcoin testnet)
+        assert!(encoded.starts_with("lntb"));
+
+        // Decode and verify
+        let decoded = decode_invoice(&encoded)?;
+        assert_eq!(decoded.network, "testnet");
+        assert_eq!(decoded.amount_msats, None);
+        assert_eq!(decoded.description_hash, invoice_data.description_hash);
+
         Ok(())
     }
 }

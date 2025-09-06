@@ -26,6 +26,11 @@ enum Commands {
     #[command(name = "ln-decode-lnurl", about = "Decode LNURL string")]
     LnDecodeLnurl(DecodeLnurlArgs),
     #[command(
+        name = "ln-encode-invoice",
+        about = "Encode BOLT11 Lightning invoice from JSON data"
+    )]
+    LnEncodeInvoice(EncodeInvoiceArgs),
+    #[command(
         name = "ln-generate-invoice",
         about = "Generate Lightning invoice from Lightning address using LNURL-pay protocol"
     )]
@@ -158,6 +163,18 @@ struct DecodeInvoiceArgs {
 #[derive(clap::Args, Debug)]
 struct DecodeLnurlArgs {
     input: Option<String>,
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+#[derive(clap::Args, Debug)]
+struct EncodeInvoiceArgs {
+    /// Input JSON file path (or - for stdin)
+    input: Option<String>,
+    /// Private key in hex format for signing the invoice
+    #[clap(short = 'k', long)]
+    private_key: String,
+    /// Output file path for the encoded invoice
     #[clap(short, long)]
     output: Option<String>,
 }
@@ -681,6 +698,7 @@ async fn main() -> anyhow::Result<()> {
         // Lightning Network Operations
         Commands::LnDecodeInvoice(args) => decode_invoice(args)?,
         Commands::LnDecodeLnurl(args) => decode_lnurl(args)?,
+        Commands::LnEncodeInvoice(args) => encode_invoice(args)?,
         Commands::LnGenerateInvoice(args) => generate_invoice(args).await?,
 
         // Fedimint Operations
@@ -776,6 +794,34 @@ fn decode_invoice(args: DecodeInvoiceArgs) -> anyhow::Result<()> {
 
     let output = cyberkrill_core::decode_invoice(&input)?;
     serde_json::to_writer_pretty(writer, &output)?;
+    Ok(())
+}
+
+fn encode_invoice(args: EncodeInvoiceArgs) -> anyhow::Result<()> {
+    use cyberkrill_core::InvoiceOutput;
+
+    // Read input JSON
+    let json_str = match args.input.as_deref() {
+        Some("-") | None => {
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        }
+        Some(path) => std::fs::read_to_string(path)?,
+    };
+
+    // Parse JSON to InvoiceOutput
+    let invoice_data: InvoiceOutput = serde_json::from_str(&json_str)?;
+
+    // Encode the invoice
+    let encoded_invoice = cyberkrill_core::encode_invoice(&invoice_data, &args.private_key)?;
+
+    // Write output
+    match args.output {
+        Some(path) => std::fs::write(path, encoded_invoice)?,
+        None => println!("{}", encoded_invoice),
+    }
+
     Ok(())
 }
 

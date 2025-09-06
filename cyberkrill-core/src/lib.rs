@@ -23,7 +23,7 @@ pub mod jade;
 // Re-export main functionality for easier access
 pub use decoder::{
     GeneratedInvoiceOutput, InvoiceOutput, LnurlOutput, decode_invoice, decode_lnurl,
-    generate_invoice_from_address,
+    encode_invoice, generate_invoice_from_address,
 };
 
 #[cfg(feature = "smartcards")]
