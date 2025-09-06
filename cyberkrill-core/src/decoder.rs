@@ -662,7 +662,19 @@ mod tests {
 
     #[test]
     fn test_encode_decode_invoice_roundtrip() -> Result<()> {
-        // Create a test invoice data structure
+        use bitcoin::secp256k1::{Secp256k1, SecretKey};
+
+        // Use a real private key and derive the public key from it
+        let private_key_hex = "0101010101010101010101010101010101010101010101010101010101010101";
+        let private_key_bytes = hex::decode(private_key_hex)?;
+        let private_key = SecretKey::from_slice(&private_key_bytes)?;
+
+        // Derive the public key from the private key
+        let secp = Secp256k1::new();
+        let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &private_key);
+        let destination = hex::encode(public_key.serialize());
+
+        // Create a test invoice data structure with matching destination
         let invoice_data = InvoiceOutput {
             network: "bitcoin".to_string(),
             amount_msats: Some(1000000),
@@ -675,19 +687,15 @@ mod tests {
             features: vec![],
             description: Some("Test invoice".to_string()),
             description_hash: None,
-            destination: "02e89ca086e2dc8eb787b1e05b78e17e0cf25f33b78767e1f1c17446fb19c84bb2"
-                .to_string(),
+            destination,
             expiry_seconds: 3600,
             min_final_cltv_expiry: 18,
             fallback_addresses: vec![],
             routes: vec![],
         };
 
-        // Test private key (32 bytes in hex)
-        let private_key = "0101010101010101010101010101010101010101010101010101010101010101";
-
         // Encode the invoice
-        let encoded = encode_invoice(&invoice_data, private_key)?;
+        let encoded = encode_invoice(&invoice_data, private_key_hex)?;
 
         // Verify it starts with lnbc (bitcoin mainnet)
         assert!(encoded.starts_with("lnbc"));
@@ -712,6 +720,18 @@ mod tests {
 
     #[test]
     fn test_encode_invoice_testnet() -> Result<()> {
+        use bitcoin::secp256k1::{Secp256k1, SecretKey};
+
+        // Use a real private key and derive the public key from it
+        let private_key_hex = "0202020202020202020202020202020202020202020202020202020202020202";
+        let private_key_bytes = hex::decode(private_key_hex)?;
+        let private_key = SecretKey::from_slice(&private_key_bytes)?;
+
+        // Derive the public key from the private key
+        let secp = Secp256k1::new();
+        let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &private_key);
+        let destination = hex::encode(public_key.serialize());
+
         let invoice_data = InvoiceOutput {
             network: "testnet".to_string(),
             amount_msats: None, // No amount
@@ -726,17 +746,14 @@ mod tests {
             description_hash: Some(
                 "3132333435363738393031323334353637383930313233343536373839303132".to_string(),
             ),
-            destination: "02e89ca086e2dc8eb787b1e05b78e17e0cf25f33b78767e1f1c17446fb19c84bb2"
-                .to_string(),
+            destination,
             expiry_seconds: 7200,
             min_final_cltv_expiry: 144,
             fallback_addresses: vec![],
             routes: vec![],
         };
 
-        let private_key = "0202020202020202020202020202020202020202020202020202020202020202";
-
-        let encoded = encode_invoice(&invoice_data, private_key)?;
+        let encoded = encode_invoice(&invoice_data, private_key_hex)?;
 
         // Verify it starts with lntb (bitcoin testnet)
         assert!(encoded.starts_with("lntb"));
