@@ -586,18 +586,16 @@ pub async fn generate_invoice_from_address(
 ///
 /// # Arguments
 /// * `invoice_data` - The invoice data structure to encode
-/// * `private_key_hex` - The private key in hex format for signing the invoice
+/// * `private_key` - The private key for signing the invoice
 ///
 /// # Returns
 /// * A BOLT11 invoice string
-pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Result<String> {
+pub fn encode_invoice(
+    invoice_data: &InvoiceOutput,
+    private_key: &bitcoin::secp256k1::SecretKey,
+) -> Result<String> {
     use bitcoin::hashes::Hash as BitcoinHash;
-    use bitcoin::secp256k1::{Message, Secp256k1, SecretKey};
-
-    // Parse the private key
-    let private_key_bytes = hex::decode(private_key_hex).context("Invalid private key hex")?;
-    let private_key =
-        SecretKey::from_slice(&private_key_bytes).context("Invalid private key format")?;
+    use bitcoin::secp256k1::{Message, Secp256k1};
 
     // Determine network/currency
     let currency = invoice_data.network.to_currency();
@@ -761,7 +759,7 @@ pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Re
     let secp = Secp256k1::new();
     let signed_invoice = builder
         .build_signed(|hash| {
-            secp.sign_ecdsa_recoverable(&Message::from_digest(*hash.as_ref()), &private_key)
+            secp.sign_ecdsa_recoverable(&Message::from_digest(*hash.as_ref()), private_key)
         })
         .map_err(|e| anyhow::anyhow!("Failed to build and sign invoice: {:?}", e))?;
 
@@ -937,7 +935,7 @@ mod tests {
         };
 
         // Encode the invoice
-        let encoded = encode_invoice(&invoice_data, private_key_hex)?;
+        let encoded = encode_invoice(&invoice_data, &private_key)?;
 
         // Verify it starts with lnbc (bitcoin mainnet)
         assert!(encoded.starts_with("lnbc"));
@@ -1007,7 +1005,7 @@ mod tests {
             routes: vec![],
         };
 
-        let encoded = encode_invoice(&invoice_data, private_key_hex)?;
+        let encoded = encode_invoice(&invoice_data, &private_key)?;
 
         // Verify it starts with lntb (bitcoin testnet)
         assert!(encoded.starts_with("lntb"));

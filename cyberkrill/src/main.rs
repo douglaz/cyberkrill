@@ -798,6 +798,7 @@ fn decode_invoice(args: DecodeInvoiceArgs) -> anyhow::Result<()> {
 }
 
 fn encode_invoice(args: EncodeInvoiceArgs) -> anyhow::Result<()> {
+    use bitcoin::secp256k1::SecretKey;
     use cyberkrill_core::InvoiceOutput;
 
     // Read input JSON
@@ -813,8 +814,14 @@ fn encode_invoice(args: EncodeInvoiceArgs) -> anyhow::Result<()> {
     // Parse JSON to InvoiceOutput
     let invoice_data: InvoiceOutput = serde_json::from_str(&json_str)?;
 
+    // Parse the private key from hex
+    let private_key_bytes = hex::decode(&args.private_key)
+        .map_err(|e| anyhow::anyhow!("Invalid private key hex: {}", e))?;
+    let private_key = SecretKey::from_slice(&private_key_bytes)
+        .map_err(|e| anyhow::anyhow!("Invalid private key format: {}", e))?;
+
     // Encode the invoice
-    let encoded_invoice = cyberkrill_core::encode_invoice(&invoice_data, &args.private_key)?;
+    let encoded_invoice = cyberkrill_core::encode_invoice(&invoice_data, &private_key)?;
 
     // Write output
     match args.output {
