@@ -63,7 +63,7 @@ impl PaymentHash {
     }
 
     pub fn to_hex(&self) -> String {
-        hex::encode(&self.0)
+        hex::encode(self.0)
     }
 }
 
@@ -106,7 +106,7 @@ impl PaymentSecret {
     }
 
     pub fn to_hex(&self) -> String {
-        hex::encode(&self.0)
+        hex::encode(self.0)
     }
 }
 
@@ -199,7 +199,7 @@ impl Sha256Hash {
     }
 
     pub fn to_hex(&self) -> String {
-        hex::encode(&self.0)
+        hex::encode(self.0)
     }
 }
 
@@ -360,7 +360,7 @@ impl From<lightning_invoice::Bolt11Invoice> for InvoiceOutput {
         // Convert destination public key
         let destination = {
             let pubkey = if let Some(pk) = invoice.payee_pub_key() {
-                pk.clone()
+                *pk
             } else {
                 invoice.recover_payee_pub_key()
             };
@@ -641,7 +641,7 @@ pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Re
     builder = builder.expiry_time(Duration::from_secs(invoice_data.expiry_seconds));
 
     // Set payee public key
-    let destination_pubkey = invoice_data.destination.inner().clone();
+    let destination_pubkey = *invoice_data.destination.inner();
     builder = builder.payee_pub_key(destination_pubkey);
 
     // Add fallback addresses
@@ -734,7 +734,7 @@ pub fn encode_invoice(invoice_data: &InvoiceOutput, private_key_hex: &str) -> Re
 
         let mut hints = Vec::new();
         for hop in route {
-            let src_node_id = hop.src_node_id.inner().clone();
+            let src_node_id = *hop.src_node_id.inner();
 
             let route_hop = RouteHintHop {
                 src_node_id,
