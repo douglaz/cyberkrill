@@ -10,6 +10,7 @@ A comprehensive Bitcoin and Lightning Network toolkit written in Rust. cyberkril
 
 ### 🌩️ Lightning Network
 - **BOLT11 Invoice Decoding**: Parse and analyze Lightning invoices
+- **BOLT11 Invoice Encoding**: Reconstruct Lightning invoices from JSON data
 - **LNURL Support**: Decode and process LNURL strings
 - **Lightning Address**: Generate invoices from Lightning addresses (user@domain.com)
 - **Fedimint Integration**: Encode/decode federation invite codes
@@ -162,6 +163,11 @@ cargo build --release --no-default-features
 ```bash
 # Decode a Lightning invoice
 cyberkrill ln-decode-invoice lnbc1000n1pn...
+
+# Encode a Lightning invoice from JSON data
+cyberkrill ln-encode-invoice invoice.json --private-key <hex_private_key>
+# Or from stdin
+echo '{"network":"bitcoin","amount_msats":1000000,...}' | cyberkrill ln-encode-invoice --private-key <hex_private_key>
 
 # Decode LNURL
 cyberkrill ln-decode-lnurl lnurl1dp68gurn8ghj7mr0v...

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, ensure};
 use bitcoin::Network;
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpub};
 use serde::{Deserialize, Serialize};
@@ -61,12 +61,12 @@ impl TrezorWallet {
 
         Ok(DeviceInfo {
             device_type: "Trezor".to_string(),
-            version: format!(
-                "{}.{}.{}",
-                features.major_version(),
-                features.minor_version(),
-                features.patch_version()
-            ),
+            version: {
+                let major = features.major_version();
+                let minor = features.minor_version();
+                let patch = features.patch_version();
+                format!("{major}.{minor}.{patch}")
+            },
             initialized: features.initialized(),
             fingerprint: None, // Trezor doesn't expose master fingerprint directly
         })
@@ -149,21 +149,22 @@ impl TrezorWallet {
 
         // Get chain code (32 bytes)
         let chain_code_bytes = node.chain_code();
-        if chain_code_bytes.len() != 32 {
-            bail!(
-                "Invalid chain code length: {len}",
-                len = chain_code_bytes.len()
-            );
-        }
+        ensure!(
+            chain_code_bytes.len() == 32,
+            "Invalid chain code length: {len}",
+            len = chain_code_bytes.len()
+        );
         let mut chain_code_array = [0u8; 32];
         chain_code_array.copy_from_slice(chain_code_bytes);
         let chain_code = ChainCode::from(chain_code_array);
 
         // Get public key (33 bytes compressed)
         let pubkey_bytes = node.public_key();
-        if pubkey_bytes.len() != 33 {
-            bail!("Invalid public key length: {len}", len = pubkey_bytes.len());
-        }
+        ensure!(
+            pubkey_bytes.len() == 33,
+            "Invalid public key length: {len}",
+            len = pubkey_bytes.len()
+        );
         let public_key = secp256k1::PublicKey::from_slice(pubkey_bytes)?;
 
         // Build the Xpub

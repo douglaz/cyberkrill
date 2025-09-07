@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
 // Satscard imports - correct API usage
@@ -49,11 +49,10 @@ pub async fn generate_satscard_address(slot: Option<u8>) -> Result<SatscardAddre
     let target_slot = match slot {
         Some(requested_slot) => {
             // Validate requested slot exists
-            if requested_slot > max_slot {
-                anyhow::bail!(
-                    "Invalid slot number: {requested_slot}. Satscard has slots 0-{max_slot}."
-                );
-            }
+            ensure!(
+                requested_slot <= max_slot,
+                "Invalid slot number: {requested_slot}. Satscard has slots 0-{max_slot}."
+            );
             requested_slot
         }
         None => {
@@ -100,12 +99,11 @@ pub async fn generate_satscard_address(slot: Option<u8>) -> Result<SatscardAddre
 
 fn pubkey_to_address(pubkey: &[u8]) -> Result<String> {
     // Convert public key to Bitcoin address using proper Bitcoin libraries
-    if pubkey.len() != 33 {
-        anyhow::bail!(
-            "Invalid public key length: expected 33 bytes, got {pubkey_len}",
-            pubkey_len = pubkey.len()
-        );
-    }
+    ensure!(
+        pubkey.len() == 33,
+        "Invalid public key length: expected 33 bytes, got {pubkey_len}",
+        pubkey_len = pubkey.len()
+    );
 
     // Convert to compressed public key for address generation
     let compressed_pubkey = CompressedPublicKey::from_slice(pubkey)

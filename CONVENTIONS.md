@@ -1,32 +1,87 @@
 # Rust Coding Conventions
 
 ## String Interpolation
+For format!, println!, info!, debug!, and similar macros:
 
-For `format!`, `println!`, `debug!`, `bail!`, and similar macros:
+### Correct Usage:
+- ALWAYS use direct variable names when they match the placeholder name:
+  ```rust
+  let name = "John";
+  println!("Hello {name}");  // GOOD - Direct use of variable name in placeholder
 
-### Rules:
-1. **Use direct variable names** when the variable name matches the placeholder:
-   ```rust
-   let name = "John";
-   println!("Hello {name}"); // GOOD
-   println!("Hello {}", name); // BAD - avoid positional
-   ```
+  // This also applies to all logging macros
+  let endpoint = "users";
+  debug!("Processing request for {endpoint}");  // GOOD
+  ```
 
-2. **Use named parameters** for method calls or when you want a different name:
-   ```rust
-   println!("Count: {count}", count = items.len()); // Method call
-   println!("Processing {input_file}", input_file = file_path); // Different name
-   ```
+- ONLY use named parameters when using a property or method:
+  ```rust
+  println!("Count: {count}", count = items.len());  // GOOD - Method call needs named parameter
+  ```
 
-3. **Never create temporary variables** just for string interpolation:
-   ```rust
-   // BAD
-   let count = items.len();
-   println!("Found {count} items");
+- ALWAYS use placeholder names that match the variable names. NEVER create temporary variables just to match placeholder names:
+  ```rust
+  // GOOD - Placeholder name matches variable name
+  println!("Checked {files_checked} files");
 
-   // GOOD
-   println!("Found {count} items", count = items.len());
-   ```
+  // GOOD - Named parameter for method call
+  println!("Found {errors_count} errors", errors_count = errors.len());
+
+  // BAD - Don't create temporary variables to match placeholders
+  let files = files_checked; // DON'T do this
+  let errors = errors.len(); // DON'T do this
+  println!("Checked {files} files, found {errors} errors");
+  ```
+
+### Format Specifiers:
+- Use format specifiers explicitly when needed:
+  ```rust
+  // Debug format - use {variable:?} for Debug trait
+  let items = vec![1, 2, 3];
+  println!("Items: {items:?}");  // GOOD - Explicit debug format
+  
+  // Display format - use {variable} for Display trait (default)
+  let name = "John";
+  println!("Name: {name}");  // GOOD - Display format (implicit)
+  
+  // For durations and other types that need Debug
+  let duration = std::time::Duration::from_secs(5);
+  info!("Completed in {duration:?}");  // GOOD - Duration needs Debug format
+  ```
+
+### Incorrect Usage:
+- Don't use positional arguments:
+  ```rust
+  let name = "John";
+  println!("Hello {}", name);  // BAD - No named placeholder
+  
+  // Also BAD for debug formatting:
+  let items = vec![1, 2, 3];
+  println!("Items: {:?}", items);  // BAD - Use {items:?} instead
+  ```
+
+- Don't use redundant named parameters when the variable name matches:
+  ```rust
+  let name = "John";
+  println!("Hello {name}", name = name);  // BAD - Redundant, just use "{name}"
+  ```
+
+- Don't use different names unnecessarily:
+  ```rust
+  let name = "John";
+  println!("Hello {user}", user = name);  // BAD - Not property or method, just use "{name}" directly
+  ```
+
+### Exceptions:
+Display trait implementations are an exception to the named placeholder rule:
+  ```rust
+  // CORRECT - Display implementations use positional arguments by convention
+  impl fmt::Display for MyType {
+      fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+          write!(f, "{}", self.0)  // OK - This is the idiomatic way for Display impl
+      }
+  }
+  ```
 
 ## Error Handling
 
@@ -44,32 +99,43 @@ pub fn some_function() -> Result<String> {
 ```
 
 ### Correct Usage:
-```rust
-// For conditional checks
-ensure!(condition, "Error message with {value}");
+- ALWAYS use anyhow for error handling, particularly bail! and ensure!:
+  ```rust
+  // For conditional checks
+  ensure!(condition, "Error message with {value}");
 
-// For early returns with errors
-bail!("Failed with error: {error_message}");
+  // For early returns with errors
+  bail!("Failed with error: {error_message}");
+  ```
 
-// Instead of return Err(anyhow::anyhow!(...))
-bail!("Error message"); // Cleaner and more idiomatic
+- IMPORTANT: When using `.context()` vs `.with_context()` for error handling:
+  ```rust
+  // For static error messages with no variables:
+  let result = some_operation.context("Operation failed")?;
 
-// For adding context to errors
-let result = some_operation
-    .with_context(|| format!("Failed to parse '{value}' as u32"))?;
+  // For error messages with variables - ALWAYS use with_context with a closure and format!:
+  let id = "123";
 
-// Prefer .context() or .with_context() over .map_err() when adding error context
-// GOOD - Use context methods for adding descriptive error information
-let data = parse_data(input)
-    .context("Failed to parse configuration data")?;
+  // GOOD - Direct variable name in placeholder for simple variables
+  let result = some_operation
+      .with_context(|| format!("Failed to process item {id}"))?;
 
-let value = string.parse::<u32>()
-    .with_context(|| format!("Invalid number format: '{string}'"))?;
+  // GOOD - Named parameter for property or method calls
+  let path = std::path::Path::new("file.txt");
+  let result = std::fs::read_to_string(path)
+      .with_context(|| format!("Failed to read file: {path}", path = path.display()))?;
 
-// LESS PREFERRED - Using .map_err() for simple context addition
-let data = parse_data(input)
-    .map_err(|e| anyhow!("Failed to parse configuration data: {e}"))?;
-```
+  // BAD - Don't use positional parameters
+  // .with_context(|| format!("Failed to read file: {}", path.display()))?
+
+  // NEVER use context() with variables directly in the string - this won't work:
+  // BAD: .context("Failed to process item {id}")  // variables won't interpolate!
+
+  // NEVER use context() with format!() - this is inneficient!:
+  // BAD: .context(format!("Failed to process item {id}"))? // use .with_context(|| format!(...))
+  ```
+
+- REMEMBER: All string interpolation rules apply to ALL format strings, including those inside `with_context` closures
 
 ### When to Use Each Error Handling Approach:
 
@@ -79,103 +145,101 @@ let data = parse_data(input)
 - **`bail!("...")`**: Use for early returns with custom error messages
 - **`ensure!(condition, "...")`**: Use for validation checks that should fail with specific messages
 
+**For Option types**: Use `.context()` instead of `.ok_or_else(|| anyhow!(...))`:
+```rust
+// GOOD - Clean and idiomatic
+let value = optional_value.context("Value not found")?;
+
+// BAD - Verbose and awkward
+let value = optional_value.ok_or_else(|| anyhow!("Value not found"))?;
+```
+
 **Note**: Some external crate error types may not implement the traits required for `.context()`. In these cases, continue using `.map_err(|e| anyhow!("..."))` as needed.
 
 ### Incorrect Usage:
-```rust
-// BAD - Will crash on None:
-let result = optional_value.unwrap();
+- NEVER use unwrap() or panic!:
+  ```rust
+  // BAD - Will crash on None:
+  let result = optional_value.unwrap();
 
-// BAD - Will crash on Err:
-let data = fallible_operation().unwrap();
+  // BAD - Will crash on Err:
+  let data = fallible_operation().unwrap();
 
-// BAD - Explicit panic:
-panic!("This failed");
+  // BAD - Explicit panic:
+  panic!("This failed");
+  ```
 
-// BAD - Silently ignores errors:
-std::fs::remove_file(path).ok();
+- Avoid using .ok() or .expect() to silently ignore errors:
+  ```rust
+  // BAD - Silently ignores errors:
+  std::fs::remove_file(path).ok();
 
-// BETTER - Log the error but continue:
-if let Err(e) = std::fs::remove_file(path) {
-    debug!("Failed to remove file: {e}");
-}
-```
-
-## Bitcoin and Lightning Development
-
-### Using rust-bitcoin Library
-When working with Bitcoin functionality, prefer using rust-bitcoin's types and methods:
-
-```rust
-// GOOD - Use rust-bitcoin types for type safety
-use bitcoin::{Amount, Weight};
-use bitcoin::transaction::{predict_weight, InputWeightPrediction};
-
-// Calculate fees with proper types
-let fee_amount = Amount::from_sat(fee_sats);
-let fee_btc = fee_amount.to_btc();
-
-// Use predict_weight for transaction size estimation
-let weight = predict_weight(inputs, outputs);
-```
-
-```rust
-// BAD - Manual calculations that rust-bitcoin already provides
-let fee_btc = fee_sats as f64 / 100_000_000.0;  // Avoid manual conversions
-let tx_size = base + inputs * 68 + outputs * 31; // Use predict_weight instead
-```
+  // BETTER - Log the error but continue:
+  if let Err(e) = std::fs::remove_file(path) {
+      debug!("Failed to remove file: {e}");
+  }
+  ```
 
 ## Code Quality Standards
 
-### Before Committing
-Always run the complete check sequence:
+### Finding Convention Violations
+
+Use these commands to find potential violations of string interpolation conventions:
+
 ```bash
-cargo clippy --all-targets --all-features --fix --allow-dirty && cargo fmt && cargo test && cargo clippy --all-targets --all-features -- -D warnings && cargo fmt --check
+# Find positional placeholders (excluding Display trait implementations)
+rg -F '{}' | grep -v 'write!(f,' | grep -v '// ' | grep -v '# '
+
+# Find debug positional placeholders
+rg -F '{:?}'
+
+# Find any positional placeholders with formatting
+rg '\{:[^}]+\}' --pcre2
+
+# Find format strings with positional arguments (more comprehensive)
+rg 'format!\([^)]*\{[^a-zA-Z_]' --pcre2
+
+# Find print/log macros with positional arguments
+rg '(println!|print!|eprintln!|eprint!|info!|debug!|warn!|error!|trace!)\([^)]*"[^"]*\{\}' --pcre2
+
+# Find .context() with format! (should use .with_context() instead)
+rg '\.context\(format!'
+
+# Find error messages with positional placeholders in bail! or ensure!
+rg '(bail!|ensure!)\([^)]*"[^"]*\{\}' --pcre2
 ```
 
-### Required Quality Checks
-1. **All tests must pass**: `cargo test`
-2. **No clippy warnings**: `cargo clippy --all-targets --all-features -- -D warnings`
-3. **Code must be formatted**: `cargo fmt`
+**Note**: When reviewing results, remember these exceptions are acceptable:
+- Display trait implementations (`write!(f, "{}", self.0)`)
+- JSON literals (`serde_json::json!({})`)
+- Documentation examples and comments
+- Match arms with empty blocks (`=> {}`)
+- Struct initialization with no fields
 
-### Running Tests
-- Run all tests: `cargo test`
-- Run with output: `cargo test -- --nocapture`
-- Run specific test: `cargo test test_name`
-- Run tests in a module: `cargo test module_name`
+### Always Run After Significant Changes:
+1. **Format code** - Ensures consistent code style:
+   ```bash
+   cargo fmt --all
+   ```
 
-## CLI-Specific Conventions
+2. **Run clippy** - Catches common mistakes and suggests improvements:
+   ```bash
+   cargo clippy --locked --offline --workspace --all-targets -- --deny warnings
+   ```
 
-### Output Format
-- **JSON by default**: All command outputs should be valid JSON for easy parsing
-- **Clean output**: No debug prints or progress messages to stdout (use stderr if needed)
-- **Consistent structure**: Similar commands should have similar output structures
+3. **Run tests** - Ensures no regressions:
+   ```bash
+   cargo test
+   ```
 
-### Command Line Arguments
-- Use descriptive names for arguments and options
-- Provide sensible defaults where appropriate
-- Use `--output` or `-o` for file output consistently
-- Group related commands using subcommands
+### When to Run These Commands:
+- After implementing a new feature
+- After refactoring existing code
+- Before creating a pull request
+- After resolving merge conflicts
+- After any changes that touch multiple files
 
-### Error Messages
-- Write user-friendly error messages
-- Include actionable information (what went wrong, how to fix it)
-- Use consistent error formatting
-- Return appropriate exit codes (0 for success, non-zero for errors)
-
-### CLI Patterns
-- Accept input from file argument or stdin when not provided
-- Write output to file with `-o/--output` or stdout by default
-- Use descriptive help text for all arguments
-- Provide sensible defaults where appropriate
-
-## Development Process
-
-### Before Implementing New Features
-1. **Review similar code**: Look at how similar functionality is implemented elsewhere
-2. **Use existing utilities**: Check if helper functions or utilities already exist
-3. **Follow module patterns**: Maintain consistency with the module's existing structure
-4. **Reuse types**: Use existing structs and enums where applicable
+**Important**: Code must be properly formatted and pass all clippy checks before being committed to the repository.
 
 ## Test Error Handling
 
@@ -233,6 +297,14 @@ fn another_bad_test() -> Result<()> {
 }
 ```
 
+## Development Process
+
+### Before Implementing New Features
+1. **Review similar code**: Look at how similar functionality is implemented elsewhere
+2. **Use existing utilities**: Check if helper functions or utilities already exist
+3. **Follow module patterns**: Maintain consistency with the module's existing structure
+4. **Reuse types**: Use existing structs and enums where applicable
+
 ### Development Checklist
 Before submitting code:
 - [ ] Review existing similar code to understand patterns
@@ -240,5 +312,5 @@ Before submitting code:
 - [ ] Add appropriate error handling using `anyhow`
 - [ ] Add unit tests for new functionality with proper error handling
 - [ ] Ensure tests return `Result<()>` and use `?` operator instead of `.unwrap()`
-- [ ] Run quality checks: `cargo test && cargo clippy --all-targets --all-features -- -D warnings && cargo fmt --check`
+- [ ] Run quality checks: `cargo test && cargo clippy && cargo fmt --check`
 - [ ] Update relevant documentation (README.md for new commands)
