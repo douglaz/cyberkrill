@@ -407,9 +407,8 @@ impl BitcoinRpcClient {
     fn read_cookie_auth(cookie_path: &Path) -> Result<(String, String)> {
         let cookie_content = std::fs::read_to_string(cookie_path).map_err(|e| {
             anyhow!(
-                "Failed to read cookie file at {}: {}",
-                cookie_path.display(),
-                e
+                "Failed to read cookie file at {path}: {e}",
+                path = cookie_path.display()
             )
         })?;
 
@@ -421,8 +420,8 @@ impl BitcoinRpcClient {
             Ok((username, password))
         } else {
             bail!(
-                "Invalid cookie format in {}: expected 'username:password'",
-                cookie_path.display()
+                "Invalid cookie format in {path}: expected 'username:password'",
+                path = cookie_path.display()
             );
         }
     }

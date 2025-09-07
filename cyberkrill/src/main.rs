@@ -748,7 +748,8 @@ async fn main() -> anyhow::Result<()> {
             let version = serde_json::json!({
                 "version": env!("CARGO_PKG_VERSION")
             });
-            println!("{}", serde_json::to_string_pretty(&version)?);
+            let version_str = serde_json::to_string_pretty(&version)?;
+            println!("{version_str}");
         }
 
         // MCP Server
@@ -816,9 +817,9 @@ fn encode_invoice(args: EncodeInvoiceArgs) -> anyhow::Result<()> {
 
     // Parse the private key from hex
     let private_key_bytes = hex::decode(&args.private_key)
-        .map_err(|e| anyhow::anyhow!("Invalid private key hex: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Invalid private key hex: {e}"))?;
     let private_key = SecretKey::from_slice(&private_key_bytes)
-        .map_err(|e| anyhow::anyhow!("Invalid private key format: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Invalid private key format: {e}"))?;
 
     // Encode the invoice
     let encoded_invoice = cyberkrill_core::encode_invoice(&invoice_data, &private_key)?;
@@ -826,7 +827,7 @@ fn encode_invoice(args: EncodeInvoiceArgs) -> anyhow::Result<()> {
     // Write output
     match args.output {
         Some(path) => std::fs::write(path, encoded_invoice)?,
-        None => println!("{}", encoded_invoice),
+        None => println!("{encoded_invoice}"),
     }
 
     Ok(())
@@ -925,8 +926,8 @@ async fn bitcoin_list_utxos(args: ListUtxosArgs) -> anyhow::Result<()> {
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
         _ => bail!(
-            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
-            args.network
+            "Invalid network: {network}. Expected one of: mainnet, testnet, signet, regtest",
+            network = args.network
         ),
     };
 
@@ -1020,8 +1021,8 @@ async fn bitcoin_create_psbt(args: CreatePsbtArgs) -> anyhow::Result<()> {
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
         _ => bail!(
-            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
-            args.network
+            "Invalid network: {network}. Expected one of: mainnet, testnet, signet, regtest",
+            network = args.network
         ),
     };
 
@@ -1121,8 +1122,8 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
         _ => bail!(
-            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
-            args.network
+            "Invalid network: {network}. Expected one of: mainnet, testnet, signet, regtest",
+            network = args.network
         ),
     };
 
@@ -1247,8 +1248,8 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
         "signet" => cyberkrill_core::Network::Signet,
         "regtest" => cyberkrill_core::Network::Regtest,
         _ => bail!(
-            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
-            args.network
+            "Invalid network: {network}. Expected one of: mainnet, testnet, signet, regtest",
+            network = args.network
         ),
     };
 
@@ -1400,10 +1401,7 @@ fn parse_outputs(
     for output in outputs_str.split(',') {
         let parts: Vec<&str> = output.trim().split(':').collect();
         if parts.len() != 2 {
-            bail!(
-                "Invalid output format: '{}'. Expected 'address:amount'",
-                output
-            );
+            bail!("Invalid output format: '{output}'. Expected 'address:amount'");
         }
 
         let address = parts[0].trim().to_string();
@@ -1468,7 +1466,7 @@ async fn jade_sign_psbt(args: JadeSignPsbtArgs) -> anyhow::Result<()> {
     // Read PSBT data from file or parse as base64/hex
     let psbt_input = if Path::new(&args.input).exists() {
         std::fs::read_to_string(&args.input)
-            .with_context(|| format!("Failed to read PSBT file: {}", args.input))?
+            .with_context(|| format!("Failed to read PSBT file: {input}", input = args.input))?
     } else {
         args.input.clone()
     };
@@ -1505,8 +1503,8 @@ fn decode_psbt(args: DecodePsbtArgs) -> anyhow::Result<()> {
         "signet" => Network::Signet,
         "regtest" => Network::Regtest,
         _ => bail!(
-            "Invalid network: {}. Expected one of: mainnet, testnet, signet, regtest",
-            args.network
+            "Invalid network: {network}. Expected one of: mainnet, testnet, signet, regtest",
+            network = args.network
         ),
     };
 
@@ -1659,7 +1657,7 @@ async fn coldcard_sign_psbt(args: ColdcardSignPsbtArgs) -> anyhow::Result<()> {
     // Read PSBT data from file or parse as base64/hex
     let psbt_data = if Path::new(&args.input).exists() {
         std::fs::read(&args.input)
-            .with_context(|| format!("Failed to read PSBT file: {}", args.input))?
+            .with_context(|| format!("Failed to read PSBT file: {input}", input = args.input))?
     } else if args.input.starts_with("cHNidP") {
         // Looks like base64
         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &args.input)
@@ -1697,7 +1695,7 @@ async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()
     // Read PSBT data from file or parse as base64/hex
     let psbt_data = if Path::new(&args.input).exists() {
         std::fs::read(&args.input)
-            .with_context(|| format!("Failed to read PSBT file: {}", args.input))?
+            .with_context(|| format!("Failed to read PSBT file: {input}", input = args.input))?
     } else if args.input.starts_with("cHNidP") {
         // Looks like base64
         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &args.input)
@@ -1714,7 +1712,8 @@ async fn coldcard_export_psbt(args: ColdcardExportPsbtArgs) -> anyhow::Result<()
         "message": message,
         "filename": args.filename
     });
-    println!("{}", serde_json::to_string_pretty(&result)?);
+    let result_str = serde_json::to_string_pretty(&result)?;
+    println!("{result_str}");
 
     Ok(())
 }
@@ -1726,7 +1725,7 @@ async fn trezor_address(args: TrezorAddressArgs) -> anyhow::Result<()> {
     let network = args
         .network
         .parse::<Network>()
-        .with_context(|| format!("Invalid network: {}", args.network))?;
+        .with_context(|| format!("Invalid network: {network}", network = args.network))?;
 
     let result = generate_trezor_address(&args.path, network).await?;
 
@@ -1749,12 +1748,12 @@ async fn trezor_sign_psbt(args: TrezorSignPsbtArgs) -> anyhow::Result<()> {
     let network = args
         .network
         .parse::<Network>()
-        .with_context(|| format!("Invalid network: {}", args.network))?;
+        .with_context(|| format!("Invalid network: {network}", network = args.network))?;
 
     // Read PSBT data from file or parse as base64/hex
     let psbt_data = if Path::new(&args.input).exists() {
         std::fs::read(&args.input)
-            .with_context(|| format!("Failed to read PSBT file: {}", args.input))?
+            .with_context(|| format!("Failed to read PSBT file: {input}", input = args.input))?
     } else if args.input.starts_with("cHNidP") {
         // Looks like base64
         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &args.input)
@@ -1832,8 +1831,8 @@ async fn mcp_server(args: McpServerArgs) -> anyhow::Result<()> {
         "stdio" => Transport::Stdio,
         "sse" => Transport::Sse,
         _ => bail!(
-            "Invalid transport: {}. Expected 'stdio' or 'sse'",
-            args.transport
+            "Invalid transport: {transport}. Expected 'stdio' or 'sse'",
+            transport = args.transport
         ),
     };
 

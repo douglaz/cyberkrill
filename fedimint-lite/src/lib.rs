@@ -76,8 +76,8 @@ fn decode_bech32m_invite(input: &str) -> Result<FedimintInviteOutput> {
     let hrp = checked.hrp();
     anyhow::ensure!(
         hrp == bech32::primitives::hrp::Hrp::parse("fed1")?,
-        "Invalid HRP (human-readable part): expected 'fed1', got '{}'",
-        hrp.as_str()
+        "Invalid HRP (human-readable part): expected 'fed1', got '{hrp}'",
+        hrp = hrp.as_str()
     );
 
     // Convert from 5-bit field elements to 8-bit bytes
@@ -131,7 +131,7 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
                 pos += bytes_read;
 
                 if pos + url_len as usize > bytes.len() {
-                    anyhow::bail!("URL length {} exceeds remaining bytes", url_len);
+                    anyhow::bail!("URL length {url_len} exceeds remaining bytes");
                 }
 
                 let url_bytes = &bytes[pos..pos + url_len as usize];
@@ -146,9 +146,7 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
                 let consumed = pos - variant_start_pos;
                 if consumed != variant_data_len as usize {
                     anyhow::bail!(
-                        "API variant data length mismatch: expected {}, consumed {}",
-                        variant_data_len,
-                        consumed
+                        "API variant data length mismatch: expected {variant_data_len}, consumed {consumed}"
                     );
                 }
 
@@ -180,7 +178,7 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
                 pos += bytes_read;
 
                 if pos + secret_len as usize > bytes.len() {
-                    anyhow::bail!("Secret length {} exceeds remaining bytes", secret_len);
+                    anyhow::bail!("Secret length {secret_len} exceeds remaining bytes");
                 }
 
                 let secret_bytes = &bytes[pos..pos + secret_len as usize];
@@ -219,7 +217,8 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
 // Read BigSize VarInt at specific position, returns (value, bytes_consumed)
 fn read_varint_at(bytes: &[u8], pos: usize) -> Result<(u64, usize)> {
     if pos >= bytes.len() {
-        anyhow::bail!("Position {pos} exceeds buffer length {}", bytes.len());
+        let len = bytes.len();
+        anyhow::bail!("Position {pos} exceeds buffer length {len}");
     }
 
     let first_byte = bytes[pos];
@@ -349,8 +348,8 @@ fn encode_invite_to_bytes(invite: &FedimintInviteOutput) -> Result<Vec<u8>> {
             hex::decode(&invite.federation_id).context("Invalid federation ID hex")?;
         if fed_id_bytes.len() != 32 {
             anyhow::bail!(
-                "Federation ID must be exactly 32 bytes, got {}",
-                fed_id_bytes.len()
+                "Federation ID must be exactly 32 bytes, got {len}",
+                len = fed_id_bytes.len()
             );
         }
 
@@ -475,7 +474,8 @@ pub async fn fetch_fedimint_config(invite_code: &str) -> Result<FederationConfig
             .url
             .replace("wss://", "https://")
             .replace("ws://", "http://");
-        let config_url = format!("{}/config", http_url.trim_end_matches('/'));
+        let base_url = http_url.trim_end_matches('/');
+        let config_url = format!("{base_url}/config");
 
         match fetch_config_from_guardian(&client, &config_url).await {
             Ok(config) => {
@@ -485,7 +485,8 @@ pub async fn fetch_fedimint_config(invite_code: &str) -> Result<FederationConfig
                 return parse_federation_config(config, &invite);
             }
             Err(e) => {
-                debug!("Failed to fetch config from {}: {e}", guardian.url);
+                let url = &guardian.url;
+                debug!("Failed to fetch config from {url}: {e}");
                 last_error = Some(e);
                 continue;
             }
@@ -550,9 +551,7 @@ fn validate_federation_id(config: &serde_json::Value, expected_federation_id: &s
 
         if config_fed_id != expected_federation_id {
             anyhow::bail!(
-                "Federation ID mismatch. Expected: {}, Got: {}",
-                expected_federation_id,
-                config_fed_id
+                "Federation ID mismatch. Expected: {expected_federation_id}, Got: {config_fed_id}"
             );
         }
     } else {
