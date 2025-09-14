@@ -827,8 +827,7 @@ impl BitcoinRpcClient {
                 let parts: Vec<&str> = input.split(':').collect();
                 ensure!(
                     parts.len() == 2,
-                    "Invalid input format: '{}'. Expected 'txid:vout' or a descriptor",
-                    input
+                    "Invalid input format: '{input}'. Expected 'txid:vout' or a descriptor"
                 );
                 let txid = parts[0];
                 let vout: u32 = parts[1].parse().map_err(|_| {

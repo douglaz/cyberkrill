@@ -462,8 +462,7 @@ impl FromStr for InputSpec {
             let parts: Vec<&str> = s.split(':').collect();
             ensure!(
                 parts.len() == 2,
-                "Invalid input format: '{}'. Expected 'txid:vout' or a descriptor",
-                s
+                "Invalid input format: '{s}'. Expected 'txid:vout' or a descriptor"
             );
             let txid = Txid::from_str(parts[0]).context("Invalid transaction ID")?;
             let vout: u32 = parts[1].parse().context("Invalid output index")?;

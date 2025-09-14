@@ -61,12 +61,12 @@ impl TrezorWallet {
 
         Ok(DeviceInfo {
             device_type: "Trezor".to_string(),
-            version: {
-                let major = features.major_version();
-                let minor = features.minor_version();
-                let patch = features.patch_version();
-                format!("{major}.{minor}.{patch}")
-            },
+            version: format!(
+                "{}.{}.{}",
+                features.major_version(),
+                features.minor_version(),
+                features.patch_version()
+            ),
             initialized: features.initialized(),
             fingerprint: None, // Trezor doesn't expose master fingerprint directly
         })

@@ -55,7 +55,6 @@ fn main() -> anyhow::Result<()> {
             }
         ],
         api_secret: None,
-        encoding_format: "bech32m".to_string(),
     };
     
     let encoded = encode_invite(&invite)?;
