@@ -415,7 +415,6 @@ impl CyberkrillMcpServer {
             } else {
                 api_secret
             },
-            encoding_format: "bech32m".to_string(),
         };
 
         match fedimint_lite::encode_fedimint_invite(&invite) {

@@ -44,7 +44,6 @@ pub struct FedimintInviteOutput {
     pub federation_id: String,
     pub guardians: Vec<GuardianInfo>,
     pub api_secret: Option<String>,
-    pub encoding_format: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -83,21 +82,21 @@ fn decode_bech32m_invite(input: &str) -> Result<FedimintInviteOutput> {
     // Convert from 5-bit field elements to 8-bit bytes
     let decoded_bytes: Vec<u8> = checked.byte_iter().collect();
 
-    decode_invite_bytes(&decoded_bytes, "bech32m")
+    decode_invite_bytes(&decoded_bytes)
 }
 
-fn decode_invite_bytes(bytes: &[u8], encoding_format: &str) -> Result<FedimintInviteOutput> {
+fn decode_invite_bytes(bytes: &[u8]) -> Result<FedimintInviteOutput> {
     // Parse using Bitcoin-style consensus encoding
-    match parse_consensus_encoding(bytes, encoding_format) {
+    match parse_consensus_encoding(bytes) {
         Ok(result) => Ok(result),
         Err(e) => {
             debug!("Consensus parsing failed: {e}, falling back to simple parser");
-            parse_as_simple_format(bytes, encoding_format)
+            parse_as_simple_format(bytes)
         }
     }
 }
 
-fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<FedimintInviteOutput> {
+fn parse_consensus_encoding(bytes: &[u8]) -> Result<FedimintInviteOutput> {
     let mut pos = 0;
 
     // Read the number of InviteCodePart elements (VarInt)
@@ -210,7 +209,6 @@ fn parse_consensus_encoding(bytes: &[u8], encoding_format: &str) -> Result<Fedim
         federation_id,
         guardians,
         api_secret,
-        encoding_format: encoding_format.to_string(),
     })
 }
 
@@ -286,16 +284,10 @@ fn write_varint(value: u64) -> Vec<u8> {
 }
 
 pub fn encode_fedimint_invite(invite: &FedimintInviteOutput) -> Result<String> {
-    // Only support bech32m format
-    let format = invite.encoding_format.as_str();
-    if format != "bech32m" {
-        anyhow::bail!("Only bech32m encoding format is supported, got: {format}");
-    }
-
     // Build the consensus-encoded bytes
     let bytes = encode_invite_to_bytes(invite)?;
 
-    // Encode to bech32m
+    // Encode to bech32m (only supported format)
     encode_to_bech32m(&bytes)
 }
 
@@ -387,7 +379,7 @@ fn encode_to_bech32m(bytes: &[u8]) -> Result<String> {
     Ok(encoded)
 }
 
-fn parse_as_simple_format(bytes: &[u8], encoding_format: &str) -> Result<FedimintInviteOutput> {
+fn parse_as_simple_format(bytes: &[u8]) -> Result<FedimintInviteOutput> {
     // Extract URL and federation ID from the bytes
 
     // Extract what looks like URLs or API endpoints
@@ -437,7 +429,6 @@ fn parse_as_simple_format(bytes: &[u8], encoding_format: &str) -> Result<Fedimin
         federation_id,
         guardians,
         api_secret: None,
-        encoding_format: encoding_format.to_string(),
     })
 }
 
@@ -679,9 +670,6 @@ mod tests {
         assert_eq!(result.guardians[0].url, "wss://api.bitcoin-principles.com/");
         assert_eq!(result.guardians[0].peer_id, 0);
 
-        // Verify encoding format
-        assert_eq!(result.encoding_format, "bech32m");
-
         // No API secret in this invite
         assert_eq!(result.api_secret, None);
 
@@ -714,7 +702,6 @@ mod tests {
             "wss://api.bitcoin-principles.com/"
         );
         assert_eq!(decoded.guardians[0].peer_id, 0);
-        assert_eq!(decoded.encoding_format, "bech32m");
 
         Ok(())
     }
@@ -736,7 +723,6 @@ mod tests {
                 },
             ],
             api_secret: Some("super_secret_api_key".to_string()),
-            encoding_format: "bech32m".to_string(),
         };
 
         // Encode and decode round-trip
@@ -772,7 +758,6 @@ mod tests {
                 },
             ],
             api_secret: None,
-            encoding_format: "bech32m".to_string(),
         };
 
         // Encode and decode round-trip
