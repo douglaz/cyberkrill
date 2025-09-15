@@ -16,8 +16,8 @@ jade = ["cyberkrill-core/jade"]
 
 [dependencies]
 anyhow = { version = "1.0.99", features = ["backtrace"] }
-clap = { version = "4.5.46", features = ["derive", "env"] }
-serde_json = "1.0.143"
+clap = { version = "4.5.47", features = ["derive", "env"] }
+serde_json = "1.0.145"
 tokio = { version = "1.47", features = ["full"] }
 cyberkrill-core = { path = "../cyberkrill-core", default-features = false }
 fedimint-lite = { path = "../fedimint-lite" }
