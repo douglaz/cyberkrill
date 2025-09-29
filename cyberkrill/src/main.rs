@@ -142,6 +142,8 @@ enum Commands {
     // Utility Commands
     #[command(name = "version", about = "Print version information")]
     Version,
+    #[command(name = "generate-mnemonic", about = "Generate a BIP39 mnemonic phrase")]
+    GenerateMnemonic(GenerateMnemonicArgs),
 
     // MCP Server
     #[command(
@@ -228,6 +230,16 @@ struct GenerateInvoiceArgs {
 }
 
 // MCP Server Args
+
+#[derive(clap::Args, Debug)]
+struct GenerateMnemonicArgs {
+    /// Word count (12, 15, 18, 21, or 24)
+    #[clap(short, long, default_value = "24")]
+    words: u32,
+    /// Output file path
+    #[clap(short, long)]
+    output: Option<String>,
+}
 
 #[derive(clap::Args, Debug)]
 struct McpServerArgs {
@@ -751,6 +763,7 @@ async fn main() -> anyhow::Result<()> {
             let version_str = serde_json::to_string_pretty(&version)?;
             println!("{version_str}");
         }
+        Commands::GenerateMnemonic(args) => generate_mnemonic(args)?,
 
         // MCP Server
         Commands::McpServer(args) => mcp_server(args).await?,
@@ -1844,6 +1857,55 @@ async fn mcp_server(args: McpServerArgs) -> anyhow::Result<()> {
 
     let server = CyberkrillMcpServer::new(config);
     server.run().await?;
+
+    Ok(())
+}
+
+fn generate_mnemonic(args: GenerateMnemonicArgs) -> anyhow::Result<()> {
+    use bip39::{Language, Mnemonic};
+    use rand::{Rng, thread_rng};
+
+    // Map word count to entropy length in bytes
+    let entropy_bytes = match args.words {
+        12 => 16, // 128 bits
+        15 => 20, // 160 bits
+        18 => 24, // 192 bits
+        21 => 28, // 224 bits
+        24 => 32, // 256 bits
+        _ => bail!(
+            "Invalid word count: {}. Must be 12, 15, 18, 21, or 24",
+            args.words
+        ),
+    };
+
+    // Generate random entropy
+    let mut rng = thread_rng();
+    let mut entropy = vec![0u8; entropy_bytes];
+    rng.fill(&mut entropy[..]);
+
+    // Generate mnemonic from entropy
+    let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)
+        .map_err(|e| anyhow::anyhow!("Failed to generate mnemonic: {}", e))?;
+
+    // Get the mnemonic phrase
+    let phrase = mnemonic.to_string();
+
+    // Create output JSON
+    let output = serde_json::json!({
+        "mnemonic": phrase,
+        "words": args.words,
+        "entropy_bits": entropy_bytes * 8,
+    });
+
+    // Write output
+    let writer: Box<dyn std::io::Write> = match args.output {
+        Some(path) => Box::new(BufWriter::new(std::fs::File::create(path)?)),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    let mut writer = writer;
+    serde_json::to_writer_pretty(&mut writer, &output)?;
+    writeln!(&mut writer)?;
 
     Ok(())
 }
