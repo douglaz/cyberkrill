@@ -392,6 +392,17 @@ dependencies = [
 [[package]]
 name = "bip39"
 version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43d193de1f7487df1914d3a568b772458861d33f9c54249612cc2893d6915054"
+dependencies = [
+ "bitcoin_hashes 0.13.0",
+ "serde",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "bip39"
+version = "2.2.0"
 source = "git+https://github.com/rust-bitcoin/rust-bip39#5bb47117ba8d6c8d7f2fc601cfae78ef2cda643e"
 dependencies = [
  "bitcoin_hashes 0.13.0",
@@ -838,11 +849,13 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
+ "bip39 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitcoin",
  "clap",
  "cyberkrill-core",
  "fedimint-lite",
  "hex",
+ "rand 0.8.5",
  "rmcp",
  "rustls 0.23.31",
  "schemars",
@@ -1172,7 +1185,7 @@ source = "git+https://github.com/planktonlabs/frozenkrill?rev=c6883ec2daf9886f96
 dependencies = [
  "alkali",
  "anyhow",
- "bip39",
+ "bip39 2.2.0 (git+https://github.com/rust-bitcoin/rust-bip39)",
  "bitcoin",
  "blake3",
  "env_logger",

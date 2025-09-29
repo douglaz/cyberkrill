@@ -31,6 +31,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 async-trait = "0.1"
 bitcoin = "0.32"
+bip39 = "2.1"
+rand = "0.8"
 
 [dev-dependencies]
 rmcp = { version = "0.6", features = ["server", "client", "transport-child-process"] }
