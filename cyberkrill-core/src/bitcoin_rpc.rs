@@ -598,12 +598,62 @@ impl BitcoinRpcClient {
         })
     }
 
+    pub async fn list_utxos_for_descriptor_with_conf(
+        &self,
+        descriptor: &str,
+        min_conf: u32,
+        max_conf: u32,
+    ) -> Result<UtxoListResponse> {
+        // Get all UTXOs for the descriptor
+        let mut utxos = self.list_unspent_for_descriptor(descriptor).await?;
+
+        // Filter by confirmation count
+        utxos.retain(|u| u.confirmations >= min_conf && u.confirmations <= max_conf);
+
+        let total_amount_sats: u64 = utxos
+            .iter()
+            .map(|u| Amount::from_btc(u.amount).unwrap_or(Amount::ZERO).to_sat())
+            .sum();
+        let total_count = utxos.len();
+        let utxo_outputs: Vec<UtxoOutput> = utxos.into_iter().map(Into::into).collect();
+
+        Ok(UtxoListResponse {
+            utxos: utxo_outputs,
+            total_amount_sats,
+            total_count,
+        })
+    }
+
     pub async fn list_utxos_for_addresses(
         &self,
         addresses: Vec<String>,
     ) -> Result<UtxoListResponse> {
         // Use min_conf=0 to include mempool transactions
         let utxos = self.list_unspent(Some(0), None, Some(addresses)).await?;
+        let total_amount_sats: u64 = utxos
+            .iter()
+            .map(|u| Amount::from_btc(u.amount).unwrap_or(Amount::ZERO).to_sat())
+            .sum();
+        let total_count = utxos.len();
+        let utxo_outputs: Vec<UtxoOutput> = utxos.into_iter().map(Into::into).collect();
+
+        Ok(UtxoListResponse {
+            utxos: utxo_outputs,
+            total_amount_sats,
+            total_count,
+        })
+    }
+
+    pub async fn list_utxos_for_addresses_with_conf(
+        &self,
+        addresses: Vec<String>,
+        min_conf: u32,
+        max_conf: u32,
+    ) -> Result<UtxoListResponse> {
+        // Use provided min_conf and max_conf
+        let utxos = self
+            .list_unspent(Some(min_conf), Some(max_conf), Some(addresses))
+            .await?;
         let total_amount_sats: u64 = utxos
             .iter()
             .map(|u| Amount::from_btc(u.amount).unwrap_or(Amount::ZERO).to_sat())

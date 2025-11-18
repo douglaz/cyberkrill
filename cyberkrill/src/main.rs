@@ -982,8 +982,13 @@ async fn bitcoin_list_utxos(args: ListUtxosArgs) -> anyhow::Result<()> {
             cyberkrill_core::list_utxos_bdk(&descriptor, network)?
         };
 
-        // Create summary for BDK results
-        let summary = cyberkrill_core::get_utxo_summary(result);
+        // Apply confirmation filtering to BDK results
+        let mut filtered_result = result;
+        filtered_result
+            .retain(|u| u.confirmations >= args.min_conf && u.confirmations <= args.max_conf);
+
+        // Create summary for filtered BDK results
+        let summary = cyberkrill_core::get_utxo_summary(filtered_result);
         serde_json::to_writer_pretty(writer, &summary)?;
     } else {
         // Bitcoin Core RPC path (original behavior)
@@ -996,18 +1001,29 @@ async fn bitcoin_list_utxos(args: ListUtxosArgs) -> anyhow::Result<()> {
         )?;
 
         let result = if let Some(descriptor) = args.descriptor {
-            client.list_utxos_for_descriptor(&descriptor).await?
+            client
+                .list_utxos_for_descriptor_with_conf(&descriptor, args.min_conf, args.max_conf)
+                .await?
         } else if let Some(addresses_str) = args.addresses {
             let addresses: Vec<String> = addresses_str
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            client.list_utxos_for_addresses(addresses).await?
+            client
+                .list_utxos_for_addresses_with_conf(addresses, args.min_conf, args.max_conf)
+                .await?
         } else {
             #[cfg(feature = "frozenkrill")]
             if let Some(wallet_file) = args.wallet_file {
-                client.list_utxos_from_wallet_file(&wallet_file).await?
+                let mut result = client.list_utxos_from_wallet_file(&wallet_file).await?;
+                // Apply confirmation filtering for wallet file
+                result.utxos.retain(|u| {
+                    u.confirmations >= args.min_conf && u.confirmations <= args.max_conf
+                });
+                result.total_amount_sats = result.utxos.iter().map(|u| u.amount_sats).sum();
+                result.total_count = result.utxos.len();
+                result
             } else {
                 bail!("Either --descriptor, --addresses, or --wallet-file must be provided");
             }
