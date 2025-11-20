@@ -37,11 +37,11 @@
             lockFile = ./Cargo.lock;
             outputHashes = {
               "cktap-direct-0.1.0" = "sha256-yX9sFHWsisEXYBjYo2TrpC/vj58JO/b+Bb+phubkJNA=";
-              "bip39-2.2.0" = "sha256-gtUvFo0A8mPdBfqp5jwMzS/tpNc1YRHWliIc27FYioA=";
+              "bip39-2.2.0" = "sha256-HVA5vJ24gU3ZFswk5MAMZ1mfdQOGOoBywwUlG9u72dU=";
               "frozenkrill-core-0.0.0" = "sha256-xCE26AxN4HgB3Yrfv3jgl0WYIl+xSmCKtWgJMjAql8w=";
               "coldcard-0.12.2" = "sha256-S+MARrWsdGCsfe4A3cUqaKSijo81MfH6KLIeuBpMckc=";
-              "hidapi-compat-0.1.0" = "sha256-wq7/X9HjwzUNSA9xNRBWXVMI9sRxEXQsHa5qMSAn+OA=";
-              "trezor-client-0.1.5" = "sha256-3XtfgKeHh6Ncen04IgUUC2bsBbKH2y5GMTzBW1D7WTY=";
+              "hidapi-compat-0.1.0" = "sha256-SYtLivsas+kkmhdsZSWQXF+AkCe4bMDryzJBfsZQhXE=";
+              "trezor-client-0.1.5" = "sha256-MYBGRBGG818U65r0LmDOZCW09rCwa2R52Sh3WomKXek=";
             };
           };
           
@@ -119,11 +119,11 @@
             lockFile = ./Cargo.lock;
             outputHashes = {
               "cktap-direct-0.1.0" = "sha256-yX9sFHWsisEXYBjYo2TrpC/vj58JO/b+Bb+phubkJNA=";
-              "bip39-2.2.0" = "sha256-gtUvFo0A8mPdBfqp5jwMzS/tpNc1YRHWliIc27FYioA=";
+              "bip39-2.2.0" = "sha256-HVA5vJ24gU3ZFswk5MAMZ1mfdQOGOoBywwUlG9u72dU=";
               "frozenkrill-core-0.0.0" = "sha256-xCE26AxN4HgB3Yrfv3jgl0WYIl+xSmCKtWgJMjAql8w=";
               "coldcard-0.12.2" = "sha256-S+MARrWsdGCsfe4A3cUqaKSijo81MfH6KLIeuBpMckc=";
-              "hidapi-compat-0.1.0" = "sha256-wq7/X9HjwzUNSA9xNRBWXVMI9sRxEXQsHa5qMSAn+OA=";
-              "trezor-client-0.1.5" = "sha256-3XtfgKeHh6Ncen04IgUUC2bsBbKH2y5GMTzBW1D7WTY=";
+              "hidapi-compat-0.1.0" = "sha256-SYtLivsas+kkmhdsZSWQXF+AkCe4bMDryzJBfsZQhXE=";
+              "trezor-client-0.1.5" = "sha256-MYBGRBGG818U65r0LmDOZCW09rCwa2R52Sh3WomKXek=";
             };
           };
           

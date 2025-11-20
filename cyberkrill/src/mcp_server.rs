@@ -12,7 +12,6 @@ use rmcp::{
     transport::stdio,
 };
 use serde::Deserialize;
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -1065,6 +1064,8 @@ fn create_tool(name: &'static str, description: &'static str, schema: serde_json
         input_schema: Arc::new(schema.as_object().unwrap().clone()),
         output_schema: None,
         annotations: None,
+        icons: None,
+        title: None,
     }
 }
 

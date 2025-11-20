@@ -62,7 +62,7 @@ jobs:
 
     - name: Upload dependency reports
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: dependency-reports
         path: |
@@ -72,7 +72,7 @@ jobs:
 
     - name: Comment on PR (if outdated)
       if: github.event_name == 'pull_request' && steps.outdated.outputs.status == 'outdated'
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       with:
         script: |
           const fs = require('fs');
