@@ -32,7 +32,7 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 async-trait = "0.1"
 bitcoin = "0.32"
 bip39 = { git = "https://github.com/rust-bitcoin/rust-bip39" }
-rand = "0.8"
+rand = "0.9"
 
 [dev-dependencies]
 rmcp = { version = "0.12", features = ["server", "client", "transport-child-process"] }
