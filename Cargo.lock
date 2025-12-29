@@ -385,7 +385,7 @@ name = "bip39"
 version = "2.2.0"
 source = "git+https://github.com/rust-bitcoin/rust-bip39#f735e2559f30049f6738d1bf68c69a0b7bd7b858"
 dependencies = [
- "bitcoin_hashes 0.14.0",
+ "bitcoin_hashes 0.13.0",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "serde",
@@ -2882,7 +2882,7 @@ version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
- "bitcoin_hashes 0.14.0",
+ "bitcoin_hashes 0.13.0",
  "rand 0.8.5",
  "secp256k1-sys 0.10.1",
  "serde",
@@ -3519,7 +3519,7 @@ dependencies = [
 [[package]]
 name = "trezor-client"
 version = "0.1.5"
-source = "git+https://github.com/trezor/trezor-firmware#ee0df06285151f29bb1ea6532c9ea66b399a36c4"
+source = "git+https://github.com/trezor/trezor-firmware#963858c742da531d650d30a6bb4f931c76565b2d"
 dependencies = [
  "bitcoin",
  "byteorder",
