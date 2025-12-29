@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     
     - name: Install Nix
       uses: cachix/install-nix-action@v31
@@ -71,7 +71,7 @@ jobs:
     runs-on: macos-latest
     
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -130,7 +130,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -187,7 +187,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     
     - name: Download all artifacts
       uses: actions/download-artifact@v7
