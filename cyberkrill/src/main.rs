@@ -1879,7 +1879,7 @@ async fn mcp_server(args: McpServerArgs) -> anyhow::Result<()> {
 
 fn generate_mnemonic(args: GenerateMnemonicArgs) -> anyhow::Result<()> {
     use bip39::{Language, Mnemonic};
-    use rand::{Rng, thread_rng};
+    use rand::Rng;
 
     // Map word count to entropy length in bytes
     let entropy_bytes = match args.words {
@@ -1895,7 +1895,7 @@ fn generate_mnemonic(args: GenerateMnemonicArgs) -> anyhow::Result<()> {
     };
 
     // Generate random entropy
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let mut entropy = vec![0u8; entropy_bytes];
     rng.fill(&mut entropy[..]);
 

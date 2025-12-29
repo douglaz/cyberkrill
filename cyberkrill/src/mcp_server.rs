@@ -1066,6 +1066,7 @@ fn create_tool(name: &'static str, description: &'static str, schema: serde_json
         annotations: None,
         icons: None,
         title: None,
+        meta: None,
     }
 }
 
@@ -1414,6 +1415,7 @@ impl ServerHandler for CyberkrillMcpServer {
         Ok(ListToolsResult {
             tools,
             next_cursor: None,
+            meta: None,
         })
     }
 
