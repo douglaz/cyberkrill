@@ -13,11 +13,18 @@ targets = [
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
+# Rationale for each ignore lives in .cargo/audit.toml so cargo-audit and
+# cargo-deny stay in sync — keep both files updated together.
 ignore = [
-    # paste - unmaintained but still widely used
-    "RUSTSEC-2024-0436",
-    # serde_cbor - unmaintained but required by dependencies  
+    # serde_cbor - unmaintained but required by dependencies
     "RUSTSEC-2021-0127",
+    # rustls-webpki 0.101.7 via minreq -> esplora-client -> bdk_esplora.
+    # Blocked on upstream esplora-client dropping minreq.
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+    # core2 0.4.0 unmaintained/yanked via libflate -> libsodium-sys-stable.
+    "RUSTSEC-2026-0105",
 ]
 
 [licenses]
