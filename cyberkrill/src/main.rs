@@ -1,6 +1,7 @@
-use anyhow::{Context, bail};
+use anyhow::{Context, bail, ensure};
 use clap::{Parser, Subcommand};
 use cyberkrill_core::AmountInput;
+use std::collections::HashMap;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::str::FromStr;
@@ -8,6 +9,367 @@ use std::str::FromStr;
 mod mcp_server;
 
 const DEFAULT_BITCOIN_RPC_URL: &str = "http://127.0.0.1:8332";
+
+#[derive(Debug)]
+struct FiatAmount {
+    amount: f64,
+    currency: String,
+}
+
+#[derive(Debug)]
+enum ParsedAmount {
+    Bitcoin(AmountInput),
+    Fiat(FiatAmount),
+}
+
+#[derive(Default)]
+struct FiatPriceCache {
+    prices: HashMap<String, cyberkrill_core::BtcPrice>,
+}
+
+#[derive(Debug)]
+struct ParsedOutput {
+    address: String,
+    amount: AmountInput,
+}
+
+#[derive(Debug)]
+struct ParsedOutputEntry {
+    address: String,
+    amount_str: String,
+    output: String,
+    amount: ParsedAmount,
+}
+
+impl ParsedOutput {
+    fn into_bitcoin_output(self) -> (String, cyberkrill_core::bitcoin::Amount) {
+        (self.address, self.amount.as_amount())
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FiatConversionPrecision {
+    Millisat,
+    WholeSat,
+    FloorSat,
+}
+
+/// Parse a Bitcoin amount, or convert a fiat amount like "2081.74BRL" to BTC.
+async fn parse_btc_or_fiat(s: &str) -> anyhow::Result<AmountInput> {
+    let mut price_cache = FiatPriceCache::default();
+    parse_btc_or_fiat_with_cache(s, &mut price_cache).await
+}
+
+async fn parse_btc_or_fiat_with_cache(
+    s: &str,
+    price_cache: &mut FiatPriceCache,
+) -> anyhow::Result<AmountInput> {
+    parse_btc_or_fiat_with_cache_and_precision(s, price_cache, FiatConversionPrecision::Millisat)
+        .await
+}
+
+async fn parse_btc_or_fiat_with_cache_and_precision(
+    s: &str,
+    price_cache: &mut FiatPriceCache,
+    precision: FiatConversionPrecision,
+) -> anyhow::Result<AmountInput> {
+    match parse_amount(s)? {
+        ParsedAmount::Bitcoin(amount) => apply_amount_precision(amount, precision),
+        ParsedAmount::Fiat(fiat) => {
+            price_cache
+                .convert_fiat_with_precision(&fiat, precision)
+                .await
+        }
+    }
+}
+
+async fn parse_optional_btc_or_fiat_with_precision(
+    arg_name: &str,
+    value: Option<&str>,
+    price_cache: &mut FiatPriceCache,
+    precision: FiatConversionPrecision,
+) -> anyhow::Result<Option<AmountInput>> {
+    match value {
+        Some(amount) => Ok(Some(
+            parse_btc_or_fiat_with_cache_and_precision(amount, price_cache, precision)
+                .await
+                .with_context(|| format!("Failed to parse {arg_name} '{amount}'"))?,
+        )),
+        None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+async fn parse_btc_or_fiat_with_price<F, Fut>(
+    s: &str,
+    fetch_price: F,
+) -> anyhow::Result<AmountInput>
+where
+    F: FnMut(&str) -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<cyberkrill_core::BtcPrice>>,
+{
+    parse_btc_or_fiat_with_price_and_precision(s, fetch_price, FiatConversionPrecision::Millisat)
+        .await
+}
+
+#[cfg(test)]
+async fn parse_btc_or_fiat_with_price_and_precision<F, Fut>(
+    s: &str,
+    mut fetch_price: F,
+    precision: FiatConversionPrecision,
+) -> anyhow::Result<AmountInput>
+where
+    F: FnMut(&str) -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<cyberkrill_core::BtcPrice>>,
+{
+    match parse_amount(s)? {
+        ParsedAmount::Bitcoin(amount) => apply_amount_precision(amount, precision),
+        ParsedAmount::Fiat(fiat) => {
+            let price = fetch_price(&fiat.currency).await?;
+            convert_fiat_amount(&fiat, &price, precision)
+        }
+    }
+}
+
+impl FiatPriceCache {
+    async fn convert_fiat_with_precision(
+        &mut self,
+        fiat: &FiatAmount,
+        precision: FiatConversionPrecision,
+    ) -> anyhow::Result<AmountInput> {
+        if !self.prices.contains_key(&fiat.currency) {
+            let price = cyberkrill_core::fetch_btc_price(&fiat.currency).await?;
+            emit_price_breadcrumb(&price);
+            self.prices.insert(fiat.currency.clone(), price);
+        }
+
+        let price = self
+            .prices
+            .get(&fiat.currency)
+            .context("Fetched BTC price is missing from cache")?;
+        convert_fiat_amount(fiat, price, precision)
+    }
+}
+
+fn parse_amount(s: &str) -> anyhow::Result<ParsedAmount> {
+    match AmountInput::from_str(s) {
+        Ok(amount) => Ok(ParsedAmount::Bitcoin(amount)),
+        Err(bitcoin_error) => {
+            if amount_has_bitcoin_unit(s) {
+                bail!("Invalid Bitcoin amount '{s}': {bitcoin_error}");
+            }
+            Ok(ParsedAmount::Fiat(parse_fiat_amount(s)?))
+        }
+    }
+}
+
+fn validate_btc_or_fiat_arg(s: &str) -> Result<String, String> {
+    parse_amount(s)
+        .map(|_| s.to_string())
+        .map_err(|error| error.to_string())
+}
+
+fn parse_fiat_amount(s: &str) -> anyhow::Result<FiatAmount> {
+    let trimmed = s.trim();
+    let split_at = trimmed
+        .rfind(|c: char| c.is_ascii_digit() || c == '.' || c == ',')
+        .map(|i| i + 1)
+        .with_context(|| format!("Cannot parse amount: '{s}'"))?;
+    let (num_part, unit_part) = trimmed.split_at(split_at);
+    let unit = unit_part.trim().to_ascii_uppercase();
+    if is_bitcoin_amount_unit(&unit) {
+        bail!("Bitcoin amount unit '{unit_part}' is not a fiat currency code");
+    }
+    if unit.len() != 3 || !unit.chars().all(|c| c.is_ascii_alphabetic()) {
+        bail!("Unrecognized amount unit '{unit_part}' in '{s}'");
+    }
+
+    let amount = parse_fiat_number(num_part, s)?;
+    Ok(FiatAmount {
+        amount,
+        currency: unit,
+    })
+}
+
+fn amount_has_bitcoin_unit(s: &str) -> bool {
+    let trimmed = s.trim();
+    let Some(split_at) = trimmed
+        .rfind(|c: char| c.is_ascii_digit() || c == '.' || c == ',')
+        .map(|i| i + 1)
+    else {
+        return false;
+    };
+
+    let unit = trimmed[split_at..].trim();
+    is_bitcoin_amount_unit(unit)
+}
+
+fn is_bitcoin_amount_unit(unit: &str) -> bool {
+    matches!(
+        unit.trim().to_ascii_uppercase().as_str(),
+        "BTC" | "SAT" | "SATS" | "MSAT" | "MSATS"
+    )
+}
+
+fn parse_fiat_number(num_part: &str, original: &str) -> anyhow::Result<f64> {
+    let trimmed = num_part.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('-')
+        || trimmed.starts_with('+')
+        || trimmed.starts_with('.')
+        || trimmed.ends_with('.')
+    {
+        bail!("Invalid number in amount '{original}'");
+    }
+
+    if trimmed.contains(',') {
+        validate_thousands_commas(trimmed, original)?;
+    }
+
+    let normalized = trimmed.replace(',', "");
+    let amount: f64 = normalized
+        .parse()
+        .with_context(|| format!("Invalid number in amount '{original}'"))?;
+    if !amount.is_finite() || amount < 0.0 {
+        bail!("Invalid number in amount '{original}'");
+    }
+
+    Ok(amount)
+}
+
+fn validate_thousands_commas(num_part: &str, original: &str) -> anyhow::Result<()> {
+    let mut decimal_parts = num_part.split('.');
+    let whole_part = decimal_parts.next().unwrap_or_default();
+    let fraction_part = decimal_parts.next();
+    if decimal_parts.next().is_some() || fraction_part.is_some_and(|part| part.contains(',')) {
+        bail!("Invalid comma placement in amount '{original}'");
+    }
+
+    let groups = whole_part.split(',').collect::<Vec<_>>();
+    if !(has_three_digit_thousands_groups(&groups) || has_indian_thousands_groups(&groups)) {
+        bail!("Invalid comma placement in amount '{original}'");
+    }
+
+    Ok(())
+}
+
+fn has_three_digit_thousands_groups(groups: &[&str]) -> bool {
+    let Some(first) = groups.first() else {
+        return false;
+    };
+
+    !first.is_empty()
+        && first.len() <= 3
+        && first.chars().all(|c| c.is_ascii_digit())
+        && groups
+            .iter()
+            .skip(1)
+            .all(|group| group.len() == 3 && group.chars().all(|c| c.is_ascii_digit()))
+}
+
+fn has_indian_thousands_groups(groups: &[&str]) -> bool {
+    let Some((last, leading_groups)) = groups.split_last() else {
+        return false;
+    };
+    let Some(first) = leading_groups.first() else {
+        return false;
+    };
+
+    leading_groups.len() >= 2
+        && last.len() == 3
+        && last.chars().all(|c| c.is_ascii_digit())
+        && !first.is_empty()
+        && first.len() <= 3
+        && first.chars().all(|c| c.is_ascii_digit())
+        && leading_groups
+            .iter()
+            .skip(1)
+            .all(|group| group.len() == 2 && group.chars().all(|c| c.is_ascii_digit()))
+}
+
+fn convert_fiat_amount(
+    fiat: &FiatAmount,
+    price: &cyberkrill_core::BtcPrice,
+    precision: FiatConversionPrecision,
+) -> anyhow::Result<AmountInput> {
+    if price.currency != fiat.currency {
+        bail!(
+            "BTC price currency mismatch: expected {expected}, got {actual}",
+            expected = fiat.currency,
+            actual = price.currency
+        );
+    }
+    if !price.price_per_btc.is_finite() || price.price_per_btc <= 0.0 {
+        bail!(
+            "Invalid BTC price for {currency}: {price_per_btc}",
+            currency = price.currency,
+            price_per_btc = price.price_per_btc
+        );
+    }
+
+    apply_amount_precision(price.amount_to_btc(fiat.amount)?, precision)
+}
+
+fn emit_price_breadcrumb(price: &cyberkrill_core::BtcPrice) {
+    let sources = price
+        .sources
+        .iter()
+        .map(|quote| quote.source)
+        .collect::<Vec<_>>()
+        .join(", ");
+    eprintln!(
+        "[price-feed] median BTC/{currency} = {price_per_btc:.2} from {source_count} feeds: {sources}",
+        currency = price.currency,
+        price_per_btc = price.price_per_btc,
+        source_count = price.sources.len()
+    );
+}
+
+fn apply_amount_precision(
+    amount: AmountInput,
+    precision: FiatConversionPrecision,
+) -> anyhow::Result<AmountInput> {
+    match precision {
+        FiatConversionPrecision::Millisat => Ok(amount),
+        FiatConversionPrecision::WholeSat => round_to_whole_sat_amount(&amount),
+        FiatConversionPrecision::FloorSat => floor_to_whole_sat_amount(&amount),
+    }
+}
+
+fn round_to_whole_sat_amount(amount: &AmountInput) -> anyhow::Result<AmountInput> {
+    let millisats = amount.as_millisats();
+    // Half-up rounding keeps converted on-chain output amounts valid whole sats.
+    let rounded_sats = millisats
+        .checked_add(500)
+        .context("Converted amount is outside the supported range")?
+        / 1000;
+    if millisats > 0 && rounded_sats == 0 {
+        bail!("Converted non-zero amount is less than 1 sat");
+    }
+    Ok(AmountInput::from_sats(rounded_sats))
+}
+
+fn floor_to_whole_sat_amount(amount: &AmountInput) -> anyhow::Result<AmountInput> {
+    let millisats = amount.as_millisats();
+    let floored_sats = millisats / 1000;
+    if millisats > 0 && floored_sats == 0 {
+        bail!("Converted non-zero amount is less than 1 sat");
+    }
+    Ok(AmountInput::from_sats(floored_sats))
+}
+
+fn format_sats_for_breadcrumb(amount: &AmountInput) -> String {
+    if amount.as_millisats() % 1000 == 0 {
+        amount.as_sat().to_string()
+    } else {
+        let fractional_sats = amount.as_fractional_sats();
+        let mut sats = format!("{fractional_sats:.3}");
+        while sats.ends_with('0') {
+            sats.pop();
+        }
+        sats
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "cyberkrill")]
@@ -146,10 +508,7 @@ enum Commands {
     GenerateMnemonic(GenerateMnemonicArgs),
 
     // MCP Server
-    #[command(
-        name = "mcp-server",
-        about = "Start MCP server for AI assistant integration"
-    )]
+    #[command(name = "mcp-server", about = "Start MCP server for integrations")]
     McpServer(McpServerArgs),
 }
 
@@ -220,6 +579,7 @@ struct GenerateInvoiceArgs {
     /// - BTC with suffix: "0.5btc" or "1.5BTC"
     /// - Satoshis: "50000000sats" or "100000sat"
     /// - Millisatoshis: "50000000000msats" or "100000000msat"
+    /// - Fiat: "100USD" (uses third-party HTTPS price feeds outside Bitcoin Core proxy settings; prints conversion to stderr)
     amount: String,
     /// Optional comment for the payment request
     #[clap(short, long)]
@@ -503,6 +863,7 @@ struct CreatePsbtArgs {
     /// - BTC with suffix: "0.5btc"
     /// - Satoshis: "50000000sats"
     /// - Millisatoshis: "50000000000msats"
+    /// - Fiat: "100USD" (uses third-party HTTPS price feeds outside Bitcoin Core proxy settings; prints conversion to stderr)
     ///   Example: "bc1qaddr1:0.5,bc1qaddr2:100000sats"
     #[clap(long, required = true)]
     outputs: String,
@@ -553,9 +914,13 @@ struct CreateFundedPsbtArgs {
     /// Bitcoin network (mainnet, testnet, signet, regtest)
     #[clap(long, default_value = "mainnet")]
     network: String,
-    /// Input UTXOs in format txid:vout (can be specified multiple times). Leave empty for automatic input selection.
+    /// Input UTXOs (can be specified multiple times). Each value is either
+    /// "txid:vout" or an output descriptor whose UTXOs should be included.
     /// Examples: --inputs txid1:0 --inputs txid2:1
-    /// Note: For automatic selection from a descriptor, use --descriptor instead
+    ///           --inputs "wpkh([fingerprint/84'/0'/0']xpub.../<0;1>/*)"
+    /// Required for the Bitcoin Core RPC backend. With BDK backends
+    /// (--electrum / --esplora) a single --descriptor satisfies this and
+    /// inputs may be left empty for automatic selection.
     #[clap(long)]
     inputs: Vec<String>,
     /// Output addresses and amounts (comma-separated).
@@ -564,6 +929,7 @@ struct CreateFundedPsbtArgs {
     /// - BTC with suffix: "0.5btc"
     /// - Satoshis: "50000000sats"
     /// - Millisatoshis: "50000000000msats"
+    /// - Fiat: "100USD" (uses third-party HTTPS price feeds outside Bitcoin Core proxy settings; prints conversion to stderr)
     ///   Example: "bc1qaddr1:0.5,bc1qaddr2:100000sats"
     #[clap(long, required = true)]
     outputs: String,
@@ -633,9 +999,9 @@ struct MoveUtxosArgs {
     /// Fee amount (conflicts with fee_rate) - supports formats like '1000sats', '0.00001btc', '1000'
     #[clap(long, conflicts_with = "fee_rate")]
     fee: Option<AmountInput>,
-    /// Maximum amount to move (supports formats: '123sats', '0.666btc', or '0.666' for BTC)
-    #[clap(long)]
-    max_amount: Option<AmountInput>,
+    /// Maximum amount to move (supports BTC formats or a 3-letter fiat code like '100USD'; fiat availability is checked during conversion; third-party HTTPS price feeds are used outside Bitcoin Core proxy settings; prints conversion to stderr)
+    #[clap(long, value_parser = validate_btc_or_fiat_arg)]
+    max_amount: Option<String>,
     /// Output file path for JSON response
     #[clap(short, long)]
     output: Option<String>,
@@ -873,8 +1239,7 @@ async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
     };
 
     // Parse amount with flexible format support
-    let amount = AmountInput::from_str(&args.amount)
-        .map_err(|e| anyhow::anyhow!("Invalid amount format: {e}"))?;
+    let amount = parse_btc_or_fiat(&args.amount).await?;
 
     let invoice = cyberkrill_core::generate_invoice_from_address(
         &args.address,
@@ -1067,18 +1432,22 @@ async fn bitcoin_create_psbt(args: CreatePsbtArgs) -> anyhow::Result<()> {
     #[cfg(not(feature = "frozenkrill"))]
     let descriptor = args.descriptor.clone();
 
-    // Check if we're using BDK backends
-    if args.electrum.is_some()
+    let use_bdk_backend = args.electrum.is_some()
         || args.esplora.is_some()
-        || (descriptor.is_some() && args.bitcoin_dir.is_some())
-    {
-        // BDK path: require descriptor
-        let descriptor = descriptor.ok_or_else(|| {
+        || (descriptor.is_some() && args.bitcoin_dir.is_some());
+    let descriptor = if use_bdk_backend {
+        Some(descriptor.ok_or_else(|| {
             anyhow::anyhow!("--descriptor or --wallet-file is required when using BDK backends")
-        })?;
+        })?)
+    } else {
+        None
+    };
 
-        // Parse outputs
-        let outputs = parse_outputs(&args.outputs)?;
+    let mut price_cache = FiatPriceCache::default();
+    let outputs = parse_outputs(&args.outputs, &mut price_cache).await?;
+
+    if use_bdk_backend {
+        let descriptor = descriptor.context("BDK descriptor was validated but is missing")?;
 
         // Convert fee rate if provided
         let fee_rate_sat_vb = args.fee_rate.map(|rate| {
@@ -1123,8 +1492,13 @@ async fn bitcoin_create_psbt(args: CreatePsbtArgs) -> anyhow::Result<()> {
             args.rpc_password,
         )?;
 
+        let outputs_str = outputs
+            .iter()
+            .map(|(address, amount)| format!("{address}:{btc}", btc = amount.to_btc()))
+            .collect::<Vec<_>>()
+            .join(",");
         let result = client
-            .create_psbt(&args.inputs, &args.outputs, args.fee_rate)
+            .create_psbt(&args.inputs, &outputs_str, args.fee_rate)
             .await?;
 
         // Write PSBT to separate file if requested
@@ -1168,18 +1542,32 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
     #[cfg(not(feature = "frozenkrill"))]
     let descriptor = args.descriptor.clone();
 
-    // Check if we're using BDK backends
-    if args.electrum.is_some()
+    let use_bdk_backend = args.electrum.is_some()
         || args.esplora.is_some()
-        || (descriptor.is_some() && args.bitcoin_dir.is_some())
-    {
-        // BDK path: require descriptor
-        let descriptor = descriptor.ok_or_else(|| {
+        || (descriptor.is_some() && args.bitcoin_dir.is_some());
+    let descriptor = if use_bdk_backend {
+        Some(descriptor.ok_or_else(|| {
             anyhow::anyhow!("--descriptor or --wallet-file is required when using BDK backends")
-        })?;
+        })?)
+    } else {
+        None
+    };
 
-        // Parse outputs
-        let outputs = parse_outputs(&args.outputs)?;
+    if !use_bdk_backend && args.inputs.is_empty() {
+        bail!(
+            "Error: --inputs is required for create-funded-psbt.\n\
+             You must provide either:\n\
+             - Specific UTXOs: --inputs \"txid:vout\"\n\
+             - A descriptor: --inputs \"wpkh([fingerprint/path]xpub.../<0;1>/*)\"\n\n\
+             For automatic selection with BDK backends, use --descriptor with --electrum or --esplora"
+        );
+    }
+
+    let mut price_cache = FiatPriceCache::default();
+    let outputs = parse_outputs(&args.outputs, &mut price_cache).await?;
+
+    if use_bdk_backend {
+        let descriptor = descriptor.context("BDK descriptor was validated but is missing")?;
 
         // Convert fee rate if provided
         let fee_rate_sat_vb = args.fee_rate.map(|rate| {
@@ -1216,18 +1604,6 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
         serde_json::to_writer_pretty(writer, &result)?;
     } else {
         // Bitcoin Core RPC path (original behavior)
-
-        // Validate that inputs are not empty
-        if args.inputs.is_empty() {
-            bail!(
-                "Error: --inputs is required for create-funded-psbt.\n\
-                 You must provide either:\n\
-                 - Specific UTXOs: --inputs \"txid:vout\"\n\
-                 - A descriptor: --inputs \"wpkh([fingerprint/path]xpub.../<0;1>/*)\"\n\n\
-                 For automatic selection with BDK backends, use --descriptor with --electrum or --esplora"
-            );
-        }
-
         let bitcoin_dir = args.bitcoin_dir.as_ref().map(Path::new);
         let client = cyberkrill_core::BitcoinRpcClient::new_auto(
             args.rpc_url,
@@ -1236,10 +1612,15 @@ async fn bitcoin_create_funded_psbt(args: CreateFundedPsbtArgs) -> anyhow::Resul
             args.rpc_password,
         )?;
 
+        let outputs_str = outputs
+            .iter()
+            .map(|(address, amount)| format!("{address}:{btc}", btc = amount.to_btc()))
+            .collect::<Vec<_>>()
+            .join(",");
         let result = client
             .wallet_create_funded_psbt(
                 &args.inputs,
-                &args.outputs,
+                &outputs_str,
                 args.conf_target,
                 args.estimate_mode.as_deref(),
                 args.fee_rate,
@@ -1294,15 +1675,28 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
     #[cfg(not(feature = "frozenkrill"))]
     let descriptor = args.descriptor.clone();
 
-    // Check if we're using BDK backends
-    if args.electrum.is_some()
+    let use_bdk_backend = args.electrum.is_some()
         || args.esplora.is_some()
-        || (descriptor.is_some() && args.bitcoin_dir.is_some())
-    {
-        // BDK path: require descriptor
-        let descriptor = descriptor.ok_or_else(|| {
+        || (descriptor.is_some() && args.bitcoin_dir.is_some());
+    let descriptor = if use_bdk_backend {
+        Some(descriptor.ok_or_else(|| {
             anyhow::anyhow!("--descriptor or --wallet-file is required when using BDK backends")
-        })?;
+        })?)
+    } else {
+        None
+    };
+
+    let mut price_cache = FiatPriceCache::default();
+    let max_amount = parse_optional_btc_or_fiat_with_precision(
+        "--max-amount",
+        args.max_amount.as_deref(),
+        &mut price_cache,
+        FiatConversionPrecision::FloorSat,
+    )
+    .await?;
+
+    if use_bdk_backend {
+        let descriptor = descriptor.context("BDK descriptor was validated but is missing")?;
 
         // Convert fee rate if provided
         let fee_rate_sat_vb = args.fee_rate.map(|rate| {
@@ -1314,8 +1708,8 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
         let fee_sats = args.fee.map(|fee| fee.as_sat());
 
         // Convert max amount to bitcoin::Amount if provided
-        let max_amount = args
-            .max_amount
+        let max_amount = max_amount
+            .as_ref()
             .map(|amt| cyberkrill_core::bitcoin::Amount::from_sat(amt.as_sat()));
 
         // Determine backend URL
@@ -1363,7 +1757,7 @@ async fn bitcoin_move_utxos(args: MoveUtxosArgs) -> anyhow::Result<()> {
                 &args.destination,
                 args.fee_rate,
                 args.fee,
-                args.max_amount,
+                max_amount,
             )
             .await?;
 
@@ -1422,31 +1816,213 @@ fn encode_fedimint_invite(args: EncodeFedimintInviteArgs) -> anyhow::Result<()> 
 }
 
 /// Parse output string in format "address:amount,address:amount" into Vec<(String, Amount)>
-/// Supports flexible amount formats: "0.5", "0.5btc", "50000000sats", "50000000000msats"
-fn parse_outputs(
+/// Supports flexible amount formats: "0.5", "0.5btc", "50000000sats", "50000000000msats", "100USD"
+async fn parse_outputs(
     outputs_str: &str,
+    price_cache: &mut FiatPriceCache,
 ) -> anyhow::Result<Vec<(String, cyberkrill_core::bitcoin::Amount)>> {
+    Ok(parse_output_list(outputs_str, price_cache)
+        .await?
+        .into_iter()
+        .map(ParsedOutput::into_bitcoin_output)
+        .collect())
+}
+
+async fn parse_output_list(
+    outputs_str: &str,
+    price_cache: &mut FiatPriceCache,
+) -> anyhow::Result<Vec<ParsedOutput>> {
+    let entries = split_output_entries(outputs_str)
+        .into_iter()
+        .map(parse_output_entry)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    for entry in &entries {
+        if let ParsedAmount::Bitcoin(amount) = &entry.amount {
+            ensure_whole_sat_output_amount(amount, &entry.amount_str, &entry.output)?;
+        }
+    }
+
     let mut outputs = Vec::new();
-    for output in outputs_str.split(',') {
-        let parts: Vec<&str> = output.trim().split(':').collect();
-        if parts.len() != 2 {
-            bail!("Invalid output format: '{output}'. Expected 'address:amount'");
+    for entry in entries {
+        let ParsedOutputEntry {
+            address,
+            amount_str,
+            output,
+            amount: parsed,
+        } = entry;
+        let (amount, converted_from_fiat) = match parsed {
+            ParsedAmount::Bitcoin(amount) => (amount, false),
+            ParsedAmount::Fiat(fiat) => (
+                price_cache
+                    .convert_fiat_with_precision(&fiat, FiatConversionPrecision::WholeSat)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to parse amount '{amount_str}' in output '{output}'")
+                    })?,
+                true,
+            ),
+        };
+        if converted_from_fiat {
+            ensure_whole_sat_output_amount(&amount, &amount_str, &output)?;
         }
 
-        let address = parts[0].trim().to_string();
-        let amount_str = parts[1].trim();
-
-        // Parse amount using AmountInput for flexible format support
-        let amount_input = AmountInput::from_str(amount_str).with_context(|| {
-            format!("Failed to parse amount '{amount_str}' in output '{output}'")
-        })?;
-
-        // Convert to bitcoin::Amount (loses millisat precision)
-        let amount = amount_input.as_amount();
-
-        outputs.push((address, amount));
+        outputs.push(ParsedOutput { address, amount });
     }
+
     Ok(outputs)
+}
+
+fn parse_output_entry(output: &str) -> anyhow::Result<ParsedOutputEntry> {
+    let (address, amount_str) = split_output_parts(output)?;
+
+    let amount = parse_amount(amount_str).with_context(|| {
+        format!(
+            "Failed to parse amount '{amount_str}' in output '{output}'. \
+             Output lists must use 'address:amount' entries separated by commas; \
+             commas inside fiat amounts are only accepted as valid thousands separators"
+        )
+    })?;
+
+    Ok(ParsedOutputEntry {
+        address: address.to_string(),
+        amount_str: amount_str.to_string(),
+        output: output.to_string(),
+        amount,
+    })
+}
+
+fn split_output_entries(outputs_str: &str) -> Vec<&str> {
+    let mut entries = Vec::new();
+    let mut start = 0;
+
+    for (index, _) in outputs_str.match_indices(',') {
+        if !comma_is_inside_fiat_amount(outputs_str, start, index) {
+            entries.push(&outputs_str[start..index]);
+            start = index + 1;
+        }
+    }
+
+    entries.push(&outputs_str[start..]);
+    entries
+}
+
+fn comma_is_inside_fiat_amount(outputs_str: &str, entry_start: usize, comma_index: usize) -> bool {
+    let entry_prefix = &outputs_str[entry_start..comma_index];
+    let Some(colon_index) = entry_prefix.rfind(':') else {
+        return false;
+    };
+
+    let amount_start = entry_start + colon_index + 1;
+    let amount_candidate = &outputs_str[amount_start..];
+    let Some((number_start, number_end, amount_end)) = scan_fiat_amount_candidate(amount_candidate)
+    else {
+        return false;
+    };
+
+    let absolute_number_start = amount_start + number_start;
+    let absolute_number_end = amount_start + number_end;
+    if comma_index < absolute_number_start || comma_index >= absolute_number_end {
+        return false;
+    }
+
+    amount_candidate[amount_end..]
+        .trim_start()
+        .chars()
+        .next()
+        .is_none_or(|ch| ch == ',')
+}
+
+fn scan_fiat_amount_candidate(s: &str) -> Option<(usize, usize, usize)> {
+    let mut chars = s.char_indices().peekable();
+    let mut pos = 0;
+
+    while let Some((index, ch)) = chars.peek().copied() {
+        if !ch.is_ascii_whitespace() {
+            break;
+        }
+        pos = index + ch.len_utf8();
+        chars.next();
+    }
+
+    let number_start = pos;
+    let mut saw_digit = false;
+    while let Some((index, ch)) = chars.peek().copied() {
+        if ch.is_ascii_digit() {
+            saw_digit = true;
+            pos = index + ch.len_utf8();
+            chars.next();
+        } else if ch == '.' || ch == ',' {
+            pos = index + ch.len_utf8();
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    if !saw_digit {
+        return None;
+    }
+    let number_end = pos;
+
+    while let Some((index, ch)) = chars.peek().copied() {
+        if !ch.is_ascii_whitespace() {
+            break;
+        }
+        pos = index + ch.len_utf8();
+        chars.next();
+    }
+
+    let mut unit_len = 0;
+    while let Some((index, ch)) = chars.peek().copied() {
+        if !ch.is_ascii_alphabetic() {
+            break;
+        }
+        unit_len += 1;
+        pos = index + ch.len_utf8();
+        chars.next();
+    }
+    if unit_len != 3 {
+        return None;
+    }
+
+    while let Some((index, ch)) = chars.peek().copied() {
+        if !ch.is_ascii_whitespace() {
+            break;
+        }
+        pos = index + ch.len_utf8();
+        chars.next();
+    }
+
+    Some((number_start, number_end, pos))
+}
+
+fn split_output_parts(output: &str) -> anyhow::Result<(&str, &str)> {
+    let (address, amount) = output
+        .trim()
+        .rsplit_once(':')
+        .with_context(|| format!("Invalid output format: '{output}'. Expected 'address:amount'"))?;
+
+    let address = address.trim();
+    let amount = amount.trim();
+    ensure!(
+        !address.is_empty(),
+        "Invalid output format: '{output}'. Expected 'address:amount' with a non-empty address"
+    );
+    Ok((address, amount))
+}
+
+fn ensure_whole_sat_output_amount(
+    amount: &AmountInput,
+    amount_str: &str,
+    output: &str,
+) -> anyhow::Result<()> {
+    if amount.as_millisats() % 1000 != 0 {
+        bail!(
+            "On-chain output amount '{amount_str}' in output '{output}' must be a whole number of satoshis; got {sats} sats",
+            sats = format_sats_for_breadcrumb(amount)
+        );
+    }
+    Ok(())
 }
 
 // Jade Hardware Wallet Functions
@@ -1924,4 +2500,432 @@ fn generate_mnemonic(args: GenerateMnemonicArgs) -> anyhow::Result<()> {
     writeln!(&mut writer)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    fn assert_close(actual: f64, expected: f64) {
+        let delta = (actual - expected).abs();
+        assert!(
+            delta < 0.000_001,
+            "actual {actual} was not close to expected {expected}"
+        );
+    }
+
+    #[tokio::test]
+    async fn parse_btc_or_fiat_keeps_existing_bitcoin_amounts_local() -> anyhow::Result<()> {
+        let cases = [
+            ("0.5", 50_000_000, 50_000_000_000),
+            ("0.5btc", 50_000_000, 50_000_000_000),
+            ("100sats", 100, 100_000),
+            ("100sat", 100, 100_000),
+            ("100000msats", 100, 100_000),
+        ];
+
+        for (input, expected_sats, expected_msats) in cases {
+            let called = Cell::new(false);
+            let amount = parse_btc_or_fiat_with_price(input, |_| {
+                called.set(true);
+                async { anyhow::bail!("unexpected price fetch") }
+            })
+            .await?;
+            assert_eq!(amount.as_sat(), expected_sats, "{input}");
+            assert_eq!(amount.as_millisats(), expected_msats, "{input}");
+            assert!(!called.get(), "{input} should not fetch a price");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_btc_or_fiat_rejects_unparseable_amount() -> anyhow::Result<()> {
+        let result = parse_btc_or_fiat_with_price("abc", |_| async {
+            anyhow::bail!("unexpected price fetch")
+        })
+        .await;
+        let error = result.err().context("abc should fail")?.to_string();
+        assert!(error.contains("Cannot parse amount"), "{error}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_btc_or_fiat_uses_injected_price_for_fiat() -> anyhow::Result<()> {
+        let amount = parse_btc_or_fiat_with_price("50000usd", |_| async {
+            Ok(cyberkrill_core::BtcPrice {
+                currency: "USD".to_string(),
+                price_per_btc: 100_000.0,
+                sources: vec![
+                    cyberkrill_core::PriceQuote {
+                        source: "feed-a",
+                        price_per_btc: 99_000.0,
+                    },
+                    cyberkrill_core::PriceQuote {
+                        source: "feed-b",
+                        price_per_btc: 101_000.0,
+                    },
+                ],
+            })
+        })
+        .await?;
+
+        assert_eq!(amount.as_sat(), 50_000_000);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_btc_or_fiat_rounds_fiat_to_nearest_millisat() -> anyhow::Result<()> {
+        let amount = parse_btc_or_fiat_with_price("100USD", |_| async {
+            Ok(cyberkrill_core::BtcPrice {
+                currency: "USD".to_string(),
+                price_per_btc: 95_000.0,
+                sources: vec![
+                    cyberkrill_core::PriceQuote {
+                        source: "feed-a",
+                        price_per_btc: 94_900.0,
+                    },
+                    cyberkrill_core::PriceQuote {
+                        source: "feed-b",
+                        price_per_btc: 95_100.0,
+                    },
+                ],
+            })
+        })
+        .await?;
+
+        assert_eq!(amount.as_sat(), 105_263);
+        assert_eq!(amount.as_millisats(), 105_263_158);
+        Ok(())
+    }
+
+    #[test]
+    fn fiat_conversion_for_onchain_outputs_rounds_to_nearest_sat() -> anyhow::Result<()> {
+        let price = cyberkrill_core::BtcPrice {
+            currency: "USD".to_string(),
+            price_per_btc: 60_000.0,
+            sources: vec![
+                cyberkrill_core::PriceQuote {
+                    source: "feed-a",
+                    price_per_btc: 59_900.0,
+                },
+                cyberkrill_core::PriceQuote {
+                    source: "feed-b",
+                    price_per_btc: 60_100.0,
+                },
+            ],
+        };
+        let fiat = FiatAmount {
+            amount: 100.0,
+            currency: "USD".to_string(),
+        };
+
+        let amount = convert_fiat_amount(&fiat, &price, FiatConversionPrecision::WholeSat)?;
+
+        assert_eq!(amount.as_sat(), 166_667);
+        assert_eq!(amount.as_millisats(), 166_667_000);
+        Ok(())
+    }
+
+    #[test]
+    fn whole_sat_precision_rounds_existing_bitcoin_amounts() -> anyhow::Result<()> {
+        let amount = apply_amount_precision(
+            AmountInput::from_fractional_sats(1.5)?,
+            FiatConversionPrecision::WholeSat,
+        )?;
+
+        assert_eq!(amount.as_sat(), 2);
+        assert_eq!(amount.as_millisats(), 2_000);
+        Ok(())
+    }
+
+    #[test]
+    fn floor_sat_precision_never_raises_existing_bitcoin_caps() -> anyhow::Result<()> {
+        let amount = apply_amount_precision(
+            AmountInput::from_fractional_sats(1.5)?,
+            FiatConversionPrecision::FloorSat,
+        )?;
+
+        assert_eq!(amount.as_sat(), 1);
+        assert_eq!(amount.as_millisats(), 1_000);
+
+        let error = apply_amount_precision(
+            AmountInput::from_fractional_sats(0.5)?,
+            FiatConversionPrecision::FloorSat,
+        )
+        .err()
+        .context("sub-sat cap should fail")?
+        .to_string();
+        assert!(
+            error.contains("Converted non-zero amount is less than 1 sat"),
+            "{error}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_btc_or_fiat_can_round_fiat_to_whole_sats() -> anyhow::Result<()> {
+        let amount = parse_btc_or_fiat_with_price_and_precision(
+            "100USD",
+            |_| async {
+                Ok(cyberkrill_core::BtcPrice {
+                    currency: "USD".to_string(),
+                    price_per_btc: 60_000.0,
+                    sources: vec![
+                        cyberkrill_core::PriceQuote {
+                            source: "feed-a",
+                            price_per_btc: 59_900.0,
+                        },
+                        cyberkrill_core::PriceQuote {
+                            source: "feed-b",
+                            price_per_btc: 60_100.0,
+                        },
+                    ],
+                })
+            },
+            FiatConversionPrecision::WholeSat,
+        )
+        .await?;
+
+        assert_eq!(amount.as_sat(), 166_667);
+        assert_eq!(amount.as_millisats(), 166_667_000);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_btc_or_fiat_floors_fiat_for_max_amount_caps() -> anyhow::Result<()> {
+        let amount = parse_btc_or_fiat_with_price_and_precision(
+            "100USD",
+            |_| async {
+                Ok(cyberkrill_core::BtcPrice {
+                    currency: "USD".to_string(),
+                    price_per_btc: 60_000.0,
+                    sources: vec![
+                        cyberkrill_core::PriceQuote {
+                            source: "feed-a",
+                            price_per_btc: 59_900.0,
+                        },
+                        cyberkrill_core::PriceQuote {
+                            source: "feed-b",
+                            price_per_btc: 60_100.0,
+                        },
+                    ],
+                })
+            },
+            FiatConversionPrecision::FloorSat,
+        )
+        .await?;
+
+        assert_eq!(amount.as_sat(), 166_666);
+        assert_eq!(amount.as_millisats(), 166_666_000);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_btc_or_fiat_rejects_malformed_bitcoin_units_without_network()
+    -> anyhow::Result<()> {
+        for input in [
+            "1,234.56btc",
+            "1,234sat",
+            "1,234sats",
+            "1,234msat",
+            "1,234msats",
+        ] {
+            let called = Cell::new(false);
+            let result = parse_btc_or_fiat_with_price(input, |_| {
+                called.set(true);
+                async { anyhow::bail!("unexpected price fetch") }
+            })
+            .await;
+            let error = result.err().context("bitcoin-unit amount should fail")?;
+            assert!(
+                error.to_string().contains("Invalid Bitcoin amount"),
+                "{input}: {error}"
+            );
+            assert!(!called.get(), "{input} should not fetch a price");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_btc_or_fiat_rejects_unknown_currency_cleanly() -> anyhow::Result<()> {
+        let result = parse_btc_or_fiat_with_price("100xyz", |currency| {
+            let currency = currency.to_string();
+            async move {
+                assert_eq!(currency, "XYZ");
+                anyhow::bail!("Only 0 BTC price feeds responded for XYZ; refusing to convert")
+            }
+        })
+        .await;
+
+        let error = result.err().context("100xyz should fail")?.to_string();
+        assert!(
+            error.contains("Only 0 BTC price feeds responded for XYZ"),
+            "{error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parses_fiat_number_and_currency_without_network() -> anyhow::Result<()> {
+        let fiat = parse_fiat_amount("2081.74BRL")?;
+        assert_eq!(fiat.currency, "BRL");
+        assert_close(fiat.amount, 2081.74);
+
+        let fiat = parse_fiat_amount("1,234.56usd")?;
+        assert_eq!(fiat.currency, "USD");
+        assert_close(fiat.amount, 1234.56);
+
+        let fiat = parse_fiat_amount("12,34,567INR")?;
+        assert_eq!(fiat.currency, "INR");
+        assert_close(fiat.amount, 1234567.0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn validates_btc_or_fiat_clap_argument_shape_without_network() -> anyhow::Result<()> {
+        assert_eq!(
+            validate_btc_or_fiat_arg("100sats").map_err(anyhow::Error::msg)?,
+            "100sats"
+        );
+        assert_eq!(
+            validate_btc_or_fiat_arg("100USD").map_err(anyhow::Error::msg)?,
+            "100USD"
+        );
+        assert_eq!(
+            validate_btc_or_fiat_arg("100XYZ").map_err(anyhow::Error::msg)?,
+            "100XYZ"
+        );
+        assert!(validate_btc_or_fiat_arg("abc").is_err());
+        assert!(validate_btc_or_fiat_arg("100USDC").is_err());
+        assert!(validate_btc_or_fiat_arg("1,234.56btc").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn split_output_parts_rejects_empty_address() -> anyhow::Result<()> {
+        for input in [":100USD", "  :100USD", ":0.001"] {
+            let error = split_output_parts(input)
+                .err()
+                .with_context(|| format!("empty address in '{input}' should fail"))?;
+            assert!(
+                error.to_string().contains("non-empty address"),
+                "{input}: {error}"
+            );
+        }
+        let (address, amount) = split_output_parts("bc1qaddr:100USD")?;
+        assert_eq!(address, "bc1qaddr");
+        assert_eq!(amount, "100USD");
+        Ok(())
+    }
+
+    #[test]
+    fn splits_output_entries_keep_fiat_comma_candidates_until_validation() {
+        assert_eq!(
+            split_output_entries("bc1qone:1,234.56USD,bc1qtwo:2,000BRL,bc1qthree:100sats"),
+            vec![
+                "bc1qone:1,234.56USD",
+                "bc1qtwo:2,000BRL",
+                "bc1qthree:100sats"
+            ]
+        );
+        assert_eq!(
+            split_output_entries("bc1qone:100USD, bc1qtwo:200sats"),
+            vec!["bc1qone:100USD", " bc1qtwo:200sats"]
+        );
+        assert_eq!(
+            split_output_entries("bc1qone,bc1qtwo:1"),
+            vec!["bc1qone", "bc1qtwo:1"]
+        );
+        assert_eq!(
+            split_output_entries("bc1qone:1,5USD,bc1qtwo:2"),
+            vec!["bc1qone:1,5USD", "bc1qtwo:2"]
+        );
+    }
+
+    #[tokio::test]
+    async fn parse_outputs_rejects_fractional_satoshi_bitcoin_outputs() -> anyhow::Result<()> {
+        for input in ["bc1qaddr:500msats", "bc1qaddr:1.5sats"] {
+            let mut price_cache = FiatPriceCache::default();
+            let result = parse_output_list(input, &mut price_cache).await;
+            let error = result.err().context("fractional output should fail")?;
+            assert!(
+                error
+                    .to_string()
+                    .contains("must be a whole number of satoshis"),
+                "{input}: {error}"
+            );
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_outputs_rejects_local_fractional_sats_before_fiat_prices() -> anyhow::Result<()>
+    {
+        let mut price_cache = FiatPriceCache::default();
+        let result = parse_output_list("bc1qfiat:100USD,bc1qbad:1.5sats", &mut price_cache).await;
+        let error = result
+            .err()
+            .context("fractional Bitcoin output should fail")?
+            .to_string();
+
+        assert!(
+            error.contains("must be a whole number of satoshis"),
+            "{error}"
+        );
+        assert!(price_cache.prices.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_output_list_converts_fiat_outputs_through_entry_point() -> anyhow::Result<()> {
+        let mut price_cache = FiatPriceCache::default();
+        price_cache.prices.insert(
+            "USD".to_string(),
+            cyberkrill_core::BtcPrice {
+                currency: "USD".to_string(),
+                price_per_btc: 60_000.0,
+                sources: vec![
+                    cyberkrill_core::PriceQuote {
+                        source: "feed-a",
+                        price_per_btc: 59_900.0,
+                    },
+                    cyberkrill_core::PriceQuote {
+                        source: "feed-b",
+                        price_per_btc: 60_100.0,
+                    },
+                ],
+            },
+        );
+
+        let outputs = parse_output_list("bc1qaddr:100USD", &mut price_cache).await?;
+
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].address, "bc1qaddr");
+        assert_eq!(outputs[0].amount.as_sat(), 166_667);
+        assert_eq!(outputs[0].amount.as_millisats(), 166_667_000);
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_ambiguous_or_invalid_fiat_syntax_without_network() -> anyhow::Result<()> {
+        for input in [
+            ".100USD",
+            "100,50BRL",
+            "1,5USD",
+            "1.234,56EUR",
+            "100.USd",
+            "100USDC",
+            "-100USD",
+            "+100USD",
+            "1,234.56btc",
+        ] {
+            let result = parse_fiat_amount(input);
+            assert!(result.is_err(), "{input} should fail");
+        }
+        Ok(())
+    }
 }
