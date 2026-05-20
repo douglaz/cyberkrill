@@ -1,0 +1,26 @@
+[advisories]
+# Advisories ignored here are also justified in deny.toml.
+# Both files must stay in sync: cargo-audit reads this; cargo-deny reads deny.toml.
+ignore = [
+    # rustls-webpki 0.101.7 — pulled in transitively via:
+    #   minreq -> esplora-client -> bdk_esplora -> cyberkrill-core
+    # Upstream esplora-client uses minreq for its blocking HTTP impl, and
+    # minreq still depends on rustls 0.21 / rustls-webpki 0.101. Switching
+    # bdk_esplora to its async-https-rustls feature would avoid minreq but
+    # requires a non-trivial refactor (build_blocking -> build_async at
+    # 4 call sites in cyberkrill-core/src/bdk_wallet.rs). Tracked for a
+    # follow-up.
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+
+    # core2 0.4.0 — unmaintained, all versions yanked. Pulled in via
+    #   libflate -> libsodium-sys-stable -> alkali -> frozenkrill-core (git dep).
+    # No upstream fix available; depends on libflate dropping core2.
+    "RUSTSEC-2026-0105",
+
+    # serde_cbor — unmaintained. Used by jade-bitcoin (workspace member).
+    # Already accepted in deny.toml; tracked to replace with ciborium when
+    # touching jade serialization.
+    "RUSTSEC-2021-0127",
+]
