@@ -4,6 +4,7 @@ pub mod dca_report;
 pub mod decoder;
 #[cfg(feature = "frozenkrill")]
 pub mod frozenkrill;
+pub mod price_feed;
 #[cfg(feature = "smartcards")]
 pub mod satscard;
 #[cfg(feature = "trezor")]
@@ -35,6 +36,8 @@ pub use tapsigner::{
 };
 
 pub use bitcoin_rpc::{AmountInput, BitcoinRpcClient};
+
+pub use price_feed::{BtcPrice, PriceQuote, fetch_btc_price};
 
 pub use bdk_wallet::{
     BdkPsbtResponse, BdkUtxo, BdkUtxoSummary, create_funded_psbt_bdk, create_psbt_bdk,

@@ -1,3 +1,8 @@
 /target
 *.local.*
 result
+
+# Local implementation scratch files
+/PLAN_FIAT_AMOUNTS.md
+/MEMPOOL_USAGE.md
+/test_mempool.sh
