@@ -43,34 +43,44 @@ detect_platform() {
     esac
 }
 
-# Get latest release version from GitHub
-get_latest_version() {
+# Get latest release info from GitHub. Echoes "<tag_name><TAB><published_at>".
+# Both fields are used: tag_name builds the download URL, published_at is the
+# cache-invalidation key. published_at is required because the project ships
+# under a rolling tag ("latest-master") whose name never changes — a tag-name
+# comparison would never detect new builds. published_at advances every time
+# the release-binaries workflow recreates the release.
+get_latest_release_info() {
     # Get the latest release (including pre-releases since they pass CI)
     local releases=$(curl -s "https://api.github.com/repos/$REPO/releases" 2>/dev/null)
-    
+
     # Check if jq is available for proper JSON parsing
     if command -v jq >/dev/null 2>&1; then
         # Check if the response is an array (successful) or an object (error/rate limit)
         local is_array=$(echo "$releases" | jq -r 'if type == "array" then "yes" else "no" end' 2>/dev/null)
         if [[ "$is_array" == "yes" ]]; then
-            local latest_version=$(echo "$releases" | jq -r '.[0].tag_name // empty' 2>/dev/null)
-            if [[ -n "$latest_version" ]]; then
-                echo "$latest_version"
+            local info=$(echo "$releases" | jq -r '.[0] | (.tag_name // empty) + "\t" + (.published_at // "unknown")' 2>/dev/null)
+            if [[ -n "$info" && "$info" != $'\tunknown' ]]; then
+                echo "$info"
                 return
             fi
         fi
     else
-        # Fallback to grep-based parsing (less reliable but works without jq)
-        # Get the first tag_name from the JSON response
+        # Fallback to grep-based parsing (less reliable but works without jq).
+        # Grab the first tag_name and the first published_at — release entries
+        # appear newest-first in the API response, so the first hit of each
+        # belongs to the same release.
         local tag_name=$(echo "$releases" | grep -m1 '"tag_name":' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+        local published_at=$(echo "$releases" | grep -m1 '"published_at":' | sed 's/.*"published_at": *"\([^"]*\)".*/\1/')
         if [[ -n "$tag_name" ]]; then
-            echo "$tag_name"
+            echo -e "${tag_name}\t${published_at:-unknown}"
             return
         fi
     fi
-    
-    # Fall back to latest-master if API call fails or no releases found
-    echo "latest-master"
+
+    # Fall back to latest-master if API call fails or no releases found.
+    # The "unknown" marker guarantees a cache miss on the next successful API
+    # call, so a stale cache cannot persist past a transient API outage.
+    echo -e "latest-master\tunknown"
 }
 
 # Get currently installed version
@@ -82,24 +92,29 @@ get_installed_version() {
     fi
 }
 
-# Download and install binary
+# Download and install binary.
+# - tag:      drives the download URL (e.g. "latest-master" or "v0.3.0").
+# - marker:   written to the version file; used by future runs to detect a
+#             new build behind a rolling tag (published_at is the canonical
+#             marker, see get_latest_release_info).
 install_binary() {
-    local version="$1"
-    local platform="$2"
-    
-    echo "Downloading ${BINARY_NAME} ${version} for ${platform}..." >&2
-    
+    local tag="$1"
+    local marker="$2"
+    local platform="$3"
+
+    echo "Downloading ${BINARY_NAME} ${tag} (${marker}) for ${platform}..." >&2
+
     # Create install directory if it doesn't exist
     mkdir -p "$INSTALL_DIR"
-    
+
     # Determine file extension based on platform
     local ext="tar.gz"
     if [[ "$platform" == windows-* ]]; then
         ext="zip"
     fi
-    
+
     # Construct download URL
-    local url="https://github.com/${REPO}/releases/download/${version}/${BINARY_NAME}-${platform}.${ext}"
+    local url="https://github.com/${REPO}/releases/download/${tag}/${BINARY_NAME}-${platform}.${ext}"
     
     # Download to temporary file
     local temp_file=$(mktemp)
@@ -136,10 +151,12 @@ install_binary() {
     mv "$binary_path" "${INSTALL_DIR}/${BINARY_NAME}"
     rm -rf "$temp_dir"
     
-    # Record installed version
-    echo "$version" > "$INSTALLED_VERSION_FILE"
-    
-    echo "${BINARY_NAME} ${version} installed successfully" >&2
+    # Record installed marker (published_at, or "unknown" if the API was down).
+    # Future runs compare this against get_latest_release_info to detect new
+    # builds, including ones reusing the same rolling tag name.
+    echo "$marker" > "$INSTALLED_VERSION_FILE"
+
+    echo "${BINARY_NAME} ${tag} (${marker}) installed successfully" >&2
 }
 
 # Check for updates periodically (once per day)
@@ -188,29 +205,33 @@ main() {
     
     # Check if we should look for updates
     if should_check_update; then
-        local latest_version=$(get_latest_version)
-        
-        if [[ -n "$latest_version" ]]; then
-            local installed_version=$(get_installed_version)
-            
-            if [[ "$latest_version" != "$installed_version" ]]; then
-                echo "New version available: ${latest_version} (installed: ${installed_version})" >&2
-                install_binary "$latest_version" "$platform"
+        local release_info=$(get_latest_release_info)
+
+        if [[ -n "$release_info" ]]; then
+            local latest_tag="${release_info%%$'\t'*}"
+            local latest_marker="${release_info#*$'\t'}"
+            local installed_marker=$(get_installed_version)
+
+            if [[ "$latest_marker" != "$installed_marker" ]]; then
+                echo "New build available: ${latest_tag} published ${latest_marker} (installed: ${installed_marker})" >&2
+                install_binary "$latest_tag" "$latest_marker" "$platform"
             fi
         fi
     fi
-    
+
     # Check if binary exists in install dir
     if [[ -f "${INSTALL_DIR}/${BINARY_NAME}" ]]; then
         exec "${INSTALL_DIR}/${BINARY_NAME}" "$@"
     fi
-    
+
     # No installed binary - try to download latest release
-    local latest_version=$(get_latest_version)
-    if [[ -n "$latest_version" ]]; then
-        echo "Installing cyberkrill ${latest_version}..." >&2
-        install_binary "$latest_version" "$platform"
-        
+    local release_info=$(get_latest_release_info)
+    if [[ -n "$release_info" ]]; then
+        local latest_tag="${release_info%%$'\t'*}"
+        local latest_marker="${release_info#*$'\t'}"
+        echo "Installing cyberkrill ${latest_tag} (${latest_marker})..." >&2
+        install_binary "$latest_tag" "$latest_marker" "$platform"
+
         # After successful install, run the binary
         if [[ -f "${INSTALL_DIR}/${BINARY_NAME}" ]]; then
             exec "${INSTALL_DIR}/${BINARY_NAME}" "$@"
