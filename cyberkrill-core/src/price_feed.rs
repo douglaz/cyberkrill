@@ -377,12 +377,14 @@ async fn fetch_cex_io(client: &Client, currency: &str) -> anyhow::Result<Option<
         .await
         .context("CEX.IO request failed")?;
 
-    // CEX.IO returns HTTP errors for unsupported pairs; treat as "no quote".
-    if !response.status().is_success() {
+    // 404 means the pair isn't listed; surface other non-success codes
+    // (429/5xx/...) so the aggregator records them as real issues.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);
     }
-
     let body = response
+        .error_for_status()
+        .context("CEX.IO returned an unsuccessful status")?
         .text()
         .await
         .context("Failed to read CEX.IO response")?;
@@ -404,12 +406,14 @@ async fn fetch_bitstamp(client: &Client, currency: &str) -> anyhow::Result<Optio
         .await
         .context("Bitstamp request failed")?;
 
-    // Bitstamp returns 404 (and other non-success codes) for unsupported pairs.
-    if !response.status().is_success() {
+    // Bitstamp returns 404 for unsupported pairs; surface other non-success
+    // codes (429/5xx/...) so the aggregator records them as real issues.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);
     }
-
     let body = response
+        .error_for_status()
+        .context("Bitstamp returned an unsuccessful status")?
         .text()
         .await
         .context("Failed to read Bitstamp response")?;
@@ -430,12 +434,14 @@ async fn fetch_yadio(client: &Client, currency: &str) -> anyhow::Result<Option<P
         .await
         .context("Yadio request failed")?;
 
-    // Yadio returns non-success status for unsupported currencies; treat as "no quote".
-    if !response.status().is_success() {
+    // 404 means the currency isn't quoted; surface other non-success codes
+    // (429/5xx/...) so the aggregator records them as real issues.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);
     }
-
     let body = response
+        .error_for_status()
+        .context("Yadio returned an unsuccessful status")?
         .text()
         .await
         .context("Failed to read Yadio response")?;
@@ -457,12 +463,14 @@ async fn fetch_gemini(client: &Client, currency: &str) -> anyhow::Result<Option<
         .await
         .context("Gemini request failed")?;
 
-    // Gemini returns non-success status for unknown pairs; treat as "no quote".
-    if !response.status().is_success() {
+    // Gemini returns 404 for unknown pairs; surface other non-success codes
+    // (429/5xx/...) so the aggregator records them as real issues.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);
     }
-
     let body = response
+        .error_for_status()
+        .context("Gemini returned an unsuccessful status")?
         .text()
         .await
         .context("Failed to read Gemini response")?;
