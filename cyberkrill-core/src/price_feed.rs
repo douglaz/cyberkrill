@@ -96,6 +96,26 @@ pub async fn fetch_btc_price(currency: &str) -> anyhow::Result<BtcPrice> {
         let currency = currency.clone();
         feeds.spawn(async move { ("fedi", fetch_fedi(&client, &currency).await) });
     }
+    {
+        let client = client.clone();
+        let currency = currency.clone();
+        feeds.spawn(async move { ("cex.io", fetch_cex_io(&client, &currency).await) });
+    }
+    {
+        let client = client.clone();
+        let currency = currency.clone();
+        feeds.spawn(async move { ("bitstamp", fetch_bitstamp(&client, &currency).await) });
+    }
+    {
+        let client = client.clone();
+        let currency = currency.clone();
+        feeds.spawn(async move { ("yadio", fetch_yadio(&client, &currency).await) });
+    }
+    {
+        let client = client.clone();
+        let currency = currency.clone();
+        feeds.spawn(async move { ("gemini", fetch_gemini(&client, &currency).await) });
+    }
 
     let FeedCollection { sources, issues } = collect_feed_quotes(feeds, &currency).await;
     let result = aggregate_btc_price(currency.clone(), sources);
@@ -349,6 +369,120 @@ async fn fetch_fedi(client: &Client, currency: &str) -> anyhow::Result<Option<Pr
     )
 }
 
+async fn fetch_cex_io(client: &Client, currency: &str) -> anyhow::Result<Option<PriceQuote>> {
+    let url = format!("https://cex.io/api/ticker/BTC/{currency}");
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .context("CEX.IO request failed")?;
+
+    // 404 means the pair isn't listed; surface other non-success codes
+    // (429/5xx/...) so the aggregator records them as real issues.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let body = response
+        .error_for_status()
+        .context("CEX.IO returned an unsuccessful status")?
+        .text()
+        .await
+        .context("Failed to read CEX.IO response")?;
+
+    Ok(
+        parse_cex_io_price(&body, currency)?.map(|price_per_btc| PriceQuote {
+            source: "cex.io",
+            price_per_btc,
+        }),
+    )
+}
+
+async fn fetch_bitstamp(client: &Client, currency: &str) -> anyhow::Result<Option<PriceQuote>> {
+    let lower = currency.to_ascii_lowercase();
+    let url = format!("https://www.bitstamp.net/api/v2/ticker/btc{lower}");
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .context("Bitstamp request failed")?;
+
+    // Bitstamp returns 404 for unsupported pairs; surface other non-success
+    // codes (429/5xx/...) so the aggregator records them as real issues.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let body = response
+        .error_for_status()
+        .context("Bitstamp returned an unsuccessful status")?
+        .text()
+        .await
+        .context("Failed to read Bitstamp response")?;
+
+    Ok(
+        parse_bitstamp_price(&body, currency)?.map(|price_per_btc| PriceQuote {
+            source: "bitstamp",
+            price_per_btc,
+        }),
+    )
+}
+
+async fn fetch_yadio(client: &Client, currency: &str) -> anyhow::Result<Option<PriceQuote>> {
+    let url = format!("https://api.yadio.io/convert/1/BTC/{currency}");
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .context("Yadio request failed")?;
+
+    // 404 means the currency isn't quoted; surface other non-success codes
+    // (429/5xx/...) so the aggregator records them as real issues.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let body = response
+        .error_for_status()
+        .context("Yadio returned an unsuccessful status")?
+        .text()
+        .await
+        .context("Failed to read Yadio response")?;
+
+    Ok(
+        parse_yadio_price(&body, currency)?.map(|price_per_btc| PriceQuote {
+            source: "yadio",
+            price_per_btc,
+        }),
+    )
+}
+
+async fn fetch_gemini(client: &Client, currency: &str) -> anyhow::Result<Option<PriceQuote>> {
+    let lower = currency.to_ascii_lowercase();
+    let url = format!("https://api.gemini.com/v1/pubticker/btc{lower}");
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .context("Gemini request failed")?;
+
+    // Gemini returns 404 for unknown pairs; surface other non-success codes
+    // (429/5xx/...) so the aggregator records them as real issues.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let body = response
+        .error_for_status()
+        .context("Gemini returned an unsuccessful status")?
+        .text()
+        .await
+        .context("Failed to read Gemini response")?;
+
+    Ok(
+        parse_gemini_price(&body, currency)?.map(|price_per_btc| PriceQuote {
+            source: "gemini",
+            price_per_btc,
+        }),
+    )
+}
+
 fn parse_coingecko_price(json: &str, currency: &str) -> anyhow::Result<Option<f64>> {
     let value: Value = serde_json::from_str(json).context("Invalid CoinGecko JSON")?;
     let lower = currency.to_ascii_lowercase();
@@ -468,6 +602,67 @@ fn fedi_pair_rate(
     };
 
     Ok(Some(parse_positive_price(rate, "Fedi rate")?))
+}
+
+fn parse_cex_io_price(json: &str, _currency: &str) -> anyhow::Result<Option<f64>> {
+    // The currency is encoded in the request URL, so the response body is
+    // implicitly for that pair. We only need to detect the unsupported-pair
+    // shape and read the `last` price.
+    let value: Value = serde_json::from_str(json).context("Invalid CEX.IO JSON")?;
+    if value.get("error").is_some() {
+        return Ok(None);
+    }
+
+    let Some(price) = value.get("last") else {
+        return Ok(None);
+    };
+
+    Ok(Some(parse_positive_price(price, "CEX.IO last price")?))
+}
+
+fn parse_bitstamp_price(json: &str, _currency: &str) -> anyhow::Result<Option<f64>> {
+    // The currency is encoded in the request URL (btc<currency>), so the
+    // response body is implicitly for that pair.
+    let value: Value = serde_json::from_str(json).context("Invalid Bitstamp JSON")?;
+    let Some(price) = value.get("last") else {
+        return Ok(None);
+    };
+
+    Ok(Some(parse_positive_price(price, "Bitstamp last price")?))
+}
+
+fn parse_yadio_price(json: &str, _currency: &str) -> anyhow::Result<Option<f64>> {
+    // The currency is encoded in the request URL, so the top-level `rate`
+    // field is implicitly for that pair.
+    let value: Value = serde_json::from_str(json).context("Invalid Yadio JSON")?;
+    if value.get("error").is_some() {
+        return Ok(None);
+    }
+
+    let Some(price) = value.get("rate") else {
+        return Ok(None);
+    };
+
+    Ok(Some(parse_positive_price(price, "Yadio rate")?))
+}
+
+fn parse_gemini_price(json: &str, _currency: &str) -> anyhow::Result<Option<f64>> {
+    // The currency is encoded in the request URL (btc<currency>), so the
+    // response body is implicitly for that pair.
+    let value: Value = serde_json::from_str(json).context("Invalid Gemini JSON")?;
+    if value
+        .get("result")
+        .and_then(|result| result.as_str())
+        .is_some_and(|result| result.eq_ignore_ascii_case("error"))
+    {
+        return Ok(None);
+    }
+
+    let Some(price) = value.get("last") else {
+        return Ok(None);
+    };
+
+    Ok(Some(parse_positive_price(price, "Gemini last price")?))
 }
 
 fn parse_positive_price(value: &Value, label: &str) -> anyhow::Result<f64> {
@@ -901,6 +1096,127 @@ mod tests {
 
         assert!(parse_fedi_price(json, "BRL")?.is_none());
         assert!(parse_fedi_price(json, "USD")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn parses_cex_io_response() -> anyhow::Result<()> {
+        let json = r#"{
+            "timestamp": "1760000000",
+            "low": "66000.00",
+            "high": "68000.00",
+            "last": "67234.12",
+            "volume": "12.34",
+            "bid": 67230.00,
+            "ask": 67240.00
+        }"#;
+
+        assert_close(
+            parse_cex_io_price(json, "USD")?.context("USD quote")?,
+            67234.12,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cex_io_parser_returns_none_for_error_body() -> anyhow::Result<()> {
+        let json = r#"{"error": "Pair is disabled"}"#;
+        assert!(parse_cex_io_price(json, "ZZZ")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn cex_io_parser_returns_none_when_last_is_missing() -> anyhow::Result<()> {
+        let json = r#"{"bid": 1.0, "ask": 1.1}"#;
+        assert!(parse_cex_io_price(json, "USD")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn parses_bitstamp_response() -> anyhow::Result<()> {
+        let json = r#"{
+            "last": "67234.10",
+            "bid": "67230.00",
+            "ask": "67240.00",
+            "open": "67000.00",
+            "high": "68000.00",
+            "low": "66500.00",
+            "volume": "100.5",
+            "timestamp": "1760000000"
+        }"#;
+
+        assert_close(
+            parse_bitstamp_price(json, "USD")?.context("USD quote")?,
+            67234.10,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bitstamp_parser_returns_none_when_last_is_missing() -> anyhow::Result<()> {
+        let json = r#"{"bid": "1.0", "ask": "1.1"}"#;
+        assert!(parse_bitstamp_price(json, "USD")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn parses_yadio_response() -> anyhow::Result<()> {
+        let json = r#"{
+            "rate": 67234.12,
+            "from": "BTC",
+            "to": "USD",
+            "request": {"amount": 1, "from": "BTC", "to": "USD"},
+            "timestamp": 1760000000
+        }"#;
+
+        assert_close(
+            parse_yadio_price(json, "USD")?.context("USD quote")?,
+            67234.12,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn yadio_parser_returns_none_for_error_body() -> anyhow::Result<()> {
+        let json = r#"{"error": "Currency not supported"}"#;
+        assert!(parse_yadio_price(json, "ZZZ")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn yadio_parser_returns_none_when_rate_is_missing() -> anyhow::Result<()> {
+        let json = r#"{"from": "BTC", "to": "USD"}"#;
+        assert!(parse_yadio_price(json, "USD")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn parses_gemini_response() -> anyhow::Result<()> {
+        let json = r#"{
+            "ask": "67240.00",
+            "bid": "67230.00",
+            "last": "67234.65",
+            "volume": {"BTC": "100.5", "USD": "6700000.00", "timestamp": 1760000000}
+        }"#;
+
+        assert_close(
+            parse_gemini_price(json, "USD")?.context("USD quote")?,
+            67234.65,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gemini_parser_returns_none_for_error_body() -> anyhow::Result<()> {
+        let json = r#"{"result": "error", "reason": "InvalidSymbol", "message": "Unknown pair"}"#;
+        assert!(parse_gemini_price(json, "ZZZ")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn gemini_parser_returns_none_when_last_is_missing() -> anyhow::Result<()> {
+        let json = r#"{"ask": "1.0", "bid": "1.1"}"#;
+        assert!(parse_gemini_price(json, "USD")?.is_none());
         Ok(())
     }
 
