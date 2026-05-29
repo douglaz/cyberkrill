@@ -27,7 +27,7 @@ jobs:
           experimental-features = nix-command flakes
     
     - name: Cache Cargo registry
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry/index/
@@ -79,7 +79,7 @@ jobs:
         targets: x86_64-apple-darwin,aarch64-apple-darwin
     
     - name: Cache Cargo registry
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry/index/
@@ -138,7 +138,7 @@ jobs:
         targets: x86_64-pc-windows-msvc
     
     - name: Cache Cargo registry
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry/index/
