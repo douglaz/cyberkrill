@@ -60,6 +60,27 @@ async fn parse_btc_or_fiat(s: &str) -> anyhow::Result<AmountInput> {
     parse_btc_or_fiat_with_cache(s, &mut price_cache).await
 }
 
+/// Like `parse_btc_or_fiat`, but also returns the BTC price and parsed fiat
+/// amount when conversion went through the fiat path.
+async fn parse_btc_or_fiat_capture(
+    s: &str,
+) -> anyhow::Result<(AmountInput, Option<(FiatAmount, cyberkrill_core::BtcPrice)>)> {
+    let mut price_cache = FiatPriceCache::default();
+    match parse_amount(s)? {
+        ParsedAmount::Bitcoin(amount) => Ok((amount, None)),
+        ParsedAmount::Fiat(fiat) => {
+            let amount = price_cache
+                .convert_fiat_with_precision(&fiat, FiatConversionPrecision::Millisat)
+                .await?;
+            let price = price_cache
+                .prices
+                .remove(&fiat.currency)
+                .context("BTC price missing from cache after conversion")?;
+            Ok((amount, Some((fiat, price))))
+        }
+    }
+}
+
 async fn parse_btc_or_fiat_with_cache(
     s: &str,
     price_cache: &mut FiatPriceCache,
@@ -502,6 +523,16 @@ enum Commands {
     OnchainDcaReport(DcaReportArgs),
 
     // Utility Commands
+    #[command(
+        name = "convert-amount",
+        about = "Convert an amount between units (BTC/sats/msats) and fiat",
+        long_about = "Convert an amount between unit representations. Bitcoin formats \
+                  (BTC, sats, msats) round-trip locally. Fiat amounts (e.g. \
+                  '100USD', '2081.74BRL') are converted using the median of 5 \
+                  public price feeds — the same path used by ln-generate-invoice \
+                  and onchain output amounts."
+    )]
+    ConvertAmount(ConvertAmountArgs),
     #[command(name = "version", about = "Print version information")]
     Version,
     #[command(name = "generate-mnemonic", about = "Generate a BIP39 mnemonic phrase")]
@@ -589,7 +620,26 @@ struct GenerateInvoiceArgs {
     output: Option<String>,
 }
 
-// MCP Server Args
+// Utility Args
+
+#[derive(clap::Args, Debug)]
+struct ConvertAmountArgs {
+    /// Amount to convert. Supports the same formats as the rest of the CLI:
+    /// - Plain number (interpreted as BTC): "0.5"
+    /// - BTC with suffix: "0.5btc"
+    /// - Satoshis: "100sats" or "100sat"
+    /// - Millisatoshis: "100000msats" or "100msat"
+    /// - Fiat: "100USD", "2081.74BRL" (3-letter ISO currency code; triggers
+    ///   the HTTPS price-feed aggregator and prints a one-line breadcrumb to
+    ///   stderr)
+    amount: String,
+
+    /// Emit only the amount in this unit instead of the full JSON object.
+    /// Use this for pipe-friendly scripting. Without --as, the full JSON
+    /// with all unit representations is printed.
+    #[clap(long, value_parser = ["btc", "sats", "msats"])]
+    r#as: Option<String>,
+}
 
 #[derive(clap::Args, Debug)]
 struct GenerateMnemonicArgs {
@@ -1129,6 +1179,7 @@ async fn main() -> anyhow::Result<()> {
             let version_str = serde_json::to_string_pretty(&version)?;
             println!("{version_str}");
         }
+        Commands::ConvertAmount(args) => convert_amount(args).await?,
         Commands::GenerateMnemonic(args) => generate_mnemonic(args)?,
 
         // MCP Server
@@ -1250,6 +1301,148 @@ async fn generate_invoice(args: GenerateInvoiceArgs) -> anyhow::Result<()> {
 
     serde_json::to_writer_pretty(writer, &invoice)?;
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct ConvertAmountOutput {
+    input: String,
+    btc: f64,
+    sats: u64,
+    msats: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fiat_source: Option<FiatSource>,
+}
+
+#[derive(serde::Serialize)]
+struct FiatSource {
+    amount: f64,
+    currency: String,
+    price_per_btc: f64,
+    feeds: Vec<&'static str>,
+}
+
+async fn convert_amount(args: ConvertAmountArgs) -> anyhow::Result<()> {
+    let mut writer = BufWriter::new(std::io::stdout());
+    convert_amount_with_eprintln(args, &mut writer).await
+}
+
+async fn convert_amount_with_eprintln<W: Write>(
+    args: ConvertAmountArgs,
+    writer: &mut W,
+) -> anyhow::Result<()> {
+    let (amount, fiat_source) = parse_btc_or_fiat_capture(&args.amount).await?;
+    write_convert_amount_output_with_warning(
+        writer,
+        &args.amount,
+        args.r#as.as_deref(),
+        &amount,
+        fiat_source.as_ref(),
+        |msats, sats| {
+            eprintln!(
+                "[convert-amount] note: input has fractional satoshis ({msats} msat); --as sats floors to {sats} sat"
+            );
+            Ok(())
+        },
+    )
+}
+
+#[cfg(test)]
+async fn convert_amount_with_writers<W: Write, E: Write>(
+    args: ConvertAmountArgs,
+    writer: &mut W,
+    stderr: &mut E,
+) -> anyhow::Result<()> {
+    let (amount, fiat_source) = parse_btc_or_fiat_capture(&args.amount).await?;
+    write_convert_amount_output(
+        writer,
+        stderr,
+        &args.amount,
+        args.r#as.as_deref(),
+        &amount,
+        fiat_source.as_ref(),
+    )
+}
+
+#[cfg(test)]
+fn write_convert_amount_output<W: Write, E: Write>(
+    writer: &mut W,
+    stderr: &mut E,
+    input: &str,
+    output_unit: Option<&str>,
+    amount: &AmountInput,
+    fiat_source: Option<&(FiatAmount, cyberkrill_core::BtcPrice)>,
+) -> anyhow::Result<()> {
+    write_convert_amount_output_with_warning(
+        writer,
+        input,
+        output_unit,
+        amount,
+        fiat_source,
+        |msats, sats| {
+            writeln!(
+                stderr,
+                "[convert-amount] note: input has fractional satoshis ({msats} msat); --as sats floors to {sats} sat"
+            )?;
+            Ok(())
+        },
+    )
+}
+
+fn write_convert_amount_output_with_warning<W: Write, F>(
+    writer: &mut W,
+    input: &str,
+    output_unit: Option<&str>,
+    amount: &AmountInput,
+    fiat_source: Option<&(FiatAmount, cyberkrill_core::BtcPrice)>,
+    mut warn_fractional_sats: F,
+) -> anyhow::Result<()>
+where
+    F: FnMut(u64, u64) -> anyhow::Result<()>,
+{
+    match output_unit {
+        Some("btc") => {
+            let btc = amount.as_btc();
+            writeln!(writer, "{btc}")?;
+        }
+        Some("sats") => {
+            let sats = amount.as_sat();
+            let msats = amount.as_millisats();
+            if msats % 1000 != 0 {
+                warn_fractional_sats(msats, sats)?;
+            }
+            writeln!(writer, "{sats}")?;
+        }
+        Some("msats") => {
+            let msats = amount.as_millisats();
+            writeln!(writer, "{msats}")?;
+        }
+        Some(unit) => bail!("Invalid --as value '{unit}'"),
+        None => {
+            let output = build_convert_amount_output(input, amount, fiat_source);
+            serde_json::to_writer_pretty(writer, &output)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn build_convert_amount_output(
+    input: &str,
+    amount: &AmountInput,
+    fiat_source: Option<&(FiatAmount, cyberkrill_core::BtcPrice)>,
+) -> ConvertAmountOutput {
+    ConvertAmountOutput {
+        input: input.to_string(),
+        btc: amount.as_btc(),
+        sats: amount.as_sat(),
+        msats: amount.as_millisats(),
+        fiat_source: fiat_source.map(|(fiat, price)| FiatSource {
+            amount: fiat.amount,
+            currency: price.currency.clone(),
+            price_per_btc: price.price_per_btc,
+            feeds: price.sources.iter().map(|quote| quote.source).collect(),
+        }),
+    }
 }
 
 #[cfg(feature = "smartcards")]
@@ -2513,6 +2706,141 @@ mod tests {
             delta < 0.000_001,
             "actual {actual} was not close to expected {expected}"
         );
+    }
+
+    fn parse_json_output(stdout: &[u8]) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::from_slice(stdout)?)
+    }
+
+    #[tokio::test]
+    async fn convert_amount_normalizes_bitcoin_input() -> anyhow::Result<()> {
+        let cases: [(&str, f64, u64, u64); 5] = [
+            ("0.5btc", 0.5, 50_000_000, 50_000_000_000),
+            ("100sats", 0.000_001, 100, 100_000),
+            ("100msats", 0.000_000_001, 0, 100),
+            ("1", 1.0, 100_000_000, 100_000_000_000),
+            ("0", 0.0, 0, 0),
+        ];
+
+        for (input, expected_btc, expected_sats, expected_msats) in cases {
+            let (amount, fiat_source) = parse_btc_or_fiat_capture(input).await?;
+            assert!(fiat_source.is_none(), "{input} should not have fiat source");
+
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            write_convert_amount_output(
+                &mut stdout,
+                &mut stderr,
+                input,
+                None,
+                &amount,
+                fiat_source.as_ref(),
+            )?;
+
+            let output = parse_json_output(&stdout)?;
+            assert_eq!(output.get("input"), Some(&serde_json::json!(input)));
+            let btc = output
+                .get("btc")
+                .and_then(serde_json::Value::as_f64)
+                .context("btc missing from convert amount output")?;
+            assert_close(btc, expected_btc);
+            assert_eq!(output.get("sats"), Some(&serde_json::json!(expected_sats)));
+            assert_eq!(
+                output.get("msats"),
+                Some(&serde_json::json!(expected_msats))
+            );
+            assert!(
+                output.get("fiat_source").is_none(),
+                "{input} should omit fiat_source"
+            );
+            assert!(stderr.is_empty(), "{input} should not write stderr");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn convert_amount_as_flag_returns_single_value() -> anyhow::Result<()> {
+        let cases = [
+            ("btc", "0.001\n"),
+            ("sats", "100000\n"),
+            ("msats", "100000000\n"),
+        ];
+
+        for (unit, expected_stdout) in cases {
+            let args = ConvertAmountArgs {
+                amount: "100000sats".to_string(),
+                r#as: Some(unit.to_string()),
+            };
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+
+            convert_amount_with_writers(args, &mut stdout, &mut stderr).await?;
+
+            let stdout = String::from_utf8(stdout)?;
+            assert_eq!(stdout, expected_stdout, "{unit}");
+            assert!(!stdout.contains("fiat_source"), "{unit}");
+            assert!(stderr.is_empty(), "{unit} should not write stderr");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn convert_amount_warns_on_fractional_sats_with_as_sats() -> anyhow::Result<()> {
+        let args = ConvertAmountArgs {
+            amount: "100msats".to_string(),
+            r#as: Some("sats".to_string()),
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        convert_amount_with_writers(args, &mut stdout, &mut stderr).await?;
+
+        let stdout = String::from_utf8(stdout)?;
+        let stderr = String::from_utf8(stderr)?;
+        assert_eq!(stdout, "0\n");
+        assert_eq!(
+            stderr,
+            "[convert-amount] note: input has fractional satoshis (100 msat); --as sats floors to 0 sat\n"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn convert_amount_fiat_smoke() -> anyhow::Result<()> {
+        let args = ConvertAmountArgs {
+            amount: "1USD".to_string(),
+            r#as: None,
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        convert_amount_with_writers(args, &mut stdout, &mut stderr).await?;
+
+        let output = parse_json_output(&stdout)?;
+        let fiat_source = output
+            .get("fiat_source")
+            .context("fiat_source missing from fiat convert amount output")?;
+        assert_eq!(
+            fiat_source
+                .get("currency")
+                .and_then(serde_json::Value::as_str)
+                .context("fiat_source.currency missing")?,
+            "USD"
+        );
+        let feeds = fiat_source
+            .get("feeds")
+            .and_then(serde_json::Value::as_array)
+            .context("fiat_source.feeds missing")?;
+        assert!(
+            feeds.len() >= 3,
+            "expected at least 3 price feeds, got {feed_count}",
+            feed_count = feeds.len()
+        );
+
+        Ok(())
     }
 
     #[tokio::test]
