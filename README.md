@@ -81,7 +81,7 @@ chmod +x cyberkrill
 ```
 
 The bootstrap script will:
-- Detect your platform automatically (Linux, macOS, Windows)
+- Detect your platform automatically (Linux, Windows)
 - Download the latest release if not installed
 - Auto-update when new versions are available
 
@@ -94,8 +94,6 @@ Download pre-built binaries directly from the [releases page](https://github.com
 | Platform | Features | Notes |
 |----------|----------|-------|
 | Linux x86_64 | All hardware wallets | Static binary, works on all distros |
-| macOS x86_64 | Core | Intel Macs |
-| macOS ARM64 | Core | Apple Silicon (M1/M2/M3) |
 | Windows x86_64 | Core | 64-bit Windows |
 
 #### Linux Manual Installation
@@ -110,19 +108,6 @@ sudo mv cyberkrill-linux-x86_64/cyberkrill /usr/local/bin/
 
 # Verify installation
 cyberkrill --help
-```
-
-#### macOS Manual Installation
-```bash
-# Intel Mac
-curl -L https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-macos-x86_64.tar.gz | tar xz
-
-# Apple Silicon (M1/M2/M3)
-curl -L https://github.com/douglaz/cyberkrill/releases/download/latest-master/cyberkrill-macos-aarch64.tar.gz | tar xz
-
-# Install
-chmod +x cyberkrill-macos-*/cyberkrill
-sudo mv cyberkrill-macos-*/cyberkrill /usr/local/bin/
 ```
 
 #### Windows Manual Installation
