@@ -121,7 +121,7 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="076b", MODE="0666"
 - Uses `rust-cktap` library for communication
 - PCSC protocol for card interaction
 - Supports all major NFC readers
-- Cross-platform support (Linux, macOS, Windows)
+- Cross-platform support (Linux, Windows)
 
 ### Supported Operations
 

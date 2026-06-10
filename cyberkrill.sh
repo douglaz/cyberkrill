@@ -26,13 +26,6 @@ detect_platform() {
                 *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
             esac
             ;;
-        darwin)
-            case "$arch" in
-                x86_64) echo "macos-x86_64" ;;
-                arm64) echo "macos-aarch64" ;;
-                *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
-            esac
-            ;;
         mingw*|msys*|cygwin*)
             case "$arch" in
                 x86_64) echo "windows-x86_64" ;;
