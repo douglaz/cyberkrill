@@ -57,4 +57,4 @@ jade-bitcoin = { path = "../jade-bitcoin", optional = true }
 [dev-dependencies]
 tempfile = "3.23"
 mockito = "1.7"
-serial_test = "3.2"
+serial_test = "3.3"
