@@ -1,7 +1,7 @@
 // SLIP-0132 extended public key format support
 // Adapted from frozenkrill-core for Trezor compatibility
 
-use anyhow::{Result, bail};
+use anyhow::{Result, bail, ensure};
 use bitcoin::base58;
 use bitcoin::bip32::Xpub;
 
@@ -30,6 +30,11 @@ pub trait FromSlip132 {
 impl FromSlip132 for Xpub {
     fn from_slip132_str(s: &str) -> Result<Self> {
         let mut data = base58::decode_check(s)?;
+        ensure!(
+            data.len() == 78,
+            "Invalid extended key length: {len} bytes, expected 78",
+            len = data.len()
+        );
 
         let mut prefix = [0u8; 4];
         prefix.copy_from_slice(&data[0..4]);
@@ -95,6 +100,17 @@ mod tests {
         let zpub_str = "zpub6qUQGY8YyN3ZztQBDdN8gUrFNvgCdTdFyTNorQ79VfkfkmhMR6D4cHBZ4EnXdFog1e2ugyCJqTcyDE4ZpTGqcMiCEnyPEyJFKbPVL9knhKU";
         let parsed = parse_slip132_xpub(zpub_str)?;
         assert_eq!(parsed, xpub);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_short_payload_is_err() -> Result<()> {
+        // Valid Base58Check whose payload is too short to hold a version prefix
+        for len in 0..4 {
+            let s = base58::encode_check(&[0u8; 3][..len]);
+            assert!(parse_slip132_xpub(&s).is_err(), "{len}-byte payload");
+        }
 
         Ok(())
     }
