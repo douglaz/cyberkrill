@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use base64::Engine;
 use bdk_wallet::{KeychainKind, Wallet};
-use bitcoin::{Amount, FeeRate, Network, OutPoint, Txid};
+use bitcoin::{Amount, FeeRate, Network, OutPoint, Psbt, ScriptBuf, Txid};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::str::FromStr;
@@ -471,6 +471,20 @@ impl FromStr for InputSpec {
     }
 }
 
+/// Converts a fee rate in sat/vB to a BDK [`FeeRate`] without dropping the fraction.
+///
+/// `FeeRate` counts sat per 1000 weight units (1 sat/vB = 250 sat/kwu). The rate is rounded up,
+/// so the result is never below the requested one, and a rate that would come out as zero is an
+/// error rather than a zero-fee transaction.
+fn fee_rate_from_sat_per_vb(rate: f64) -> Result<FeeRate> {
+    let sat_per_kwu = (rate * 250.0).ceil() as u64;
+    ensure!(
+        sat_per_kwu > 0,
+        "Fee rate must be above zero, got {rate} sat/vB"
+    );
+    Ok(FeeRate::from_sat_per_kwu(sat_per_kwu))
+}
+
 /// Create a PSBT with manual input/output specification using BDK
 pub async fn create_psbt_bdk(
     inputs: &[String],
@@ -869,47 +883,21 @@ pub async fn move_utxos_bdk(
         selected_utxos = final_selection;
     }
 
-    // Build transaction
-    let mut tx_builder = wallet.build_tx();
-
-    // Add all selected inputs
-    for utxo in &selected_utxos {
-        let outpoint = OutPoint {
-            txid: Txid::from_str(&utxo.txid)?,
-            vout: utxo.vout,
-        };
-        tx_builder.add_utxo(outpoint)?;
-    }
-
-    // Calculate total input value
-    let total_input: u64 = selected_utxos.iter().map(|u| u.amount).sum();
-
-    // Determine fee
-    let fee = if let Some(sats) = fee_sats {
-        sats
-    } else if let Some(rate) = fee_rate {
-        // Estimate fee based on transaction size
-        // Rough estimate: 10 + 41*inputs + 32*outputs
-        let estimated_vbytes = 10 + 41 * selected_utxos.len() + 32;
-        (estimated_vbytes as f64 * rate) as u64
-    } else {
-        bail!("Must specify either fee_rate or fee_sats");
-    };
-
-    // Add single output (total - fee)
-    let output_amount = total_input.saturating_sub(fee);
-    ensure!(output_amount != 0, "Output amount would be zero after fees");
-
+    let outpoints = selected_utxos
+        .iter()
+        .map(|utxo| {
+            Ok(OutPoint {
+                txid: Txid::from_str(&utxo.txid)?,
+                vout: utxo.vout,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
     let dest_script = bitcoin::Address::from_str(destination)?
         .require_network(network)?
         .script_pubkey();
-    tx_builder.add_recipient(dest_script, Amount::from_sat(output_amount));
 
-    // Manually select UTXOs (disable coin selection)
-    tx_builder.manually_selected_only();
-
-    // Finish building
-    let psbt = tx_builder.finish()?;
+    let psbt = build_move_psbt(&mut wallet, &outpoints, dest_script, fee_rate, fee_sats)?;
+    let fee = psbt.fee()?;
 
     // Serialize PSBT to base64
     let psbt_bytes = psbt.serialize();
@@ -917,14 +905,45 @@ pub async fn move_utxos_bdk(
 
     Ok(BdkPsbtResponse {
         psbt: psbt_base64,
-        fee_sats: fee,
+        fee_sats: fee.to_sat(),
         change_position: None, // No change in consolidation
     })
+}
+
+/// Builds a PSBT that spends exactly `outpoints` to a single `destination` output.
+///
+/// BDK sets the output to the inputs minus the fee, paying `fee_sats` if given or else
+/// `fee_rate` (sat/vB) on its own weight estimate, so no change output is added.
+fn build_move_psbt(
+    wallet: &mut Wallet,
+    outpoints: &[OutPoint],
+    destination: ScriptBuf,
+    fee_rate: Option<f64>,
+    fee_sats: Option<u64>,
+) -> Result<Psbt> {
+    let mut tx_builder = wallet.build_tx();
+    tx_builder
+        .add_utxos(outpoints)?
+        .manually_selected_only()
+        .drain_to(destination);
+    match (fee_sats, fee_rate) {
+        (Some(sats), _) => {
+            tx_builder.fee_absolute(Amount::from_sat(sats));
+        }
+        (None, Some(rate)) => {
+            tx_builder.fee_rate(fee_rate_from_sat_per_vb(rate)?);
+        }
+        (None, None) => bail!("Must specify either fee_rate or fee_sats"),
+    }
+    Ok(tx_builder.finish()?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bitcoin_rpc::AmountInput;
+    use bitcoin::WPubkeyHash;
+    use bitcoin::hashes::Hash;
 
     #[test]
     fn test_bdk_wallet_creation() -> Result<()> {
@@ -937,6 +956,79 @@ mod tests {
 
         // Verify wallet was created successfully
         assert_eq!(wallet.network(), Network::Testnet);
+
+        Ok(())
+    }
+
+    /// Watch-only regtest wallet (wpkh of the generator point G) holding made-up unconfirmed
+    /// UTXOs of the given amounts.
+    fn funded_wallet(amounts: &[u64]) -> Result<(Wallet, Vec<OutPoint>)> {
+        let mut wallet = Wallet::create_single(
+            "wpkh(0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798)",
+        )
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+        let script_pubkey = wallet
+            .peek_address(KeychainKind::External, 0)
+            .script_pubkey();
+        let mut outpoints = Vec::new();
+        for (seed, sats) in (1u8..).zip(amounts) {
+            let tx = bitcoin::Transaction {
+                version: bitcoin::transaction::Version::TWO,
+                lock_time: bitcoin::absolute::LockTime::ZERO,
+                input: vec![bitcoin::TxIn {
+                    previous_output: OutPoint::new(Txid::from_byte_array([seed; 32]), 0),
+                    ..Default::default()
+                }],
+                output: vec![bitcoin::TxOut {
+                    value: Amount::from_sat(*sats),
+                    script_pubkey: script_pubkey.clone(),
+                }],
+            };
+            outpoints.push(OutPoint::new(tx.compute_txid(), 0));
+            wallet.apply_unconfirmed_txs([(tx, 0)]);
+        }
+        Ok((wallet, outpoints))
+    }
+
+    fn destination() -> ScriptBuf {
+        ScriptBuf::new_p2wpkh(&WPubkeyHash::from_byte_array([0x11; 20]))
+    }
+
+    #[test]
+    fn test_move_psbt_pays_fee_rate_without_change() -> Result<()> {
+        for (inputs, input, fee) in [
+            (1, "20sats", 2190),
+            (3, "20sats", 4910),
+            (1, "1sat", 110),
+            (1, "0.5sats", 56),
+            (1, "0.1sats", 13),
+        ] {
+            let (mut wallet, outpoints) = funded_wallet(&vec![100_000; inputs])?;
+            let rate = AmountInput::from_str(input)?.as_fractional_sats();
+            let psbt = build_move_psbt(&mut wallet, &outpoints, destination(), Some(rate), None)?;
+            let outputs = &psbt.unsigned_tx.output;
+            assert_eq!(
+                outputs.len(),
+                1,
+                "{inputs} x {input}: one output, no change"
+            );
+            assert_eq!(outputs[0].script_pubkey, destination());
+            assert_eq!(psbt.fee()?.to_sat(), fee, "{inputs} x {input}");
+            assert_eq!(outputs[0].value.to_sat() + fee, 100_000 * inputs as u64);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_psbt_pays_absolute_fee_without_change() -> Result<()> {
+        let (mut wallet, outpoints) = funded_wallet(&[100_000])?;
+        let psbt = build_move_psbt(&mut wallet, &outpoints, destination(), None, Some(1660))?;
+        let outputs = &psbt.unsigned_tx.output;
+        assert_eq!(outputs.len(), 1, "one output, no change");
+        assert_eq!(outputs[0].value.to_sat(), 98_340);
+        assert_eq!(psbt.fee()?.to_sat(), 1660);
 
         Ok(())
     }
