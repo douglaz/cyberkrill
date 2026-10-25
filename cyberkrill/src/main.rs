@@ -184,6 +184,20 @@ fn parse_amount(s: &str) -> anyhow::Result<ParsedAmount> {
     }
 }
 
+/// Parses a `--fee-rate` or `--fee` value. Unlike other amounts, a fee must carry a unit: a bare
+/// number is rejected rather than guessed as sats or BTC.
+fn parse_fee_with_unit(s: &str) -> Result<AmountInput, String> {
+    let lower = s.trim().to_ascii_lowercase();
+    // "sat" and "sats" also match the "msat" and "msats" suffixes
+    if !["sat", "sats", "btc"]
+        .iter()
+        .any(|unit| lower.ends_with(unit))
+    {
+        return Err("a unit is required, e.g. '15sats' or '0.00000015btc'".to_string());
+    }
+    AmountInput::from_str(s).map_err(|error| error.to_string())
+}
+
 fn validate_btc_or_fiat_arg(s: &str) -> Result<String, String> {
     parse_amount(s)
         .map(|_| s.to_string())
@@ -917,8 +931,8 @@ struct CreatePsbtArgs {
     ///   Example: "bc1qaddr1:0.5,bc1qaddr2:100000sats"
     #[clap(long, required = true)]
     outputs: String,
-    /// Fee rate in sats/vB (optional, will use Bitcoin Core's default if not specified) - supports formats like '15', '20.5sats', '15btc'
-    #[clap(long)]
+    /// Fee rate in sats/vB (optional, will use Bitcoin Core's default if not specified). Needs a unit, e.g. '15sats', '20.5sats' or '0.00000015btc'
+    #[clap(long, value_parser = parse_fee_with_unit)]
     fee_rate: Option<AmountInput>,
     /// Output file path for JSON response
     #[clap(short, long)]
@@ -989,8 +1003,8 @@ struct CreateFundedPsbtArgs {
     /// Fee estimation mode: UNSET, ECONOMICAL, CONSERVATIVE
     #[clap(long)]
     estimate_mode: Option<String>,
-    /// Fee rate in sats/vB (overrides conf_target and estimate_mode) - supports formats like '15', '20.5sats', '15btc'
-    #[clap(long)]
+    /// Fee rate in sats/vB (overrides conf_target and estimate_mode). Needs a unit, e.g. '15sats', '20.5sats' or '0.00000015btc'
+    #[clap(long, value_parser = parse_fee_with_unit)]
     fee_rate: Option<AmountInput>,
     /// Output file path for JSON response
     #[clap(short, long)]
@@ -1043,11 +1057,11 @@ struct MoveUtxosArgs {
     /// Destination address for consolidated output
     #[clap(long, required = true)]
     destination: String,
-    /// Fee rate in sats/vB (conflicts with fee) - supports formats like '15', '20.5sats', '15btc'
-    #[clap(long, conflicts_with = "fee")]
+    /// Fee rate in sats/vB (conflicts with fee). Needs a unit, e.g. '15sats', '20.5sats' or '0.00000015btc'
+    #[clap(long, conflicts_with = "fee", value_parser = parse_fee_with_unit)]
     fee_rate: Option<AmountInput>,
-    /// Fee amount (conflicts with fee_rate) - supports formats like '1000sats', '0.00001btc', '1000'
-    #[clap(long, conflicts_with = "fee_rate")]
+    /// Fee amount (conflicts with fee_rate). Needs a unit, e.g. '1000sats' or '0.00001btc'
+    #[clap(long, conflicts_with = "fee_rate", value_parser = parse_fee_with_unit)]
     fee: Option<AmountInput>,
     /// Maximum amount to move (supports BTC formats or a 3-letter fiat code like '100USD'; fiat availability is checked during conversion; third-party HTTPS price feeds are used outside Bitcoin Core proxy settings; prints conversion to stderr)
     #[clap(long, value_parser = validate_btc_or_fiat_arg)]
@@ -2710,6 +2724,61 @@ mod tests {
 
     fn parse_json_output(stdout: &[u8]) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::from_slice(stdout)?)
+    }
+
+    /// Parses one fee flag through the real command line and returns its value.
+    fn parse_fee_flag(
+        subcommand: &str,
+        flag: &str,
+        value: &str,
+    ) -> Result<Option<AmountInput>, clap::Error> {
+        let mut argv = vec!["cyberkrill", subcommand, "--inputs", "txid:0"];
+        argv.extend(match subcommand {
+            "onchain-move-utxos" => ["--destination", "addr"],
+            _ => ["--outputs", "addr:1000sats"],
+        });
+        argv.extend([flag, value]);
+        Ok(match Cli::try_parse_from(argv)?.command {
+            Commands::OnchainCreatePsbt(args) => args.fee_rate,
+            Commands::OnchainCreateFundedPsbt(args) => args.fee_rate,
+            Commands::OnchainMoveUtxos(args) if flag == "--fee" => args.fee,
+            Commands::OnchainMoveUtxos(args) => args.fee_rate,
+            other => panic!("unexpected command {other:?}"),
+        })
+    }
+
+    #[test]
+    fn fee_flags_require_a_unit() -> anyhow::Result<()> {
+        let flags = [
+            ("onchain-create-psbt", "--fee-rate"),
+            ("onchain-create-funded-psbt", "--fee-rate"),
+            ("onchain-move-utxos", "--fee-rate"),
+            ("onchain-move-utxos", "--fee"),
+        ];
+        for (subcommand, flag) in flags {
+            for bare in ["15", "0.1", "1000"] {
+                match parse_fee_flag(subcommand, flag, bare) {
+                    Ok(fee) => panic!("{subcommand} {flag} {bare} was accepted as {fee:?}"),
+                    Err(error) => assert!(
+                        error.to_string().contains("15sats"),
+                        "{subcommand} {flag} {bare}: {error}"
+                    ),
+                }
+            }
+            for (value, millisats) in [
+                ("15sats", 15_000),
+                ("20.5sats", 20_500),
+                ("0.0000002btc", 20_000),
+            ] {
+                let fee = parse_fee_flag(subcommand, flag, value)?;
+                assert_eq!(
+                    fee.map(|fee| fee.as_millisats()),
+                    Some(millisats),
+                    "{subcommand} {flag} {value}"
+                );
+            }
+        }
+        Ok(())
     }
 
     #[tokio::test]

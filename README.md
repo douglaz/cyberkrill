@@ -289,10 +289,12 @@ Public instances:
 cyberkrill supports flexible amount inputs:
 
 ```bash
-# Fee rates (supports fractional satoshis)
+# Fee rates (supports fractional satoshis); --fee-rate and --fee need a unit,
+# and a bare number such as '15' is rejected
 --fee-rate 0.1sats     # 0.1 sat/vB
 --fee-rate 15.5sats    # 15.5 sat/vB
 --fee-rate 0.00000020btc  # In BTC
+--fee 1000sats         # Absolute fee (onchain-move-utxos)
 
 # Output amounts
 --outputs "bc1q...:0.001"      # 0.001 BTC
