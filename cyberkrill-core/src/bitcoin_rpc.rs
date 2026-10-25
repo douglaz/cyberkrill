@@ -1283,6 +1283,51 @@ impl BitcoinRpcClient {
         })
     }
 
+    /// Coin selection for `move_utxos` with `max_amount`: takes UTXOs largest first until
+    /// their total reaches `max`. Returns the selected inputs and their full total, which can
+    /// exceed `max`; `move_utxos` sends all of it minus the fee.
+    fn select_largest_first(
+        mut utxo_details: Vec<(serde_json::Value, Amount)>,
+        max: Amount,
+    ) -> Result<(Vec<serde_json::Value>, Amount)> {
+        // Sort UTXOs by value in descending order (largest first)
+        utxo_details.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let mut selected = Vec::new();
+        let mut selected_value = Amount::ZERO;
+
+        // Select UTXOs until we reach or exceed max_amount
+        for (input_obj, value) in utxo_details {
+            if selected_value >= max {
+                break;
+            }
+            selected.push(input_obj);
+            selected_value += value;
+        }
+
+        if selected.is_empty() {
+            bail!(
+                "No UTXOs selected. All available UTXOs exceed max_amount of {} BTC",
+                max.to_btc()
+            );
+        }
+
+        Ok((selected, selected_value))
+    }
+
+    /// The single output of `move_utxos`: the selected total minus the fee, in whole sats, so
+    /// the fee it reports is exactly inputs minus output.
+    fn consolidation_output(total_input: Amount, fee: Amount) -> Result<Amount> {
+        match total_input.checked_sub(fee) {
+            Some(output) if output > Amount::ZERO => Ok(output),
+            _ => bail!(
+                "Insufficient funds: inputs={:.8} BTC, fee={:.8} BTC",
+                total_input.to_btc(),
+                fee.to_btc()
+            ),
+        }
+    }
+
     pub async fn move_utxos(
         &self,
         inputs: &[String],
@@ -1320,6 +1365,8 @@ impl BitcoinRpcClient {
                     .get("value")
                     .and_then(|v| v.as_f64())
                     .ok_or_else(|| anyhow!("Missing value in output {txid}:{vout}"))?;
+                let value = Amount::from_btc(value)
+                    .with_context(|| format!("Invalid value in output {txid}:{vout}"))?;
                 utxo_details.push((input_obj.clone(), value));
             } else {
                 bail!("Output {txid}:{vout} not found in transaction");
@@ -1328,33 +1375,10 @@ impl BitcoinRpcClient {
 
         // If max_amount is specified, perform coin selection
         let (selected_inputs, total_input_value) = if let Some(max_amount_input) = max_amount {
-            let max_btc = max_amount_input.as_btc();
-            // Sort UTXOs by value in descending order (largest first)
-            utxo_details.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-            let mut selected = Vec::new();
-            let mut selected_value = 0.0f64;
-
-            // Select UTXOs until we reach or exceed max_amount
-            for (input_obj, value) in utxo_details {
-                if selected_value >= max_btc {
-                    break;
-                }
-                selected.push(input_obj);
-                selected_value += value;
-            }
-
-            if selected.is_empty() {
-                bail!(
-                    "No UTXOs selected. All available UTXOs exceed max_amount of {} BTC",
-                    max_btc
-                );
-            }
-
-            (selected, selected_value.min(max_btc))
+            Self::select_largest_first(utxo_details, Amount::from_sat(max_amount_input.as_sat()))?
         } else {
             // Use all inputs
-            let total_value: f64 = utxo_details.iter().map(|(_, value)| value).sum();
+            let total_value: Amount = utxo_details.iter().map(|(_, value)| *value).sum();
             let inputs: Vec<_> = utxo_details.into_iter().map(|(input, _)| input).collect();
             (inputs, total_value)
         };
@@ -1383,22 +1407,15 @@ impl BitcoinRpcClient {
             }
         };
 
-        // Convert fee to BTC for output calculation
-        let fee_btc = Amount::from_sat(fee_sats_amount).to_btc();
-
-        // Calculate output amount (total input - fees)
-        let output_amount = total_input_value - fee_btc;
-        if output_amount <= 0.0 {
-            bail!(
-                "Insufficient funds: inputs={:.8} BTC, fee={:.8} BTC",
-                total_input_value,
-                fee_btc
-            );
-        }
+        let output_amount =
+            Self::consolidation_output(total_input_value, Amount::from_sat(fee_sats_amount))?;
 
         // Create PSBT using selected inputs
         let mut output_object = serde_json::Map::new();
-        output_object.insert(destination.to_string(), serde_json::json!(output_amount));
+        output_object.insert(
+            destination.to_string(),
+            serde_json::json!(output_amount.to_btc()),
+        );
 
         let mut params = vec![
             serde_json::Value::Array(selected_inputs),
@@ -2284,6 +2301,51 @@ mod tests {
                 "Fee conversion should be lossless for {fee_sat} sats"
             );
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_utxos_max_amount_moves_full_selected_total() -> Result<()> {
+        // Issue #152: 0.6 + 0.5 BTC get selected for a 0.7 BTC cap. The move must send the
+        // whole 1.1 BTC minus the fee, so the reported fee is the fee actually paid.
+        let utxo = |txid: &str, btc: f64| -> Result<(serde_json::Value, Amount)> {
+            Ok((
+                serde_json::json!({"txid": txid, "vout": 0}),
+                Amount::from_btc(btc)?,
+            ))
+        };
+        let utxos = vec![
+            utxo("half", 0.5)?,
+            utxo("tenth", 0.1)?,
+            utxo("six-tenths", 0.6)?,
+        ];
+
+        let (selected, total) =
+            BitcoinRpcClient::select_largest_first(utxos, Amount::from_sat(70_000_000))?;
+        assert_eq!(
+            selected,
+            vec![
+                serde_json::json!({"txid": "six-tenths", "vout": 0}),
+                serde_json::json!({"txid": "half", "vout": 0}),
+            ],
+            "largest first, stopping once the threshold is reached"
+        );
+        assert_eq!(
+            total,
+            Amount::from_sat(110_000_000),
+            "the whole selected total is moved, not the 0.7 BTC threshold"
+        );
+
+        let fee = Amount::from_sat(1_660);
+        let output = BitcoinRpcClient::consolidation_output(total, fee)?;
+        assert_eq!(output, Amount::from_sat(109_998_340));
+        assert_eq!(total - output, fee, "fee_sats is the fee actually paid");
+        // The literal amount createpsbt receives: whole sats, no float noise.
+        assert_eq!(serde_json::json!(output.to_btc()).to_string(), "1.0999834");
+
+        // A fee that eats the whole total is still an error.
+        assert!(BitcoinRpcClient::consolidation_output(fee, fee).is_err());
 
         Ok(())
     }
