@@ -474,15 +474,20 @@ impl FromStr for InputSpec {
 /// Converts a fee rate in sat/vB to a BDK [`FeeRate`] without dropping the fraction.
 ///
 /// `FeeRate` counts sat per 1000 weight units (1 sat/vB = 250 sat/kwu). The rate is rounded up,
-/// so the result is never below the requested one, and a rate that would come out as zero is an
-/// error rather than a zero-fee transaction.
+/// so the result is never below the requested one. A rate that would come out as zero is an
+/// error rather than a zero-fee transaction, and so is one too large for `FeeRate`.
 fn fee_rate_from_sat_per_vb(rate: f64) -> Result<FeeRate> {
-    let sat_per_kwu = (rate * 250.0).ceil() as u64;
+    let sat_per_kwu = (rate * 250.0).ceil();
     ensure!(
-        sat_per_kwu > 0,
+        sat_per_kwu > 0.0,
         "Fee rate must be above zero, got {rate} sat/vB"
     );
-    Ok(FeeRate::from_sat_per_kwu(sat_per_kwu))
+    // `as u64` would saturate infinity and anything past u64::MAX sat/kwu to u64::MAX
+    ensure!(
+        sat_per_kwu < u64::MAX as f64,
+        "Fee rate is too large, got {rate} sat/vB"
+    );
+    Ok(FeeRate::from_sat_per_kwu(sat_per_kwu as u64))
 }
 
 /// Create a PSBT with manual input/output specification using BDK
@@ -958,6 +963,11 @@ mod tests {
 
         // A rate that rounds to zero is an error, not a zero-fee transaction
         assert!(fee_rate_from_sat_per_vb(0.0).is_err());
+
+        // So is a rate past FeeRate's range, which the cast would saturate to u64::MAX
+        for rate in [f64::INFINITY, 1e17] {
+            assert!(fee_rate_from_sat_per_vb(rate).is_err(), "{rate}");
+        }
 
         Ok(())
     }
