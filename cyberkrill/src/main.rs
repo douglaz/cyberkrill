@@ -1049,7 +1049,7 @@ struct MoveUtxosArgs {
     /// Fee amount (conflicts with fee_rate) - supports formats like '1000sats', '0.00001btc', '1000'
     #[clap(long, conflicts_with = "fee_rate")]
     fee: Option<AmountInput>,
-    /// Maximum amount to move (supports BTC formats or a 3-letter fiat code like '100USD'; fiat availability is checked during conversion; third-party HTTPS price feeds are used outside Bitcoin Core proxy settings; prints conversion to stderr)
+    /// Selection threshold, not a cap: UTXOs are picked largest first until their total reaches this amount, then the whole selected total minus the fee is moved, so the move can exceed it (supports BTC formats or a 3-letter fiat code like '100USD'; fiat availability is checked during conversion; third-party HTTPS price feeds are used outside Bitcoin Core proxy settings; prints conversion to stderr)
     #[clap(long, value_parser = validate_btc_or_fiat_arg)]
     max_amount: Option<String>,
     /// Output file path for JSON response
