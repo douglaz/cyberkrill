@@ -6,8 +6,6 @@ use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::str::FromStr;
 
-mod mcp_server;
-
 const DEFAULT_BITCOIN_RPC_URL: &str = "http://127.0.0.1:8332";
 
 #[derive(Debug)]
@@ -551,10 +549,6 @@ enum Commands {
     Version,
     #[command(name = "generate-mnemonic", about = "Generate a BIP39 mnemonic phrase")]
     GenerateMnemonic(GenerateMnemonicArgs),
-
-    // MCP Server
-    #[command(name = "mcp-server", about = "Start MCP server for integrations")]
-    McpServer(McpServerArgs),
 }
 
 // Lightning Network Args
@@ -663,19 +657,6 @@ struct GenerateMnemonicArgs {
     /// Output file path
     #[clap(short, long)]
     output: Option<String>,
-}
-
-#[derive(clap::Args, Debug)]
-struct McpServerArgs {
-    /// Transport type (stdio or sse)
-    #[clap(short, long, default_value = "stdio")]
-    transport: String,
-    /// Host address for SSE transport
-    #[clap(long, default_value = "127.0.0.1")]
-    host: String,
-    /// Port for SSE transport
-    #[clap(short, long, default_value_t = 8080)]
-    port: u16,
 }
 
 // Hardware Wallet Args
@@ -1195,9 +1176,6 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::ConvertAmount(args) => convert_amount(args).await?,
         Commands::GenerateMnemonic(args) => generate_mnemonic(args)?,
-
-        // MCP Server
-        Commands::McpServer(args) => mcp_server(args).await?,
     }
     Ok(())
 }
@@ -2632,30 +2610,6 @@ async fn dca_report(args: DcaReportArgs) -> anyhow::Result<()> {
     } else {
         println!("{json}");
     }
-
-    Ok(())
-}
-
-async fn mcp_server(args: McpServerArgs) -> anyhow::Result<()> {
-    use mcp_server::{CyberkrillMcpServer, McpServerConfig, Transport};
-
-    let transport = match args.transport.to_lowercase().as_str() {
-        "stdio" => Transport::Stdio,
-        "sse" => Transport::Sse,
-        _ => bail!(
-            "Invalid transport: {transport}. Expected 'stdio' or 'sse'",
-            transport = args.transport
-        ),
-    };
-
-    let config = McpServerConfig {
-        transport,
-        host: args.host,
-        port: args.port,
-    };
-
-    let server = CyberkrillMcpServer::new(config);
-    server.run().await?;
 
     Ok(())
 }
