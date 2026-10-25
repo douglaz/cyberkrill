@@ -474,15 +474,20 @@ impl FromStr for InputSpec {
 /// Converts a fee rate in sat/vB to a BDK [`FeeRate`] without dropping the fraction.
 ///
 /// `FeeRate` counts sat per 1000 weight units (1 sat/vB = 250 sat/kwu). The rate is rounded up,
-/// so the result is never below the requested one, and a rate that would come out as zero is an
-/// error rather than a zero-fee transaction.
+/// so the result is never below the requested one. A rate that would come out as zero is an
+/// error rather than a zero-fee transaction, and so is one too large for `FeeRate`.
 fn fee_rate_from_sat_per_vb(rate: f64) -> Result<FeeRate> {
-    let sat_per_kwu = (rate * 250.0).ceil() as u64;
+    let sat_per_kwu = (rate * 250.0).ceil();
     ensure!(
-        sat_per_kwu > 0,
+        sat_per_kwu > 0.0,
         "Fee rate must be above zero, got {rate} sat/vB"
     );
-    Ok(FeeRate::from_sat_per_kwu(sat_per_kwu))
+    // `as u64` would saturate infinity and anything past u64::MAX sat/kwu to u64::MAX
+    ensure!(
+        sat_per_kwu < u64::MAX as f64,
+        "Fee rate is too large, got {rate} sat/vB"
+    );
+    Ok(FeeRate::from_sat_per_kwu(sat_per_kwu as u64))
 }
 
 /// Create a PSBT with manual input/output specification using BDK
@@ -1029,6 +1034,18 @@ mod tests {
         assert_eq!(outputs.len(), 1, "one output, no change");
         assert_eq!(outputs[0].value.to_sat(), 98_340);
         assert_eq!(psbt.fee()?.to_sat(), 1660);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_psbt_rejects_too_large_fee_rate() -> Result<()> {
+        for rate in [f64::INFINITY, 1e17] {
+            let (mut wallet, outpoints) = funded_wallet(&[100_000])?;
+            let error = build_move_psbt(&mut wallet, &outpoints, destination(), Some(rate), None)
+                .expect_err("a rate past FeeRate's range");
+            assert!(error.to_string().contains("too large"), "{rate}: {error}");
+        }
 
         Ok(())
     }
