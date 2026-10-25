@@ -471,6 +471,25 @@ impl FromStr for InputSpec {
     }
 }
 
+/// Converts a fee rate in sat/vB to a BDK [`FeeRate`] without dropping the fraction.
+///
+/// `FeeRate` counts sat per 1000 weight units (1 sat/vB = 250 sat/kwu). The rate is rounded up,
+/// so the result is never below the requested one. A rate that would come out as zero is an
+/// error rather than a zero-fee transaction, and so is one too large for `FeeRate`.
+fn fee_rate_from_sat_per_vb(rate: f64) -> Result<FeeRate> {
+    let sat_per_kwu = (rate * 250.0).ceil();
+    ensure!(
+        sat_per_kwu > 0.0,
+        "Fee rate must be above zero, got {rate} sat/vB"
+    );
+    // `as u64` would saturate infinity and anything past u64::MAX sat/kwu to u64::MAX
+    ensure!(
+        sat_per_kwu < u64::MAX as f64,
+        "Fee rate is too large, got {rate} sat/vB"
+    );
+    Ok(FeeRate::from_sat_per_kwu(sat_per_kwu as u64))
+}
+
 /// Create a PSBT with manual input/output specification using BDK
 pub async fn create_psbt_bdk(
     inputs: &[String],
@@ -610,8 +629,7 @@ pub async fn create_psbt_bdk(
 
     // Set fee rate if provided
     if let Some(rate) = fee_rate {
-        // BDK expects fee rate in sat/vB
-        tx_builder.fee_rate(FeeRate::from_sat_per_vb(rate as u64).expect("Valid fee rate"));
+        tx_builder.fee_rate(fee_rate_from_sat_per_vb(rate)?);
     }
 
     // Manually select UTXOs (disable coin selection)
@@ -699,8 +717,7 @@ pub async fn create_funded_psbt_bdk(
 
     // Set fee rate
     if let Some(rate) = fee_rate {
-        // BDK expects fee rate in sat/vB
-        tx_builder.fee_rate(FeeRate::from_sat_per_vb(rate as u64).expect("Valid fee rate"));
+        tx_builder.fee_rate(fee_rate_from_sat_per_vb(rate)?);
     } else if let Some(_target) = conf_target {
         // TODO: Implement fee estimation based on confirmation target
         // For now, use a default fee rate
@@ -925,6 +942,35 @@ pub async fn move_utxos_bdk(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_fee_rate_from_sat_per_vb_keeps_fraction() -> Result<()> {
+        for (input, sat_per_kwu) in [
+            ("20sats", 5000),
+            ("20.5sats", 5125),
+            ("1.9sats", 475),
+            ("1sat", 250),
+            ("0.5sats", 125),
+            ("0.1sats", 25),
+        ] {
+            let rate = crate::bitcoin_rpc::AmountInput::from_str(input)?.as_fractional_sats();
+            assert_eq!(
+                fee_rate_from_sat_per_vb(rate)?,
+                FeeRate::from_sat_per_kwu(sat_per_kwu),
+                "{input}"
+            );
+        }
+
+        // A rate that rounds to zero is an error, not a zero-fee transaction
+        assert!(fee_rate_from_sat_per_vb(0.0).is_err());
+
+        // So is a rate past FeeRate's range, which the cast would saturate to u64::MAX
+        for rate in [f64::INFINITY, 1e17] {
+            assert!(fee_rate_from_sat_per_vb(rate).is_err(), "{rate}");
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn test_bdk_wallet_creation() -> Result<()> {
